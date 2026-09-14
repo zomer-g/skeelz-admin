@@ -43,7 +43,8 @@ function readServiceAccount(): ServiceAccount | null {
   }
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as ServiceAccount;
+    // Editors on Windows sometimes save the key with a byte-order mark.
+    return JSON.parse(raw.replace(/^﻿/, "").trim()) as ServiceAccount;
   } catch {
     return null;
   }
