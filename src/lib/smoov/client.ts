@@ -41,7 +41,10 @@ async function get<T>(path: string, query: Record<string, string | number | bool
   const schemes: AuthScheme[] = workingScheme ? [workingScheme] : ["bearer", "raw"];
   let last: SmoovError | null = null;
   for (const scheme of schemes) {
+    // Read-only by construction: the account's key has full permissions, so this
+    // client must never gain a request method other than GET.
     const res = await fetch(url, {
+      method: "GET",
       headers: { Authorization: scheme === "bearer" ? `Bearer ${key}` : key, Accept: "application/json" },
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
