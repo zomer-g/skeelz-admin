@@ -65,8 +65,11 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `level={3}` under a section h2. Status/error messages live in an always-mounted `role="status"`. Repeated link/button
   text gets sr-only context (`Salesforce<span className="sr-only"> · name</span>`); new-tab links say so. Charts keep
   the "הצגה כטבלה" table. Visually-hidden text inside a scroll box needs `relative` on the box or it widens the page.
-  Keep `/accessibility` and `/privacy` current (review date; the contact address is `CONTACT_EMAIL` in `PublicDoc.tsx`) —
-  both are linked from the footer, sign-in and refusal screens.
+  `/accessibility` and `/privacy` are linked from the footer, sign-in and refusal screens; their wording is edited by
+  admins at `/admin/texts` (the contact address in the built-in text is `CONTACT_EMAIL` in `PublicDoc.tsx`).
+- **Editable texts:** `src/lib/texts/registry.ts` lists them (key, page, built-in text). The current text is in
+  `site_texts`, every saved version in `site_text_versions` (restorable). Render with `loadText()` + `<RichText>`, a small
+  safe format (paragraphs, `##`, `- `, `**`, `[text](https|mailto|/path)`), never raw HTML.
 - **Mobile:** every page must work at 320–375px with no sideways page scroll. Wide tables scroll inside `Table`; the main
   nav and dashboard tabs are one sideways-scrolling row on phones (`useActiveInStrip` keeps the current item visible).
 - Secrets only via xhostd `set_env(secret=true)`; never log them or send them to the client.

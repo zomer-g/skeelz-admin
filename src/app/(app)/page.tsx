@@ -147,23 +147,34 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
             <StatCard label="התקבלו לעבודה" value={fmtInt(pipeline.accepted)} hint={`${fmtInt(pipeline.interviews)} זומנו לראיון`} info={EXPLAIN.hired} />
           </div>
           <Card level={3} title="מהאתר ועד השמה" className="mt-4">
+            {hasGa ? (
+              <>
+                <p className="mb-3 text-sm font-medium text-muted">חשיפה · כל האתר</p>
+                <BarList
+                  caption="חשיפה לאתר ולדפי המשרות"
+                  items={[
+                    { label: "כניסות לאתר", value: marketing.sessions, color: FUNNEL[0] },
+                    { label: "פתיחות של דפי משרות", value: marketing.allJobOpens, color: FUNNEL[1] },
+                  ]}
+                />
+                <p className="mb-3 mt-6 text-sm font-medium text-muted">מהגשה ועד השמה · האחוזים מתוך ההגשות</p>
+              </>
+            ) : null}
             <BarList
-              caption="משפך מפתיחת משרה ועד השמה"
-              showShareOf={hasGa ? ev(SITE_EVENTS.openJob) || undefined : pipeline.applications || undefined}
+              caption="מהגשה ועד השמה"
+              showShareOf={pipeline.applications || undefined}
               items={[
-                ...(hasGa
-                  ? [
-                      { label: "פתיחות משרה באתר", value: ev(SITE_EVENTS.openJob) },
-                      { label: 'לחיצות "הגש מועמדות"', value: ev(SITE_EVENTS.applyClick) },
-                    ]
-                  : []),
                 { label: "הגשות ב-Salesforce", value: pipeline.applications },
                 { label: 'קו"ח נשלחו למעסיק', value: pipeline.sentToEmployer },
                 { label: "זומנו לראיון", value: pipeline.interviews },
                 { label: "התקבלו", value: pipeline.accepted },
-              ].map((s, i, all) => ({ ...s, color: FUNNEL[i + (FUNNEL.length - all.length)] }))}
+              ].map((s, i) => ({ ...s, color: FUNNEL[i + 2] }))}
             />
-            <p className="mt-3 text-xs text-muted">כל שלב נספר לפי מתי שקרה בטווח. פתיחות ולחיצות מ-Google Analytics, השאר מ-Salesforce.</p>
+            <p className="mt-3 text-xs text-muted">
+              כל שלב נספר לפי מתי שקרה בטווח. החשיפה (כניסות ופתיחות של דפי משרות) היא של כל האתר מ-Google Analytics, בלי קשר לבורר &quot;בתשלום&quot;; משרה
+              אחת יכולה להיפתח כמה פעמים בכניסה אחת. ההגשות ומה שאחריהן מ-Salesforce. לכל אחד משני החלקים קנה מידה משלו, כדי ששלבי ההגשה לא ייבלעו
+              מול אלפי הכניסות.
+            </p>
           </Card>
         </Section>
 

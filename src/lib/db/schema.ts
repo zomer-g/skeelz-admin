@@ -477,6 +477,29 @@ export const webhookDeliveries = pgTable(
   ],
 );
 
+/* ------------------------------------------------------------------ texts */
+
+/** Admin-edited copy for pages such as the accessibility statement; src/lib/texts/registry.ts lists the texts. */
+export const siteTexts = pgTable("site_texts", {
+  key: text("key").primaryKey(),
+  body: text("body").notNull(),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** Every saved version of a text, so any edit can be undone. The newest version is the current text. */
+export const siteTextVersions = pgTable(
+  "site_text_versions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    key: text("key").notNull(),
+    body: text("body").notNull(),
+    savedBy: text("saved_by").notNull(),
+    savedAt: ts("saved_at").notNull().defaultNow(),
+  },
+  (t) => [index("site_text_versions_key_idx").on(t.key, t.id)],
+);
+
 /** Schema discovery runs, generated on the server so credentials never leave it. */
 export const sfSchemaReports = pgTable("sf_schema_reports", {
   id: bigserial("id", { mode: "number" }).primaryKey(),

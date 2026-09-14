@@ -65,6 +65,8 @@ export interface MarketingMetrics {
   applications: number;
   /** Applications created in the range and job opens that carry a job key: all, and paid. Independent of the scope. */
   split: { applications: { all: number; paid: number }; jobOpens: { all: number; paid: number } };
+  /** Every job-page open on the site, whatever the scope — list-page opens without a job key included. Exposure, not attribution. */
+  allJobOpens: number;
   gaSyncedAt: Date | null;
   /** Salesforce: accounts that hold candidates (name contains "מועמד"). */
   candidateAccounts: { account: string; contacts: number; newInRange: number; applicants: number }[];
@@ -177,6 +179,7 @@ async function queryMarketingMetrics(p: DashboardParams): Promise<MarketingMetri
     jobPages: { jobs: n(jobPages[0]?.jobs), views: n(jobPages[0]?.views) },
     applications: paidOnly ? applications.paid : applications.all,
     split: { applications, jobOpens: { all: n(openRow?.keyed), paid: n(openRow?.paid) } },
+    allJobOpens: n(openRow?.n),
     gaSyncedAt: syncedAt ? new Date(syncedAt as string | Date) : null,
     candidateAccounts: sfAccounts.map((r) => ({
       account: String(r.name),
