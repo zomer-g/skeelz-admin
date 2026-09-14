@@ -11,7 +11,8 @@
  */
 import { asc, desc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { syncRequests, syncRuns } from "@/lib/db/schema";
+import { syncRequests, syncRuns, syncState } from "@/lib/db/schema";
+import { ga4Configured } from "@/lib/google/ga4";
 import { marketingConfigured, runMarketingSync } from "@/lib/integrations/marketing-sync";
 import { salesforceConfigured } from "@/lib/sf/client";
 import { runSync, type SyncMode } from "@/lib/sf/sync";
@@ -46,6 +47,11 @@ async function chooseScheduled(): Promise<JobMode | null> {
   }
   if (sf && Date.now() - lastIncrementalAt >= INTERVAL_MIN * 60_000) return "incremental";
   if (marketingConfigured()) {
+    // A migration that resets the GA mirror (or a first deploy) leaves no cursor: backfill now, not in six hours.
+    if (ga4Configured()) {
+      const [ga] = await getDb().select({ cursor: syncState.cursor }).from(syncState).where(eq(syncState.object, "GA4"));
+      if (!ga?.cursor) return "marketing";
+    }
     // Survive restarts: a redeploy should not trigger a fresh Google/SMOOV pull every time.
     lastMarketingAt ||= await lastRunAt("marketing");
     if (Date.now() - lastMarketingAt >= MARKETING_INTERVAL_MIN * 60_000) return "marketing";
