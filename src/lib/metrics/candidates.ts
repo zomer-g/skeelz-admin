@@ -53,6 +53,9 @@ export const STATUS_HISTORY_START = new Date("2025-03-13T00:00:00Z");
 
 export const WAITING_DAYS = 5;
 
+/** Task.Field1__c ("צד לשיחה") on a logged call. Other parties are not a touch. */
+export const CALL_PARTY = { candidate: "מועמד", employer: "מעסיק" } as const;
+
 export interface ApplicationFacts {
   id: string;
   status: string | null;
@@ -75,6 +78,10 @@ export interface ApplicationFacts {
   acceptedAt: Date | null;
   candidateTouchesBeforeSent: number;
   employerTouchesAfterSent: number;
+  candidateEmails: number;
+  candidateCalls: number;
+  employerEmails: number;
+  employerCalls: number;
 }
 
 interface FactsRow {
@@ -97,8 +104,10 @@ interface FactsRow {
   rejected_by_us_at: Date | null;
   interview_at: Date | null;
   accepted_at: Date | null;
-  candidate_touches: number;
-  employer_touches: number;
+  candidate_emails: number;
+  candidate_calls: number;
+  employer_emails: number;
+  employer_calls: number;
 }
 
 export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
@@ -184,8 +193,10 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
            st.interview_at,
            coalesce(st.accepted_status_at, rth.at,
                     CASE WHEN a.record_type = ${RECORD_TYPES.accepted} THEN a.created_date END) AS accepted_at,
-           (coalesce(em.candidate_emails, 0) + coalesce(ca.candidate_calls, 0))::int AS candidate_touches,
-           (coalesce(em.employer_emails, 0) + coalesce(ca.employer_calls, 0))::int AS employer_touches
+           coalesce(em.candidate_emails, 0)::int AS candidate_emails,
+           coalesce(ca.candidate_calls, 0)::int AS candidate_calls,
+           coalesce(em.employer_emails, 0)::int AS employer_emails,
+           coalesce(ca.employer_calls, 0)::int AS employer_calls
       FROM apps a
       LEFT JOIN st ON st.case_id = a.id
       LEFT JOIN cv ON cv.case_id = a.id
@@ -201,9 +212,11 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
                    AND strpos(e.to_address, a.candidate_email) > 0
                    AND (st.sent_at IS NULL OR e.message_date < st.sent_at)
                ) AS candidate_emails,
+               -- From the application's creation, not from the status change: the
+               -- email that sends the CV usually goes out moments before someone
+               -- sets "נשלחו קו״ח", and it is the first touch with the employer.
                count(*) FILTER (
                  WHERE st.sent_at IS NOT NULL
-                   AND e.message_date > st.sent_at
                    AND e.message_date <= coalesce(er.at, a.closed_date, now())
                    AND EXISTS (SELECT 1 FROM unnest(j.employer_emails) addr WHERE strpos(e.to_address, addr) > 0)
                ) AS employer_emails
@@ -211,18 +224,25 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
          WHERE e.parent_id = a.id AND NOT e.incoming AND NOT e.is_deleted
       ) em ON true
       LEFT JOIN LATERAL (
-        -- Calls logged on the application. Before the CV is sent they are with
-        -- the candidate; after it, with the employer unless logged against the candidate.
+        -- Calls logged on the application, attributed by "צד לשיחה". A call
+        -- with no party marked falls back to timing: before the CV is sent it is
+        -- with the candidate; after it, with the employer unless logged against
+        -- the candidate. Calls with any other party are not a touch.
         SELECT min(k.at) AS first_call_at,
-               count(*) FILTER (WHERE st.sent_at IS NULL OR k.at < st.sent_at) AS candidate_calls,
+               count(*) FILTER (
+                 WHERE (st.sent_at IS NULL OR k.at < st.sent_at)
+                   AND (k.party = ${CALL_PARTY.candidate} OR k.party IS NULL)
+               ) AS candidate_calls,
                count(*) FILTER (
                  WHERE st.sent_at IS NOT NULL
-                   AND k.at > st.sent_at
                    AND k.at <= coalesce(er.at, a.closed_date, now())
-                   AND k.who_id IS DISTINCT FROM a.contact_id
+                   AND (
+                     k.party = ${CALL_PARTY.employer}
+                     OR (k.party IS NULL AND k.at > st.sent_at AND k.who_id IS DISTINCT FROM a.contact_id)
+                   )
                ) AS employer_calls
           FROM (
-            SELECT t.who_id, coalesce(t.completed_at, t.created_date) AS at
+            SELECT t.who_id, btrim(t.call_party) AS party, coalesce(t.completed_at, t.created_date) AS at
               FROM sf_task t
              WHERE t.what_id = a.id AND NOT t.is_deleted
                AND (t.task_subtype = 'Call' OR t.type ILIKE 'call%')
@@ -258,8 +278,12 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
     rejectedByUsAt: asDate(r.rejected_by_us_at),
     interviewAt: asDate(r.interview_at),
     acceptedAt: asDate(r.accepted_at),
-    candidateTouchesBeforeSent: Number(r.candidate_touches),
-    employerTouchesAfterSent: Number(r.employer_touches),
+    candidateTouchesBeforeSent: Number(r.candidate_emails) + Number(r.candidate_calls),
+    employerTouchesAfterSent: Number(r.employer_emails) + Number(r.employer_calls),
+    candidateEmails: Number(r.candidate_emails),
+    candidateCalls: Number(r.candidate_calls),
+    employerEmails: Number(r.employer_emails),
+    employerCalls: Number(r.employer_calls),
   }));
 }
 
@@ -320,6 +344,11 @@ export interface CandidateMetrics {
   requestedCv: number;
   cvReceived: number;
   touchesUntilSent: Stats;
+  /** Average emails and calls per sent application, per side. */
+  touchMix: {
+    candidate: { emails: number | null; calls: number | null };
+    employer: { emails: number | null; calls: number | null };
+  };
   rejectedByUs: number;
   rejectReasons: { reason: string; count: number }[];
   sentToEmployer: number;
@@ -347,6 +376,8 @@ export function stats(values: number[]): Stats {
 }
 
 const inRange = (d: Date | null, from: Date, to: Date): d is Date => d !== null && d >= from && d < to;
+
+const mean = (values: number[]): number | null => (values.length ? values.reduce((s, v) => s + v, 0) / values.length : null);
 
 export function computeCandidateMetrics(
   facts: ApplicationFacts[],
@@ -404,6 +435,10 @@ export function computeCandidateMetrics(
     requestedCv: requested.length,
     cvReceived: requested.filter((f) => f.cvReceivedAt).length,
     touchesUntilSent: stats(sent.map((f) => f.candidateTouchesBeforeSent)),
+    touchMix: {
+      candidate: { emails: mean(sent.map((f) => f.candidateEmails)), calls: mean(sent.map((f) => f.candidateCalls)) },
+      employer: { emails: mean(sent.map((f) => f.employerEmails)), calls: mean(sent.map((f) => f.employerCalls)) },
+    },
     rejectedByUs: rejected.length,
     rejectReasons: [...reasons.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
     sentToEmployer: sent.length,

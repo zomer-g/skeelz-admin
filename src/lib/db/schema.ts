@@ -211,6 +211,8 @@ export const sfTask = pgTable(
     status: text("status"),
     activityDate: ts("activity_date"),
     completedAt: ts("completed_at"),
+    callParty: text("call_party"),
+    callAnswered: boolean("call_answered"),
     ownerId: sfId("owner_id"),
     createdDate: ts("created_date"),
     systemModstamp: ts("system_modstamp").notNull(),

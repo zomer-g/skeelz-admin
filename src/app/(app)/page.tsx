@@ -117,7 +117,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <StatCard
             label='מגעים עד שליחת קו"ח'
             value={fmtDecimal(m.touchesUntilSent.avg)}
-            hint={`ממוצע · חציון ${fmtDecimal(m.touchesUntilSent.median)} · ${fmtInt(m.touchesUntilSent.count)} הגשות`}
+            hint={`ממוצע · מיילים ${fmtDecimal(m.touchMix.candidate.emails)} · שיחות ${fmtDecimal(m.touchMix.candidate.calls)} · ${fmtInt(m.touchesUntilSent.count)} הגשות`}
           />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -161,6 +161,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <p className="text-xs text-muted">ממוצע · {fmtInt(m.touchesUntilResponse.notResponded.count)} הגשות</p>
               </div>
             </div>
+            <p className="mt-4 text-xs text-muted">
+              בממוצע להגשה שנשלחה: מיילים {fmtDecimal(m.touchMix.employer.emails)} · שיחות {fmtDecimal(m.touchMix.employer.calls)}
+            </p>
           </Card>
         </div>
 
@@ -201,7 +204,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
         <p className="mt-8 text-xs text-muted">
           היסטוריית הסטטוסים ב-Salesforce נשמרת מ-{fmtDate(STATUS_HISTORY_START)}: מדדי שלבים והזמנים מחושבים רק להגשות שיש להן היסטוריה.
-          מגעים = מיילים יוצאים{freshness.callsAvailable ? " ושיחות" : ""} שנרשמו על ההגשה.
+          מגעים = מיילים יוצאים{freshness.callsAvailable ? ' ושיחות (Log a Call) שנרשמו על ההגשה. שיחה משויכת למועמד או למעסיק לפי השדה "צד לשיחה"' : " שנרשמו על ההגשה"}.
         </p>
       </DashboardShell>
     </>
