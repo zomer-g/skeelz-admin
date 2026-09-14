@@ -5,7 +5,7 @@ import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { Meter } from "@/components/dashboard/Meter";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
-import { formatDay, parseDashboardParams } from "@/lib/dashboard/params";
+import { formatDay, parseDashboardParams, rangeQuery } from "@/lib/dashboard/params";
 import { fmtDate, fmtDecimal, fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
 import {
   computeCandidateMetrics,
@@ -86,7 +86,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <DashboardTabs active="candidates" />
+      <DashboardTabs active="candidates" query={rangeQuery(params)} />
 
       <DashboardShell preset={params.preset} basis={params.basis} fromDay={params.fromDay} toDay={params.toDay}>
         <p className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">

@@ -6,19 +6,25 @@ import { usePathname } from "next/navigation";
 interface NavItem {
   href: string;
   label: string;
+  /** Paths (besides href itself) that belong to this item. */
+  also?: string[];
   /** Not built yet: shown so the shape of the product is visible, but inert. */
   soon?: boolean;
 }
 
 const ITEMS: NavItem[] = [
-  { href: "/", label: "דשבורד" },
-  { href: "/jobs", label: "משרות", soon: true },
+  { href: "/", label: "דשבורד", also: ["/jobs", "/marketing"] },
   { href: "/applications", label: "הגשות", soon: true },
   { href: "/companies", label: "חברות", soon: true },
   { href: "/candidates", label: "מועמדים", soon: true },
 ];
 
-const ADMIN: NavItem = { href: "/admin/users", label: "ניהול" };
+const ADMIN: NavItem = { href: "/admin/users", label: "ניהול", also: ["/admin"] };
+
+function isActive(item: NavItem, pathname: string): boolean {
+  if (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)) return true;
+  return (item.also ?? []).some((p) => pathname === p || pathname.startsWith(`${p}/`));
+}
 
 export function NavLinks({ isAdmin }: { isAdmin: boolean }) {
   const pathname = usePathname();
@@ -34,15 +40,13 @@ export function NavLinks({ isAdmin }: { isAdmin: boolean }) {
             </span>
           );
         }
-        const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href.replace(/\/[^/]+$/, ""));
+        const active = isActive(item, pathname);
         return (
           <Link
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`rounded-full px-4 py-2 font-medium transition-colors ${
-              active ? "bg-accent text-white" : "text-ink hover:bg-accent/10"
-            }`}
+            className={`rounded-full px-4 py-2 font-medium transition-colors ${active ? "bg-accent text-white" : "text-ink hover:bg-accent/10"}`}
           >
             {item.label}
           </Link>

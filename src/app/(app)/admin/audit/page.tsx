@@ -36,6 +36,9 @@ const SCREEN_LABELS: [prefix: string, label: string][] = [
   ["/admin/salesforce", "ניהול · Salesforce"],
   ["/admin/sync", "ניהול · סנכרון"],
   ["/admin/audit", "ניהול · יומן פעילות"],
+  ["/jobs/", "דשבורד · משרה"],
+  ["/jobs", "דשבורד · משרות"],
+  ["/marketing", "דשבורד · שיווק"],
   ["/", "דשבורד · מועמדים"],
 ];
 

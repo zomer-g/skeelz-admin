@@ -58,6 +58,8 @@ export const CALL_PARTY = { candidate: "מועמד", employer: "מעסיק" } as
 
 export interface ApplicationFacts {
   id: string;
+  /** The job (Position Case) the application belongs to. */
+  parentId: string | null;
   status: string | null;
   recordType: string;
   createdAt: Date;
@@ -86,6 +88,7 @@ export interface ApplicationFacts {
 
 interface FactsRow {
   id: string;
+  parent_id: string | null;
   status: string | null;
   record_type: string;
   created_at: Date;
@@ -174,6 +177,7 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
        WHERE j.id IN (SELECT parent_id FROM apps WHERE parent_id IS NOT NULL)
     )
     SELECT a.id,
+           a.parent_id,
            a.status,
            a.record_type,
            a.created_date AS created_at,
@@ -255,6 +259,7 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
 
   return result.rows.map((r) => ({
     id: r.id,
+    parentId: r.parent_id,
     status: normStatus(r.status),
     recordType: r.record_type,
     createdAt: asDate(r.created_at)!,

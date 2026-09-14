@@ -59,10 +59,10 @@ type SearchParams = Record<string, string | string[] | undefined>;
 
 const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
 
-export function parseDashboardParams(search: SearchParams, now = new Date()): DashboardParams {
+export function parseDashboardParams(search: SearchParams, now = new Date(), fallback: PresetKey = "30d"): DashboardParams {
   const today = israelDay(now);
   const requested = first(search.range);
-  const preset: PresetKey = PRESETS.some((p) => p.key === requested) ? (requested as PresetKey) : "30d";
+  const preset: PresetKey = PRESETS.some((p) => p.key === requested) ? (requested as PresetKey) : fallback;
   const basis: Basis = first(search.basis) === "event" ? "event" : "application";
 
   let fromDay: string;
@@ -70,6 +70,9 @@ export function parseDashboardParams(search: SearchParams, now = new Date()): Da
   switch (preset) {
     case "7d":
       fromDay = addDays(today, -6);
+      break;
+    case "30d":
+      fromDay = addDays(today, -29);
       break;
     case "90d":
       fromDay = addDays(today, -89);
@@ -96,6 +99,31 @@ export function parseDashboardParams(search: SearchParams, now = new Date()): Da
   }
 
   return { preset, basis, fromDay, toDay, from: israelMidnight(fromDay), to: israelMidnight(addDays(toDay, 1)) };
+}
+
+/** The range part of the query string, carried across dashboard tabs. */
+export function rangeQuery(p: DashboardParams): string {
+  const q = new URLSearchParams({ range: p.preset });
+  if (p.preset === "custom") {
+    q.set("from", p.fromDay);
+    q.set("to", p.toDay);
+  }
+  return q.toString();
+}
+
+/** The path written to the activity log: the page plus the filters that shaped it. */
+export function viewPath(base: string, search: SearchParams, keys = ["range", "basis", "from", "to", "q"]): string {
+  const q = new URLSearchParams(
+    Object.entries(search).flatMap(([k, v]) => (typeof v === "string" && v && keys.includes(k) ? [[k, v]] : [])),
+  ).toString();
+  return q ? `${base}?${q}` : base;
+}
+
+/** Every Israel day from..to inclusive, as YYYY-MM-DD. */
+export function eachDay(fromDay: string, toDay: string): string[] {
+  const days: string[] = [];
+  for (let d = fromDay; d <= toDay && days.length < 5000; d = addDays(d, 1)) days.push(d);
+  return days;
 }
 
 export function formatDay(day: string): string {
