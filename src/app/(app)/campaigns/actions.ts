@@ -61,7 +61,9 @@ export async function unlinkJob(form: FormData): Promise<void> {
   revalidatePath(pathFor(key));
 }
 
-export async function findJobs(q: string): Promise<{ id: string; title: string | null; company: string | null; caseNumber: string | null; created: string | null }[]> {
+export async function findJobs(
+  q: string,
+): Promise<{ id: string; title: string | null; company: string | null; caseNumber: string | null; created: string | null; paid: boolean }[]> {
   await requireUser("editor");
   if (q.trim().length < 2) return [];
   const positions = await searchPositions(q, 8);
@@ -71,5 +73,6 @@ export async function findJobs(q: string): Promise<{ id: string; title: string |
     company: p.company,
     caseNumber: p.caseNumber,
     created: p.createdAt ? p.createdAt.toISOString().slice(0, 10) : null,
+    paid: p.paid,
   }));
 }

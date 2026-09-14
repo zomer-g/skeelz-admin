@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { EMPLOYER_RESPONSE_STATUSES, RECORD_TYPES, STATUS, type ApplicationFacts } from "./candidates";
+import { jobPaidSql } from "./paid";
 
 /**
  * Jobs tab: everything about one job in one place — its exposure on the site
@@ -26,6 +27,8 @@ export interface Position {
   status: string | null;
   manageStatus: string | null;
   siteJobKey: string | null;
+  /** A paid job, as opposed to one shown on the site for display (see ./paid.ts). */
+  paid: boolean;
 }
 
 export interface JobGa {
@@ -69,7 +72,8 @@ function positionsSql(extra: ReturnType<typeof sql>) {
            c.created_date,
            c.status,
            c.data->>'new_pos_status__c' AS manage_status,
-           c.site_job_key
+           c.site_job_key,
+           ${jobPaidSql("c")} AS paid
       FROM sf_case c
       JOIN sf_record_type rt ON rt.id = c.record_type_id
       LEFT JOIN sf_account acc ON acc.id = c.account_id
@@ -86,6 +90,7 @@ function toPosition(r: Row): Position {
     status: str(r.status),
     manageStatus: str(r.manage_status),
     siteJobKey: str(r.site_job_key),
+    paid: r.paid === true,
   };
 }
 

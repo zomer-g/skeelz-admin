@@ -30,6 +30,8 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
       <DashboardTabs active="campaigns" query={query} />
       <DashboardShell
         preset={params.preset}
+        scope={params.scope}
+        showScope={false}
         fromDay={params.fromDay}
         toDay={params.toDay}
         showBasis={false}

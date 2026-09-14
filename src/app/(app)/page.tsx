@@ -3,9 +3,10 @@ import { BarList } from "@/components/dashboard/BarList";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { Meter } from "@/components/dashboard/Meter";
+import { PaidSplit } from "@/components/dashboard/PaidSplit";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
-import { formatDay, parseDashboardParams, rangeQuery } from "@/lib/dashboard/params";
+import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtDecimal, fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
 import {
   computeCandidateMetrics,
@@ -16,6 +17,7 @@ import {
   WAITING_DAYS,
   type Stats,
 } from "@/lib/metrics/candidates";
+import { inScope } from "@/lib/metrics/paid";
 
 export const dynamic = "force-dynamic";
 
@@ -45,10 +47,7 @@ function SectionTitle({ children, hint }: { children: string; hint?: string }) {
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const search = await searchParams;
-  const query = new URLSearchParams(
-    Object.entries(search).flatMap(([k, v]) => (typeof v === "string" && ["range", "basis", "from", "to"].includes(k) ? [[k, v]] : [])),
-  ).toString();
-  const auth = await pageAuth("viewer", query ? `/?${query}` : "/");
+  const auth = await pageAuth("viewer", viewPath("/", search));
   if (!auth.ok) return auth.render;
 
   const params = parseDashboardParams(search);
@@ -71,7 +70,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   }
 
   const [facts, newJobs] = await Promise.all([loadApplicationFacts(), countNewJobs(params.from, params.to)]);
-  const m = computeCandidateMetrics(facts, newJobs, params);
+  const m = computeCandidateMetrics(facts.filter(inScope(params.scope)), params.scope === "paid" ? newJobs.paid : newJobs.all, params);
+  const created = facts.filter((f) => f.createdAt >= params.from && f.createdAt < params.to);
+  const hired = facts.filter((f) => f.acceptedAt && f.acceptedAt >= params.from && f.acceptedAt < params.to);
   const nowScope = params.basis === "application" ? "מתוך ההגשות בטווח, כרגע" : "כרגע, בכל ההגשות";
   const sfBase = process.env.SF_LOGIN_URL?.replace(/\/+$/, "");
 
@@ -88,7 +89,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     <>
       <DashboardTabs active="candidates" query={rangeQuery(params)} />
 
-      <DashboardShell preset={params.preset} basis={params.basis} fromDay={params.fromDay} toDay={params.toDay}>
+      <DashboardShell preset={params.preset} basis={params.basis} scope={params.scope} fromDay={params.fromDay} toDay={params.toDay}>
+        <PaidSplit
+          scope={params.scope}
+          items={[
+            { label: "משרות חדשות", paid: newJobs.paid, total: newJobs.all },
+            { label: "הגשות", paid: created.filter((f) => f.paid).length, total: created.length },
+            { label: "התקבלו לעבודה", paid: hired.filter((f) => f.paid).length, total: hired.length },
+          ]}
+        />
         <p className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
           <span>
             {formatDay(params.fromDay)} – {formatDay(params.toDay)}

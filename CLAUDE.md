@@ -27,6 +27,10 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   Application → job is the standard `ParentId` (RecordType2, skeelz2, staff_leads, Placement_cambium → Position);
   `Interested` mostly has ParentId → `Client`. `Case__c` is unused. Only ~half of Position Cases have `PID_cambium__c`.
   Full schema: `npm run sf:describe` writes `docs/sf-schema-report.md` (gitignored — org-specific); connectivity: `npm run sf:check`.
+- **Paid scope:** every figure built on jobs or applications honours `?scope=` (default `paid`, or `all`). Paid job =
+  `isSponserd_cambium__c` or `Field18__c`; paid application = `A_Money__c` or a paid job (the site never sets
+  `isSponserd_cambium__c` on applications). Defined once in `src/lib/metrics/paid.ts`; show `PaidSplit` so the other side
+  stays visible. Site-wide GA traffic has no job and is not scoped.
 - **Design:** tokens in `src/app/globals.css` (brand magenta `#CD0077` for CTAs, teal `#218283` panels, pill
   controls, 20px cards). Rubik only. Use logical CSS (`ms-*`, `text-start`), never left/right.
 - Secrets only via xhostd `set_env(secret=true)`; never log them or send them to the client.

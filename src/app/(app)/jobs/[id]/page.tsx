@@ -85,6 +85,7 @@ export default async function JobPage({
               Case: <span className="font-medium tabular-nums">{position.caseNumber}</span>
             </span>
           ) : null}
+          {position.paid ? <Badge tone="brand">משרה בתשלום</Badge> : <Badge>לא בתשלום</Badge>}
           {position.status ? <Badge>{position.status}</Badge> : null}
           {position.manageStatus ? <Badge tone="accent">ניהול משרה: {position.manageStatus}</Badge> : null}
           <span className="ms-auto flex gap-4">
@@ -104,7 +105,8 @@ export default async function JobPage({
         </div>
       </section>
 
-      <DashboardShell preset={range.preset} fromDay={range.fromDay} toDay={range.toDay} showBasis={false}>
+      {/* One job is paid or it is not: the scope is only carried along, not offered here. */}
+      <DashboardShell preset={range.preset} scope={range.scope} fromDay={range.fromDay} toDay={range.toDay} showBasis={false} showScope={false}>
         <p className="mb-6 text-sm text-muted">
           {formatDay(range.fromDay)} – {formatDay(range.toDay)} · הגשות שנוצרו בטווח, והשלבים שהגיעו אליהם
         </p>

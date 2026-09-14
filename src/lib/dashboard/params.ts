@@ -1,7 +1,8 @@
 import type { Basis } from "@/lib/metrics/candidates";
+import { DEFAULT_SCOPE, parseScope, type Scope } from "@/lib/metrics/paid";
 
 /**
- * Dashboard filters live in the URL (?range=30d&basis=application), so a view
+ * Dashboard filters live in the URL (?range=30d&basis=application&scope=all), so a view
  * can be shared and every server render agrees on the slice. Days are Israel
  * days: a range ends at Israel midnight, not UTC midnight.
  */
@@ -23,6 +24,8 @@ export type PresetKey = (typeof PRESETS)[number]["key"];
 export interface DashboardParams {
   preset: PresetKey;
   basis: Basis;
+  /** Paid jobs and applications only (the default), or everything. */
+  scope: Scope;
   /** Inclusive Israel dates, YYYY-MM-DD. */
   fromDay: string;
   toDay: string;
@@ -64,6 +67,7 @@ export function parseDashboardParams(search: SearchParams, now = new Date(), fal
   const requested = first(search.range);
   const preset: PresetKey = PRESETS.some((p) => p.key === requested) ? (requested as PresetKey) : fallback;
   const basis: Basis = first(search.basis) === "event" ? "event" : "application";
+  const scope = parseScope(first(search.scope));
 
   let fromDay: string;
   let toDay = today;
@@ -98,21 +102,22 @@ export function parseDashboardParams(search: SearchParams, now = new Date(), fal
       fromDay = addDays(today, -29);
   }
 
-  return { preset, basis, fromDay, toDay, from: israelMidnight(fromDay), to: israelMidnight(addDays(toDay, 1)) };
+  return { preset, basis, scope, fromDay, toDay, from: israelMidnight(fromDay), to: israelMidnight(addDays(toDay, 1)) };
 }
 
-/** The range part of the query string, carried across dashboard tabs. */
-export function rangeQuery(p: DashboardParams): string {
+/** The range and the paid scope, carried across dashboard tabs so switching keeps the same slice. */
+export function rangeQuery(p: Pick<DashboardParams, "preset" | "fromDay" | "toDay" | "scope">): string {
   const q = new URLSearchParams({ range: p.preset });
   if (p.preset === "custom") {
     q.set("from", p.fromDay);
     q.set("to", p.toDay);
   }
+  if (p.scope !== DEFAULT_SCOPE) q.set("scope", p.scope);
   return q.toString();
 }
 
 /** The path written to the activity log: the page plus the filters that shaped it. */
-export function viewPath(base: string, search: SearchParams, keys = ["range", "basis", "from", "to", "q"]): string {
+export function viewPath(base: string, search: SearchParams, keys = ["range", "basis", "scope", "from", "to", "q"]): string {
   const q = new URLSearchParams(
     Object.entries(search).flatMap(([k, v]) => (typeof v === "string" && v && keys.includes(k) ? [[k, v]] : [])),
   ).toString();

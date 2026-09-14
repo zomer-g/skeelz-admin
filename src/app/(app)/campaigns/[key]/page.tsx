@@ -147,7 +147,8 @@ export default async function CampaignPage({
               <td className="px-3 py-2">
                 <Link href={`/jobs/${i.position.id}`} className="font-medium underline-offset-4 hover:underline">
                   {i.position.title ?? "(ללא שם)"}
-                </Link>
+                </Link>{" "}
+                {i.position.paid ? <Badge tone="brand">בתשלום</Badge> : <Badge>לא בתשלום</Badge>}
                 <p className="text-xs text-muted">{i.position.company ?? "—"}</p>
               </td>
               <td className="px-3 py-2 tabular-nums">{i.position.siteJobKey ? fmtInt(i.campaignSessions) : "—"}</td>
@@ -184,7 +185,8 @@ export default async function CampaignPage({
                 <td className="px-3 py-2">
                   {job ? (
                     <>
-                      <span className="font-medium">{job.title}</span> <span className="text-xs text-muted">· {job.company ?? "—"}</span>
+                      <span className="font-medium">{job.title}</span> {job.paid ? <Badge tone="brand">בתשלום</Badge> : null}{" "}
+                      <span className="text-xs text-muted">· {job.company ?? "—"}</span>
                     </>
                   ) : (
                     <span dir="ltr">{l.page}</span>

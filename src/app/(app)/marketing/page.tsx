@@ -3,6 +3,7 @@ import { BarList } from "@/components/dashboard/BarList";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { LineChart } from "@/components/dashboard/LineChart";
+import { PaidSplit } from "@/components/dashboard/PaidSplit";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
@@ -10,6 +11,7 @@ import { fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
 import { campaignLabel, isMailing, loadCampaignSummaries } from "@/lib/metrics/campaigns";
 import { loadApplicationFacts } from "@/lib/metrics/candidates";
 import { CHANNEL_LABELS, loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
+import { inScope } from "@/lib/metrics/paid";
 
 export const metadata: Metadata = { title: "שיווק" };
 export const dynamic = "force-dynamic";
@@ -41,7 +43,8 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
   const mailings = campaigns.filter((c) => isMailing(c) && c.sessions >= 20);
   const mailingMarkers = mailings.map((c) => ({ day: c.sendDay, label: `${campaignLabel(c)} (${fmtInt(c.sessions)} כניסות)` }));
   // Hires by the day they happened (status "התקבל" or the switch to the placement record type).
-  const acceptedInRange = facts.filter((f) => f.acceptedAt && f.acceptedAt >= params.from && f.acceptedAt < params.to);
+  const acceptedInRange = facts.filter((f) => f.acceptedAt && f.acceptedAt >= params.from && f.acceptedAt < params.to && inScope(params.scope)(f));
+  const paidOnly = params.scope === "paid";
   const dailyAccepted = new Map<string, number>();
   for (const f of acceptedInRange) {
     const day = israelDay(f.acceptedAt!);
@@ -70,7 +73,14 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <DashboardTabs active="marketing" query={query} />
-      <DashboardShell preset={params.preset} fromDay={params.fromDay} toDay={params.toDay} showBasis={false}>
+      <DashboardShell preset={params.preset} scope={params.scope} fromDay={params.fromDay} toDay={params.toDay} showBasis={false}>
+        <PaidSplit
+          scope={params.scope}
+          items={[
+            { label: "הגשות", paid: m.split.applications.paid, total: m.split.applications.all },
+            { label: "פתיחות משרה", paid: m.split.jobOpens.paid, total: m.split.jobOpens.all },
+          ]}
+        />
         <p className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
           <span>
             {formatDay(params.fromDay)} – {formatDay(params.toDay)}
@@ -195,7 +205,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
         <SectionTitle hint="מהכניסה ועד הגשה שנקלטה">פעולות באתר</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="פתיחות משרה" value={fmtInt(ev(SITE_EVENTS.openJob))} hint="open_job_page" />
+          <StatCard label="פתיחות משרה" value={fmtInt(ev(SITE_EVENTS.openJob))} hint={paidOnly ? "open_job_page · משרות בתשלום" : "open_job_page"} />
           <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(ev(SITE_EVENTS.applyClick))} hint="Job_application_click_1" />
           <StatCard label="השלמת הרשמה" value={fmtInt(ev(SITE_EVENTS.signUpSecond))} hint="sign_up_second_phase_complete" />
           <StatCard label="הגשות שנקלטו ב-Salesforce" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" />
@@ -213,7 +223,12 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
                 { label: "הגשות ב-Salesforce", value: m.applications },
               ].map((s, i) => ({ ...s, color: FUNNEL[i] }))}
             />
-            <p className="mt-3 text-xs text-muted">האחוזים ביחס לכניסות. משתמש יכול לפתוח כמה משרות בכניסה אחת.</p>
+            <p className="mt-3 text-xs text-muted">
+              האחוזים ביחס לכניסות. משתמש יכול לפתוח כמה משרות בכניסה אחת.
+              {paidOnly
+                ? " כניסות הן של כל האתר; פתיחות, לחיצות ואישורי הגשה נספרים רק למשרות בתשלום (לפי מזהה המשרה בכתובת), ופתיחות מדף הרשימה לא נכללות."
+                : ""}
+            </p>
           </Card>
           <Card title="הרשמה לאתר">
             <BarList
@@ -246,7 +261,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
             <Table head={["דף", "צפיות"]}>
               <tr>
                 <td className="px-3 py-2">
-                  דפי משרות <span className="text-xs text-muted">({fmtInt(m.jobPages.jobs)} משרות)</span>
+                  דפי משרות{paidOnly ? " בתשלום" : ""} <span className="text-xs text-muted">({fmtInt(m.jobPages.jobs)} משרות)</span>
                 </td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(m.jobPages.views)}</td>
               </tr>

@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import { PRESETS, type PresetKey } from "@/lib/dashboard/params";
 import type { Basis } from "@/lib/metrics/candidates";
+import { DEFAULT_SCOPE, SCOPES, type Scope } from "@/lib/metrics/paid";
 
 const BASES: { key: Basis; label: string; hint: string }[] = [
   { key: "application", label: "לפי תאריך הגשה", hint: "ההגשות שנוצרו בטווח, ומה קרה איתן" },
@@ -20,17 +21,22 @@ const segment = (active: boolean) =>
 export function DashboardShell({
   preset,
   basis,
+  scope,
   fromDay,
   toDay,
   showBasis = true,
+  showScope = true,
   search,
   children,
 }: {
   preset: PresetKey;
   basis?: Basis;
+  /** Kept in the URL either way; the switch shows only where the page's figures depend on it. */
+  scope: Scope;
   fromDay: string;
   toDay: string;
   showBasis?: boolean;
+  showScope?: boolean;
   search?: { value: string; placeholder: string };
   children: ReactNode;
 }) {
@@ -40,10 +46,12 @@ export function DashboardShell({
   const [custom, setCustom] = useState({ from: fromDay, to: toDay });
   const [q, setQ] = useState(search?.value ?? "");
 
-  function go(next: { range?: PresetKey; basis?: Basis; q?: string }) {
+  function go(next: { range?: PresetKey; basis?: Basis; scope?: Scope; q?: string }) {
     const range = next.range ?? preset;
     const params = new URLSearchParams({ range });
     if (showBasis) params.set("basis", next.basis ?? basis ?? "application");
+    const nextScope = next.scope ?? scope;
+    if (nextScope !== DEFAULT_SCOPE) params.set("scope", nextScope);
     if (range === "custom") {
       params.set("from", custom.from);
       params.set("to", custom.to);
@@ -89,6 +97,16 @@ export function DashboardShell({
               </button>
             ) : null}
           </form>
+        ) : null}
+        {showScope ? (
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="סוג המשרות">
+            {SCOPES.map((s) => (
+              <button key={s.key} type="button" aria-pressed={scope === s.key} title={s.hint} className={segment(scope === s.key)} onClick={() => go({ scope: s.key })}>
+                {s.label}
+              </button>
+            ))}
+            <span className="text-xs text-muted">{SCOPES.find((s) => s.key === scope)?.hint}</span>
+          </div>
         ) : null}
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="טווח תאריכים">
           {PRESETS.map((p) => (

@@ -1,6 +1,7 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { sfCase, sfRecordType, syncState } from "@/lib/db/schema";
+import { jobPaidSql } from "./paid";
 
 /**
  * Candidates tab. Definitions live in docs/candidates-tab-metrics.md.
@@ -62,6 +63,8 @@ export interface ApplicationFacts {
   parentId: string | null;
   status: string | null;
   recordType: string;
+  /** An application to a paid job (see ./paid.ts). */
+  paid: boolean;
   createdAt: Date;
   closedAt: Date | null;
   candidateName: string | null;
@@ -91,6 +94,7 @@ interface FactsRow {
   parent_id: string | null;
   status: string | null;
   record_type: string;
+  paid: boolean;
   created_at: Date;
   closed_at: Date | null;
   candidate_name: string | null;
@@ -167,6 +171,7 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
       SELECT j.id,
              coalesce(nullif(j.data->>'Position_cambium__c', ''), nullif(j.data->>'Position_Name__c', ''), nullif(j.data->>'Subject', '')) AS title,
              coalesce(nullif(j.data->>'company_cambium__c', ''), acc.name) AS company,
+             ${jobPaidSql("j")} AS paid,
              array_remove(ARRAY[
                lower(nullif(j.data->>'PEmail_cambium__c', '')),
                lower(nullif(j.data->>'ContactEmail', '')),
@@ -180,6 +185,8 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
            a.parent_id,
            a.status,
            a.record_type,
+           -- Stamped "הגשה למשרה בתשלום" when made, or its job is paid (see paid.ts).
+           (coalesce((a.data->>'A_Money__c') = 'true', false) OR coalesce(j.paid, false)) AS paid,
            a.created_date AS created_at,
            a.closed_date AS closed_at,
            coalesce(ct.name, nullif(a.data->>'full_name__c', ''), nullif(a.data->>'A_Name_Cam__c', ''), nullif(a.data->>'SuppliedName', '')) AS candidate_name,
@@ -262,6 +269,7 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
     parentId: r.parent_id,
     status: normStatus(r.status),
     recordType: r.record_type,
+    paid: r.paid === true,
     createdAt: asDate(r.created_at)!,
     closedAt: asDate(r.closed_at),
     candidateName: r.candidate_name,
@@ -292,9 +300,10 @@ export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
   }));
 }
 
-export async function countNewJobs(from: Date, to: Date): Promise<number> {
+/** Jobs opened in the range: all of them, and the paid ones. */
+export async function countNewJobs(from: Date, to: Date): Promise<{ all: number; paid: number }> {
   const [row] = await getDb()
-    .select({ n: sql<number>`count(*)::int` })
+    .select({ all: sql<number>`count(*)::int`, paid: sql<number>`(count(*) FILTER (WHERE ${jobPaidSql("sf_case")}))::int` })
     .from(sfCase)
     .innerJoin(sfRecordType, eq(sfRecordType.id, sfCase.recordTypeId))
     .where(
@@ -305,7 +314,7 @@ export async function countNewJobs(from: Date, to: Date): Promise<number> {
         lt(sfCase.createdDate, to),
       ),
     );
-  return row?.n ?? 0;
+  return { all: Number(row?.all ?? 0), paid: Number(row?.paid ?? 0) };
 }
 
 export async function syncFreshness(): Promise<{ casesSyncedAt: Date | null; callsAvailable: boolean }> {

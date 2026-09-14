@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState, useTransition } from "react";
-import { buttonClass, smallFieldClass } from "@/components/ui";
+import { Badge, buttonClass, smallFieldClass } from "@/components/ui";
 import { findJobs, linkJob, saveCampaign, type FormState } from "./actions";
 
 export function CampaignSettingsForm({
@@ -80,7 +80,7 @@ export function JobLinker({ campaignKey, linkedIds }: { campaignKey: string; lin
           {results.map((r) => (
             <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 text-sm">
               <span>
-                <span className="font-medium">{r.title ?? "(ללא שם)"}</span>
+                <span className="font-medium">{r.title ?? "(ללא שם)"}</span> {r.paid ? <Badge tone="brand">בתשלום</Badge> : null}
                 <span className="text-muted">
                   {" "}
                   · {r.company ?? "—"}

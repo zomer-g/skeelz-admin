@@ -68,6 +68,7 @@ function describeScreen(target: string | null): { screen: string; detail: string
   const range = q.get("range");
   if (range) parts.push(range === "custom" ? `${q.get("from") ?? ""}–${q.get("to") ?? ""}` : (RANGE_LABELS[range] ?? range));
   if (q.get("basis")) parts.push(q.get("basis") === "event" ? "לפי תאריך אירוע" : "לפי תאריך הגשה");
+  if (q.get("scope") === "all") parts.push("כל המשרות, כולל שלא בתשלום");
   return { screen, detail: parts.join(" · ") };
 }
 

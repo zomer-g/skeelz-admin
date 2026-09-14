@@ -2,12 +2,14 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
-import { Card, StatCard, Table } from "@/components/ui";
+import { PaidSplit } from "@/components/dashboard/PaidSplit";
+import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtInt } from "@/lib/format";
 import { loadApplicationFacts } from "@/lib/metrics/candidates";
-import { buildJobRows, loadJobGa, loadPositions, matchesSearch } from "@/lib/metrics/jobs";
+import { buildJobRows, loadJobGa, loadPositions, matchesSearch, type JobRow } from "@/lib/metrics/jobs";
+import { inScope } from "@/lib/metrics/paid";
 
 export const metadata: Metadata = { title: "משרות" };
 export const dynamic = "force-dynamic";
@@ -25,8 +27,14 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
   const [positions, ga, facts] = await Promise.all([loadPositions(), loadJobGa(params.fromDay, params.toDay), loadApplicationFacts()]);
   const all = buildJobRows(positions, ga, facts, params.from, params.to);
-  const active = all.filter((r) => r.ga.opens > 0 || r.ga.pageViews > 0 || r.funnel.applications > 0);
-  const matched = q ? all.filter((r) => matchesSearch(r.position, q)) : active;
+  const inView = (r: JobRow) => inScope(params.scope)(r.position);
+  const activeAll = all.filter((r) => r.ga.opens > 0 || r.ga.pageViews > 0 || r.funnel.applications > 0);
+  const active = activeAll.filter(inView);
+  const found = q ? all.filter((r) => matchesSearch(r.position, q)) : [];
+  const matched = q ? found.filter(inView) : active;
+  // A search that finds only unpaid jobs should say so rather than look empty.
+  const hiddenMatches = found.length - matched.length;
+  const applicationsOf = (list: JobRow[]) => list.reduce((s, r) => s + r.funnel.applications, 0);
   const rows = [...matched]
     .sort((a, b) => b.funnel.applications - a.funnel.applications || b.ga.opens - a.ga.opens || (b.position.createdAt?.getTime() ?? 0) - (a.position.createdAt?.getTime() ?? 0))
     .slice(0, MAX_ROWS);
@@ -42,11 +50,19 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       <DashboardTabs active="jobs" query={query} />
       <DashboardShell
         preset={params.preset}
+        scope={params.scope}
         fromDay={params.fromDay}
         toDay={params.toDay}
         showBasis={false}
         search={{ value: q, placeholder: "חיפוש משרה: שם, חברה או מספר Case" }}
       >
+        <PaidSplit
+          scope={params.scope}
+          items={[
+            { label: "משרות עם פעילות", paid: activeAll.filter((r) => r.position.paid).length, total: activeAll.length },
+            { label: "הגשות למשרות האלה", paid: applicationsOf(activeAll.filter((r) => r.position.paid)), total: applicationsOf(activeAll) },
+          ]}
+        />
         <p className="mb-6 text-sm text-muted">
           {formatDay(params.fromDay)} – {formatDay(params.toDay)} · פתיחות ולחיצות מ-Google Analytics, הגשות שנוצרו בטווח מ-Salesforce
         </p>
@@ -71,7 +87,8 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
                 <td className="px-3 py-2">
                   <Link href={`/jobs/${p.id}${detailQuery}`} className="font-medium text-ink underline-offset-4 hover:underline">
                     {p.title ?? "(ללא שם)"}
-                  </Link>
+                  </Link>{" "}
+                  {p.paid ? <Badge tone="brand">בתשלום</Badge> : null}
                   <p className="text-xs text-muted">
                     {p.company ?? "—"}
                     {p.caseNumber ? ` · ${p.caseNumber}` : ""}
@@ -88,6 +105,11 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             ))}
           </Table>
           {matched.length > MAX_ROWS ? <p className="mt-3 text-xs text-muted">מוצגות {MAX_ROWS} הראשונות. אפשר לצמצם בחיפוש.</p> : null}
+          {hiddenMatches > 0 ? (
+            <p className="mt-3 text-sm text-muted">
+              עוד {fmtInt(hiddenMatches)} משרות שלא בתשלום תואמות לחיפוש. הן מוצגות במצב &quot;כל המשרות&quot;.
+            </p>
+          ) : null}
         </Card>
       </DashboardShell>
     </>
