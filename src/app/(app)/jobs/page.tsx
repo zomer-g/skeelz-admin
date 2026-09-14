@@ -6,6 +6,7 @@ import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
+import { EXPLAIN } from "@/lib/dashboard/explain";
 import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtInt, fmtRelative } from "@/lib/format";
 import { computeCandidateMetrics, countNewJobs, loadApplicationFacts, syncFreshness } from "@/lib/metrics/candidates";
@@ -85,10 +86,10 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
 
         <SectionTitle hint="נפתחו באתר או קיבלו הגשות בטווח">משרות באתר</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="משרות עם פעילות" value={fmtInt(active.length)} hint="נפתחו באתר או קיבלו הגשות" />
-          <StatCard label="פתיחות משרה" value={fmtInt(totals.opens)} hint="של משרות שמזוהות ב-Salesforce" />
-          <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(totals.clicks)} hint="של משרות שמזוהות ב-Salesforce" />
-          <StatCard label="הגשות" value={fmtInt(totals.applications)} />
+          <StatCard label="משרות עם פעילות" value={fmtInt(active.length)} hint="נפתחו באתר או קיבלו הגשות" info={EXPLAIN.jobsWithActivity} />
+          <StatCard label="פתיחות משרה" value={fmtInt(totals.opens)} hint="של משרות שמזוהות ב-Salesforce" info={EXPLAIN.jobOpensKnown} />
+          <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(totals.clicks)} hint="של משרות שמזוהות ב-Salesforce" info={EXPLAIN.applyClicksKnown} />
+          <StatCard label="הגשות" value={fmtInt(totals.applications)} info={EXPLAIN.applicationsOfJobs} />
         </div>
 
         <ApplicationPipeline m={pipeline} basis={params.basis} callsAvailable={freshness.callsAvailable} />

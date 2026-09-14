@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Explained } from "./Explained";
 
 type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
 
@@ -65,16 +66,24 @@ export function Card({
   );
 }
 
-export function StatCard({ label, value, hint }: { label: string; value: ReactNode; hint?: string }) {
-  return (
-    <div className="flex overflow-hidden rounded-card border-2 border-line bg-surface">
+/** A headline figure. `info` says what it counts — shown on hover, focus or tap (see Explained). */
+export function StatCard({ label, value, hint, info }: { label: string; value: ReactNode; hint?: string; info?: string }) {
+  const card = (
+    <div className="flex h-full overflow-hidden rounded-card border-2 border-line bg-surface">
       <div className="flex w-2 shrink-0 bg-accent" aria-hidden />
       <div className="flex flex-1 flex-col gap-1 px-5 py-4">
-        <span className="text-sm font-medium text-muted">{label}</span>
+        <span className={`text-sm font-medium text-muted ${info ? "pe-8" : ""}`}>{label}</span>
         <span className="text-3xl font-bold text-ink">{value}</span>
         {hint ? <span className="text-xs text-muted">{hint}</span> : null}
       </div>
     </div>
+  );
+  return info ? (
+    <Explained label={label} text={info}>
+      {card}
+    </Explained>
+  ) : (
+    card
   );
 }
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { BarList } from "@/components/dashboard/BarList";
 import { Meter } from "@/components/dashboard/Meter";
 import { Badge, Card, NewTabNote, StatCard, Table } from "@/components/ui";
+import { EXPLAIN } from "@/lib/dashboard/explain";
 import { fmtDate, fmtDecimal, fmtInt, fmtPercent } from "@/lib/format";
 import { STATUS_HISTORY_START, WAITING_DAYS, type Basis, type CandidateMetrics, type Stats } from "@/lib/metrics/candidates";
 
@@ -43,25 +44,27 @@ export function ApplicationPipeline({ m, basis, callsAvailable }: { m: Candidate
     <>
       <SectionTitle hint="משרות והגשות שנכנסו">קליטה</SectionTitle>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="משרות חדשות" value={fmtInt(m.newJobs)} hint="משרות שנפתחו בטווח" />
-        <StatCard label="הגשות שהתקבלו" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" />
-        <StatCard label='הגשות בסטטוס "חדש"' value={fmtInt(m.statusNew)} hint={nowScope} />
+        <StatCard label="משרות חדשות" value={fmtInt(m.newJobs)} hint="משרות שנפתחו בטווח" info={EXPLAIN.newJobs} />
+        <StatCard label="הגשות שהתקבלו" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" info={EXPLAIN.applications} />
+        <StatCard label='הגשות בסטטוס "חדש"' value={fmtInt(m.statusNew)} hint={nowScope} info={EXPLAIN.statusNew} />
         <StatCard
           label="זמן למגע ראשון"
           value={m.firstTouchHours.median == null ? "—" : `${fmtDecimal(m.firstTouchHours.median)} שע׳`}
           hint={`חציון · ${statsHint(m.firstTouchHours, "שע׳")}`}
+          info={EXPLAIN.firstTouch}
         />
       </div>
 
       <SectionTitle hint="מההגשה ועד קורות החיים">מול המועמד</SectionTitle>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label='התבקשו לשלוח קו"ח' value={fmtInt(m.requestedCv)} />
-        <StatCard label="שלחו בפועל" value={fmtInt(m.cvReceived)} hint={`${fmtPercent(m.cvReceived, m.requestedCv)} מאלה שהתבקשו`} />
-        <StatCard label="בטיפול מועמד/מעסיק" value={fmtInt(m.inHandling)} hint={nowScope} />
+        <StatCard label='התבקשו לשלוח קו"ח' value={fmtInt(m.requestedCv)} info={EXPLAIN.requestedCv} />
+        <StatCard label="שלחו בפועל" value={fmtInt(m.cvReceived)} hint={`${fmtPercent(m.cvReceived, m.requestedCv)} מאלה שהתבקשו`} info={EXPLAIN.cvReceived} />
+        <StatCard label="בטיפול מועמד/מעסיק" value={fmtInt(m.inHandling)} hint={nowScope} info={EXPLAIN.inHandling} />
         <StatCard
           label='מגעים עד שליחת קו"ח'
           value={fmtDecimal(m.touchesUntilSent.avg)}
           hint={`ממוצע · מיילים ${fmtDecimal(m.touchMix.candidate.emails)} · שיחות ${fmtDecimal(m.touchMix.candidate.calls)} · ${fmtInt(m.touchesUntilSent.count)} הגשות`}
+          info={EXPLAIN.touchesUntilSent}
         />
       </div>
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -76,14 +79,15 @@ export function ApplicationPipeline({ m, basis, callsAvailable }: { m: Candidate
 
       <SectionTitle hint="מהשליחה ועד התשובה">מול המעסיק</SectionTitle>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label='קו"ח שנשלחו למעסיק' value={fmtInt(m.sentToEmployer)} />
+        <StatCard label='קו"ח שנשלחו למעסיק' value={fmtInt(m.sentToEmployer)} info={EXPLAIN.cvSent} />
         <StatCard
           label="זמן להעברה"
           value={m.daysToTransfer.median == null ? "—" : `${fmtDecimal(m.daysToTransfer.median)} ימים`}
           hint={`חציון · ${statsHint(m.daysToTransfer, "ימים")}`}
+          info={EXPLAIN.daysToTransfer}
         />
-        <StatCard label="זומנו לראיון" value={fmtInt(m.interviews)} hint={`${fmtPercent(m.interviews, m.sentToEmployer)} מהנשלחים`} />
-        <StatCard label="התקבלו לעבודה" value={fmtInt(m.accepted)} hint={`${fmtPercent(m.accepted, m.sentToEmployer)} מהנשלחים`} />
+        <StatCard label="זומנו לראיון" value={fmtInt(m.interviews)} hint={`${fmtPercent(m.interviews, m.sentToEmployer)} מהנשלחים`} info={EXPLAIN.interviews} />
+        <StatCard label="התקבלו לעבודה" value={fmtInt(m.accepted)} hint={`${fmtPercent(m.accepted, m.sentToEmployer)} מהנשלחים`} info={EXPLAIN.hired} />
       </div>
       <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card level={3} title="תגובת מעסיק">

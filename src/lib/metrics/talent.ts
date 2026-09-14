@@ -29,6 +29,8 @@ export interface AccountRow {
 
 export interface TalentMetrics {
   candidates: number;
+  /** Of the pool, those in the Cambium candidate Account(s). */
+  cambium: number;
   newInRange: number;
   active: number;
   /** Candidates with an application in the scope, created in the range. */
@@ -49,6 +51,9 @@ export interface TalentMetrics {
 
 /** Candidates outside the candidate Accounts (applicants with some other Account) are grouped under one row. */
 export const OTHER_ACCOUNT = "אחר";
+
+/** Cambium's candidate Account names start with this ("…מחוץ לקמביום" is outside Cambium, so it must not match). */
+export const CAMBIUM_ACCOUNT_PREFIX = "קמביום";
 
 type Json = Record<string, unknown>;
 const n = (v: unknown) => Number(v ?? 0);
@@ -155,6 +160,7 @@ async function queryTalentMetrics(p: DashboardParams): Promise<TalentMetrics> {
 
   return {
     candidates: sum("candidates"),
+    cambium: accountsRaw.filter((a) => String(a.account).startsWith(CAMBIUM_ACCOUNT_PREFIX)).reduce((s, a) => s + n(a.candidates), 0),
     newInRange: sum("new_in_range"),
     active: sum("active"),
     applicants: sum("applicants"),

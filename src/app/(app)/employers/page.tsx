@@ -6,6 +6,7 @@ import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
+import { EXPLAIN } from "@/lib/dashboard/explain";
 import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtDecimal, fmtInt } from "@/lib/format";
 import {
@@ -117,17 +118,19 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
 
         <SectionTitle hint="לידים שנכנסו וחוזים שנחתמו בטווח">לידים וחוזים</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="לידים חדשים" value={fmtInt(m.newLeads)} hint="לידי מעסיק שנוצרו בטווח" />
-          <StatCard label="חוזים שנחתמו" value={fmtInt(m.signed.length)} hint='הסטטוס עבר ל"נחתם חוזה" בטווח' />
+          <StatCard label="לידים חדשים" value={fmtInt(m.newLeads)} hint="לידי מעסיק שנוצרו בטווח" info={EXPLAIN.newLeads} />
+          <StatCard label="חוזים שנחתמו" value={fmtInt(m.signed.length)} hint='הסטטוס עבר ל"נחתם חוזה" בטווח' info={EXPLAIN.signedContracts} />
           <StatCard
             label="מגעים עד חתימה"
             value={fmtDecimal(m.touchesToSign.avg)}
             hint={`ממוצע · מיילים ${fmtDecimal(m.touchMix.emails)} · שיחות ${fmtDecimal(m.touchMix.calls)} · ${fmtInt(m.touchesToSign.count)} חוזים`}
+            info={EXPLAIN.touchesToSign}
           />
           <StatCard
             label="ימים מליד ראשון עד חתימה"
             value={m.daysToSign.avg == null ? "—" : `${fmtDecimal(m.daysToSign.avg)} ימים`}
             hint={m.daysToSign.count ? `ממוצע · חציון ${fmtDecimal(m.daysToSign.median)} · ${fmtInt(m.daysToSign.count)} חוזים` : "אין חוזים בטווח"}
+            info={EXPLAIN.daysToSign}
           />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -155,14 +158,26 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
             label="מעסיקים שחתמו"
             value={fmtInt(employers.length)}
             hint={signedWithoutAccount ? `עוד ${fmtInt(signedWithoutAccount)} חוזים בלי Account לא נכללים` : 'לידים ב"נחתם חוזה" עם Account'}
+            info={EXPLAIN.signedEmployers}
           />
-          <StatCard label="חוזים שלא יצאה מהם משרה" value={fmtInt(noJob.length)} hint={`לא נפתחה ${paidOnly ? "משרה בתשלום" : "משרה"} מאז החתימה`} />
+          <StatCard
+            label="חוזים שלא יצאה מהם משרה"
+            value={fmtInt(noJob.length)}
+            hint={`לא נפתחה ${paidOnly ? "משרה בתשלום" : "משרה"} מאז החתימה`}
+            info={EXPLAIN.contractsWithoutJob}
+          />
           <StatCard
             label="ממוצע משרות למעסיק"
             value={fmtDecimal(avgJobs)}
             hint={`מאז החתימה · בכל המעסיקים שפתחו משרות בטווח: ${fmtDecimal(rangeAvg)}`}
+            info={EXPLAIN.jobsPerEmployer}
           />
-          <StatCard label={`בלי מגע מעל ${NO_TOUCH_DAYS} יום`} value={fmtInt(noTouch.length)} hint="שיחה או מייל יוצא, בליד, במשרות או בהגשות" />
+          <StatCard
+            label={`בלי מגע מעל ${NO_TOUCH_DAYS} יום`}
+            value={fmtInt(noTouch.length)}
+            hint="שיחה או מייל יוצא, בליד, במשרות או בהגשות"
+            info={EXPLAIN.noTouchEmployers}
+          />
         </div>
 
         <Card level={3} title={`חוזים שלא יצאה מהם משרה · ${fmtInt(noJob.length)}`} className="mt-4">
@@ -212,9 +227,14 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
 
         <SectionTitle hint="משרות שסטטוס האתר שלהן Active · אימות = הקשר האחרון עם המעסיק על המשרה, כולל בהגשות אליה">אימות משרות פעילות</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatCard label="משרות פעילות" value={fmtInt(activeJobs.length)} hint={paidOnly ? "בתשלום" : "כל המשרות"} />
-          <StatCard label={`לא אומתו מעל ${NO_TOUCH_DAYS} יום`} value={fmtInt(stale)} hint="כולל משרות שלא נרשמה עליהן פעילות" />
-          <StatCard label="לא נרשמה פעילות מעולם" value={fmtInt(neverTouched)} hint="אין פעילות על המשרה, ואין מייל או שיחה מול המעסיק בהגשות" />
+          <StatCard label="משרות פעילות" value={fmtInt(activeJobs.length)} hint={paidOnly ? "בתשלום" : "כל המשרות"} info={EXPLAIN.activeJobs} />
+          <StatCard label={`לא אומתו מעל ${NO_TOUCH_DAYS} יום`} value={fmtInt(stale)} hint="כולל משרות שלא נרשמה עליהן פעילות" info={EXPLAIN.staleJobs} />
+          <StatCard
+            label="לא נרשמה פעילות מעולם"
+            value={fmtInt(neverTouched)}
+            hint="אין פעילות על המשרה, ואין מייל או שיחה מול המעסיק בהגשות"
+            info={EXPLAIN.neverVerifiedJobs}
+          />
         </div>
         <Card level={3} title={`משרות פעילות לפי אימות אחרון · ${fmtInt(activeJobs.length)}`} className="mt-4">
           <Table head={["משרה", "נפתחה", "אימות אחרון", "ימים מאז", ""]} empty={activeJobs.length === 0 ? "אין משרות פעילות" : undefined}>

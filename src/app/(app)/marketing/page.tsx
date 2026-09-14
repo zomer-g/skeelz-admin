@@ -6,6 +6,7 @@ import { LineChart } from "@/components/dashboard/LineChart";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
+import { EXPLAIN } from "@/lib/dashboard/explain";
 import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
 import { campaignLabel, isMailing, loadCampaignSummaries } from "@/lib/metrics/campaigns";
@@ -91,10 +92,15 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
         <SectionTitle hint="כל האתר">תנועה</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="כניסות לאתר" value={fmtInt(m.sessions)} hint="Sessions" />
-          <StatCard label="משתמשים חדשים" value={fmtInt(m.newUsers)} hint="ביקור ראשון באתר" />
-          <StatCard label="צפיות בדפים" value={fmtInt(m.pageViews)} />
-          <StatCard label="שיעור מעורבות" value={fmtPercent(m.engagedSessions, m.sessions)} hint="כניסות עם מעורבות (10 שניות ומעלה, או פעולה)" />
+          <StatCard label="כניסות לאתר" value={fmtInt(m.sessions)} hint="Sessions" info={EXPLAIN.sessions} />
+          <StatCard label="משתמשים חדשים" value={fmtInt(m.newUsers)} hint="ביקור ראשון באתר" info={EXPLAIN.newUsers} />
+          <StatCard label="צפיות בדפים" value={fmtInt(m.pageViews)} info={EXPLAIN.pageViews} />
+          <StatCard
+            label="שיעור מעורבות"
+            value={fmtPercent(m.engagedSessions, m.sessions)}
+            hint="כניסות עם מעורבות (10 שניות ומעלה, או פעולה)"
+            info={EXPLAIN.engagement}
+          />
         </div>
 
         <Card level={3} title="כניסות לאורך זמן" className="mt-4">
@@ -150,13 +156,14 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
         <SectionTitle hint="Salesforce במקביל ל-Google Analytics">הגשות ומועמדים</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="הגשות ב-Salesforce" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" />
-          <StatCard label="התקבלו לעבודה" value={fmtInt(acceptedInRange.length)} hint="לפי תאריך הקבלה" />
-          <StatCard label="מועמדים שהגישו" value={fmtInt(m.applicantsTotal)} hint="מועמדים שונים עם הגשה בטווח" />
+          <StatCard label="הגשות ב-Salesforce" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" info={EXPLAIN.applications} />
+          <StatCard label="התקבלו לעבודה" value={fmtInt(acceptedInRange.length)} hint="לפי תאריך הקבלה" info={EXPLAIN.hired} />
+          <StatCard label="מועמדים שהגישו" value={fmtInt(m.applicantsTotal)} hint="מועמדים שונים עם הגשה בטווח" info={EXPLAIN.applicants} />
           <StatCard
             label="אישורי הגשה ב-Analytics"
             value={fmtInt(ev(SITE_EVENTS.applyYes))}
             hint={`מול ${fmtInt(m.applications)} הגשות שנקלטו ב-Salesforce`}
+            info={EXPLAIN.applyConfirmations}
           />
         </div>
 
@@ -207,10 +214,15 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
         <SectionTitle hint="מהכניסה ועד הגשה שנקלטה">פעולות באתר</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="פתיחות משרה" value={fmtInt(ev(SITE_EVENTS.openJob))} hint={paidOnly ? "open_job_page · משרות בתשלום" : "open_job_page"} />
-          <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(ev(SITE_EVENTS.applyClick))} hint="Job_application_click_1" />
-          <StatCard label="השלמת הרשמה" value={fmtInt(ev(SITE_EVENTS.signUpSecond))} hint="sign_up_second_phase_complete" />
-          <StatCard label="הגשות שנקלטו ב-Salesforce" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" />
+          <StatCard
+            label="פתיחות משרה"
+            value={fmtInt(ev(SITE_EVENTS.openJob))}
+            hint={paidOnly ? "open_job_page · משרות בתשלום" : "open_job_page"}
+            info={EXPLAIN.jobOpens}
+          />
+          <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(ev(SITE_EVENTS.applyClick))} hint="Job_application_click_1" info={EXPLAIN.applyClicks} />
+          <StatCard label="השלמת הרשמה" value={fmtInt(ev(SITE_EVENTS.signUpSecond))} hint="sign_up_second_phase_complete" info={EXPLAIN.signUps} />
+          <StatCard label="הגשות שנקלטו ב-Salesforce" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" info={EXPLAIN.applications} />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title="משפך האתר">

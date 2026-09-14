@@ -8,6 +8,7 @@ import { LineChart } from "@/components/dashboard/LineChart";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
 import { Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
+import { EXPLAIN } from "@/lib/dashboard/explain";
 import { eachDay, formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDecimal, fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
 import { campaignLabel, isMailing, loadCampaignSummaries } from "@/lib/metrics/campaigns";
@@ -49,22 +50,39 @@ export default async function TalentPage({ searchParams }: { searchParams: Promi
 
         <SectionTitle hint="אנשי הקשר ב-Accounts של המועמדים, וכל מי שהגיש מועמדות">מאגר המועמדים</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="מועמדים במאגר" value={fmtInt(t.candidates)} hint={`${fmtPercent(t.withCv, t.candidates)} עם קו"ח`} />
-          <StatCard label="מועמדים חדשים" value={fmtInt(t.newInRange)} hint="נוספו ל-Salesforce בטווח" />
+          <StatCard
+            label="מועמדים במאגר"
+            value={fmtInt(t.candidates)}
+            hint={`${fmtInt(t.cambium)} מתוכם ב-Account קמביום · ${fmtPercent(t.withCv, t.candidates)} עם קו"ח`}
+            info={EXPLAIN.candidates}
+          />
+          <StatCard label="מועמדים חדשים" value={fmtInt(t.newInRange)} hint="נוספו ל-Salesforce בטווח" info={EXPLAIN.newCandidates} />
           <StatCard
             label="מועמדים פעילים"
             value={fmtInt(t.active)}
             hint={paidOnly ? "הגישו למשרה בתשלום, או שהיה איתם מגע עליה" : "הגישו, היה איתם מגע, או שנרשמה עליהם פעילות"}
+            info={EXPLAIN.activeCandidates}
           />
           <StatCard
             label="הגישו מועמדות"
             value={fmtInt(t.applicants)}
             hint={`${fmtInt(t.applications)} הגשות · ${fmtDecimal(t.applicants ? t.applications / t.applicants : null)} למועמד`}
+            info={EXPLAIN.applicants}
           />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <StatCard label="מגישים חוזרים" value={fmtInt(t.returning)} hint={`${fmtPercent(t.returning, t.applicants)} מהמגישים הגישו גם לפני הטווח`} />
-          <StatCard label='מגישים עם קו"ח' value={fmtPercent(t.applicantsWithCv, t.applicants)} hint={`${fmtInt(t.applicantsWithCv)} מתוך ${fmtInt(t.applicants)} מגישים`} />
+          <StatCard
+            label="מגישים חוזרים"
+            value={fmtInt(t.returning)}
+            hint={`${fmtPercent(t.returning, t.applicants)} מהמגישים הגישו גם לפני הטווח`}
+            info={EXPLAIN.returningApplicants}
+          />
+          <StatCard
+            label='מגישים עם קו"ח'
+            value={fmtPercent(t.applicantsWithCv, t.applicants)}
+            hint={`${fmtInt(t.applicantsWithCv)} מתוך ${fmtInt(t.applicants)} מגישים`}
+            info={EXPLAIN.applicantsWithCv}
+          />
         </div>
 
         <Card level={3} title="מועמדים לפי Account" className="mt-4">

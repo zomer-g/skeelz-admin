@@ -55,7 +55,10 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `isSponserd_cambium__c` on applications). Defined once in `src/lib/metrics/paid.ts`; show `PaidSplit` so the other side
   stays visible. Site-wide GA traffic has no job and is not scoped.
 - **Design:** tokens in `src/app/globals.css` (brand magenta `#CD0077` for CTAs, teal `#218283` panels, pill
-  controls, 20px cards). Rubik only. Use logical CSS (`ms-*`, `text-start`), never left/right.
+  controls, 20px cards). Rubik only. Use logical CSS (`ms-*`, `text-start`), never left/right. Every dashboard `StatCard`
+  carries `info` from `src/lib/dashboard/explain.ts` (hover/focus/tap explanation). Horizontal bars (`BarList`, `Meter`)
+  share one shape: square at the start, `rounded-e-[4px]` at the data end. The dashboard sub-nav is a tinted pill track
+  labelled "דשבורד ›", one level below the main nav's pills.
 - **Accessibility (IS 5568 = WCAG 2.1 AA, legally required):** text ≥ 4.5:1 and field borders ≥ 3:1 — `danger`, `success`
   and `field` tokens were darkened for this, don't lighten them; light-teal card bands take `text-ink`. One h1 per page
   (dashboard tabs render an sr-only h1; pass `heading={false}` where the page has its own). `Card` titles are headings:

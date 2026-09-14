@@ -7,6 +7,7 @@ import { LineChart } from "@/components/dashboard/LineChart";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
 import { Card, StatCard } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
+import { EXPLAIN } from "@/lib/dashboard/explain";
 import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { searchCompanies } from "@/lib/entities/companies";
 import { fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
@@ -121,19 +122,29 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
 
         <Section title="מועמדים" hint="המאגר ומה קרה בו בטווח" href={withQuery("/talent")}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="מועמדים במאגר" value={fmtInt(talent.candidates)} hint={`${fmtPercent(talent.withCv, talent.candidates)} עם קו"ח`} />
-            <StatCard label="מועמדים חדשים" value={fmtInt(talent.newInRange)} />
-            <StatCard label="מועמדים פעילים" value={fmtInt(talent.active)} />
-            <StatCard label="הגישו מועמדות" value={fmtInt(talent.applicants)} hint={`${fmtInt(talent.returning)} מהם מגישים חוזרים`} />
+            <StatCard
+              label="מועמדים במאגר"
+              value={fmtInt(talent.candidates)}
+              hint={`${fmtInt(talent.cambium)} מתוכם ב-Account קמביום · ${fmtPercent(talent.withCv, talent.candidates)} עם קו"ח`}
+              info={EXPLAIN.candidates}
+            />
+            <StatCard label="מועמדים חדשים" value={fmtInt(talent.newInRange)} info={EXPLAIN.newCandidates} />
+            <StatCard label="מועמדים פעילים" value={fmtInt(talent.active)} info={EXPLAIN.activeCandidates} />
+            <StatCard label="הגישו מועמדות" value={fmtInt(talent.applicants)} hint={`${fmtInt(talent.returning)} מהם מגישים חוזרים`} info={EXPLAIN.applicants} />
           </div>
         </Section>
 
         <Section title="משרות והגשות" hint="מה קרה בטווח" href={withQuery("/jobs")}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="משרות פעילות באתר" value={fmtInt(activeInScope.length)} hint={`${fmtInt(pipeline.newJobs)} משרות חדשות בטווח`} />
-            <StatCard label="הגשות" value={fmtInt(pipeline.applications)} hint={hasGa ? `${fmtPercent(pipeline.applications, ev(SITE_EVENTS.openJob))} מפתיחות המשרה` : undefined} />
-            <StatCard label='קו"ח שנשלחו למעסיקים' value={fmtInt(pipeline.sentToEmployer)} hint={`${fmtInt(pipeline.employerResponded)} קיבלו תגובה`} />
-            <StatCard label="התקבלו לעבודה" value={fmtInt(pipeline.accepted)} hint={`${fmtInt(pipeline.interviews)} זומנו לראיון`} />
+            <StatCard label="משרות פעילות באתר" value={fmtInt(activeInScope.length)} hint={`${fmtInt(pipeline.newJobs)} משרות חדשות בטווח`} info={EXPLAIN.activeJobs} />
+            <StatCard
+              label="הגשות"
+              value={fmtInt(pipeline.applications)}
+              hint={hasGa ? `${fmtPercent(pipeline.applications, ev(SITE_EVENTS.openJob))} מפתיחות המשרה` : undefined}
+              info={EXPLAIN.applications}
+            />
+            <StatCard label='קו"ח שנשלחו למעסיקים' value={fmtInt(pipeline.sentToEmployer)} hint={`${fmtInt(pipeline.employerResponded)} קיבלו תגובה`} info={EXPLAIN.cvSent} />
+            <StatCard label="התקבלו לעבודה" value={fmtInt(pipeline.accepted)} hint={`${fmtInt(pipeline.interviews)} זומנו לראיון`} info={EXPLAIN.hired} />
           </div>
           <Card level={3} title="מהאתר ועד השמה" className="mt-4">
             <BarList
@@ -158,9 +169,14 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
 
         <Section title="מעסיקים" hint="לידים, חוזים ומעסיקים עם משרות פעילות" href={withQuery("/employers")}>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <StatCard label="מעסיקים עם משרות פעילות" value={fmtInt(companies.total)} hint={paidOnly ? "עם משרה פעילה בתשלום" : undefined} />
-            <StatCard label="לידים חדשים של מעסיקים" value={fmtInt(leadMetrics.newLeads)} />
-            <StatCard label="חוזים שנחתמו" value={fmtInt(leadMetrics.signed.length)} />
+            <StatCard
+              label="מעסיקים עם משרות פעילות"
+              value={fmtInt(companies.total)}
+              hint={paidOnly ? "עם משרה פעילה בתשלום" : undefined}
+              info={EXPLAIN.companiesWithActiveJobs}
+            />
+            <StatCard label="לידים חדשים של מעסיקים" value={fmtInt(leadMetrics.newLeads)} info={EXPLAIN.newLeads} />
+            <StatCard label="חוזים שנחתמו" value={fmtInt(leadMetrics.signed.length)} info={EXPLAIN.signedContracts} />
           </div>
         </Section>
 
@@ -168,10 +184,20 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
           {hasGa ? (
             <>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <StatCard label="כניסות לאתר" value={fmtInt(marketing.sessions)} hint={`${fmtPercent(marketing.engagedSessions, marketing.sessions)} עם מעורבות`} />
-                <StatCard label="משתמשים חדשים" value={fmtInt(marketing.newUsers)} />
-                <StatCard label="פתיחות משרה" value={fmtInt(ev(SITE_EVENTS.openJob))} hint={paidOnly ? "של משרות בתשלום" : undefined} />
-                <StatCard label="דיוורים בטווח" value={fmtInt(mailings.length)} hint={mailings.length ? `${fmtInt(mailings.reduce((s, c) => s + c.sessions, 0))} כניסות מהם` : undefined} />
+                <StatCard
+                  label="כניסות לאתר"
+                  value={fmtInt(marketing.sessions)}
+                  hint={`${fmtPercent(marketing.engagedSessions, marketing.sessions)} עם מעורבות`}
+                  info={EXPLAIN.sessions}
+                />
+                <StatCard label="משתמשים חדשים" value={fmtInt(marketing.newUsers)} info={EXPLAIN.newUsers} />
+                <StatCard label="פתיחות משרה" value={fmtInt(ev(SITE_EVENTS.openJob))} hint={paidOnly ? "של משרות בתשלום" : undefined} info={EXPLAIN.jobOpens} />
+                <StatCard
+                  label="דיוורים בטווח"
+                  value={fmtInt(mailings.length)}
+                  hint={mailings.length ? `${fmtInt(mailings.reduce((s, c) => s + c.sessions, 0))} כניסות מהם` : undefined}
+                  info={EXPLAIN.mailings}
+                />
               </div>
               <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card level={3} title="כניסות לאתר">
