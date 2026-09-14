@@ -1,0 +1,3 @@
+# The shell scripts run on Linux at xhostd; a CRLF checkout breaks the shebang.
+* text=auto eol=lf
+*.svg text eol=lf

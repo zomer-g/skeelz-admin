@@ -1,0 +1,57 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens taken from jobs.skeelz.co.il: magenta for calls to action,
+ * teal for title panels, light grey surfaces, black header rule and footer,
+ * pill-shaped controls and generously rounded cards.
+ */
+@theme {
+  --font-sans: var(--font-rubik), system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+
+  --color-brand: #cd0077;
+  --color-brand-hover: #a20068;
+  --color-accent: #218283;
+  --color-accent-dark: #005e5c;
+  --color-accent-light: #84c2c1;
+  --color-hot: #fec84b;
+
+  --color-surface: #f5f5f5;
+  --color-panel: #efefef;
+  --color-line: #dee2e6;
+  --color-field: #98a2b3;
+
+  --color-ink: #212529;
+  --color-muted: #475467;
+  --color-success: #039855;
+  --color-success-soft: #ecfdf3;
+  --color-danger: #f04438;
+  --color-danger-soft: #ffcdca;
+
+  /* Ordinal ramp for ordered stages (funnel): one teal hue, light → dark.
+     Validated with dataviz validate_palette.js --ordinal on #ffffff (all checks pass). */
+  --color-funnel-1: #6fb3b2;
+  --color-funnel-2: #4b9d9d;
+  --color-funnel-3: #218283;
+  --color-funnel-4: #146f70;
+  --color-funnel-5: #0b5b5c;
+  --color-funnel-6: #064849;
+
+  --radius-card: 20px;
+  --radius-modal: 30px;
+
+  --shadow-field: 0 2px 5px #00000166;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: #ffffff;
+  color: var(--color-ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}

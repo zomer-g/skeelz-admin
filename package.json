@@ -1,0 +1,42 @@
+{
+  "name": "skeelz-admin",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --import tsx scripts/migrate.ts",
+    "sf:check": "node --env-file-if-exists=.env --import tsx scripts/sf-check.ts",
+    "sf:describe": "node --env-file-if-exists=.env --import tsx scripts/sf-describe.ts",
+    "db:local": "pglite-server --db=.pglite --port=5433 --max-connections=10",
+    "db:migrate:local": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
+    "sync:once": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/sync-once.ts"
+  },
+  "dependencies": {
+    "drizzle-orm": "0.45.2",
+    "jose": "6.2.12",
+    "next": "16.3.5",
+    "pg": "8.23.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "tsx": "4.23.13"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
+    "@electric-sql/pglite-socket": "0.2.11",
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/node": "22.20.2",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "drizzle-kit": "0.31.10",
+    "tailwindcss": "4.3.3",
+    "typescript": "5.9.3"
+  }
+}
