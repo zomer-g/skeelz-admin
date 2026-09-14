@@ -10,7 +10,8 @@ import { syncRequests } from "@/lib/db/schema";
 /** Queues a run for the sync worker, which checks once a minute. */
 export async function requestSync(form: FormData): Promise<void> {
   const admin = await requireUser("admin");
-  const mode = form.get("mode") === "full" ? "full" : "incremental";
+  const requested = form.get("mode");
+  const mode = requested === "full" || requested === "marketing" ? requested : "incremental";
 
   const db = getDb();
   const [pending] = await db

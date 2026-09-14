@@ -9,7 +9,12 @@ import { requestSync } from "./actions";
 
 export const metadata: Metadata = { title: "סנכרון" };
 
-const MODE_LABELS: Record<string, string> = { incremental: "עדכונים", full: "טעינה מלאה", reconcile: "התאמה לילית" };
+const MODE_LABELS: Record<string, string> = {
+  incremental: "עדכונים",
+  full: "טעינה מלאה",
+  reconcile: "התאמה לילית",
+  marketing: "Google ו-SMOOV",
+};
 
 function duration(start: Date, end: Date | null): string {
   if (!end) return "רץ…";
@@ -40,7 +45,8 @@ export default async function SyncPage() {
             <p className="text-sm text-muted">
               {workerOn ? (
                 <>
-                  עדכונים אוטומטיים כל {process.env.SYNC_INTERVAL_MIN ?? 10} דקות, והתאמה מלאה פעם בלילה. בקשה ידנית תתחיל תוך דקה.
+                  Salesforce מתעדכן כל {process.env.SYNC_INTERVAL_MIN ?? 10} דקות (והתאמה מלאה פעם בלילה); Google ו-SMOOV כל{" "}
+                  {Math.round(Number(process.env.MARKETING_SYNC_INTERVAL_MIN ?? 360) / 60)} שעות. בקשה ידנית תתחיל תוך דקה.
                 </>
               ) : (
                 <>תהליך הסנכרון כבוי בשרת הזה (SYNC_WORKER).</>
@@ -57,6 +63,12 @@ export default async function SyncPage() {
                 <input type="hidden" name="mode" value="full" />
                 <button className={buttonClass("secondary")} disabled={!workerOn}>
                   טעינה מלאה
+                </button>
+              </form>
+              <form action={requestSync}>
+                <input type="hidden" name="mode" value="marketing" />
+                <button className={buttonClass("secondary")} disabled={!workerOn}>
+                  Google ו-SMOOV
                 </button>
               </form>
             </div>

@@ -3,6 +3,8 @@ import {
   bigserial,
   boolean,
   check,
+  date,
+  primaryKey,
   index,
   integer,
   jsonb,
@@ -279,6 +281,104 @@ export const syncRequests = pgTable("sync_requests", {
   requestedAt: ts("requested_at").notNull().defaultNow(),
   pickedAt: ts("picked_at"),
   doneAt: ts("done_at"),
+});
+
+/* -------------------------------------------------------- google analytics */
+
+const day = (name: string) => date(name, { mode: "string" });
+
+/** GA4 page views per day and path; site_job_key set for /job/<id> pages. */
+export const gaPageDaily = pgTable(
+  "ga_page_daily",
+  {
+    date: day("date").notNull(),
+    pagePath: text("page_path").notNull(),
+    siteJobKey: varchar("site_job_key", { length: 24 }),
+    views: integer("views").notNull(),
+    activeUsers: integer("active_users").notNull(),
+    sessions: integer("sessions").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.date, t.pagePath] }), index("ga_page_daily_job_idx").on(t.siteJobKey, t.date)],
+);
+
+/** GA4 events per day, name and path (apply clicks, sign-ups, filters…). */
+export const gaEventDaily = pgTable(
+  "ga_event_daily",
+  {
+    date: day("date").notNull(),
+    eventName: text("event_name").notNull(),
+    pagePath: text("page_path").notNull(),
+    siteJobKey: varchar("site_job_key", { length: 24 }),
+    eventCount: integer("event_count").notNull(),
+    totalUsers: integer("total_users").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.date, t.eventName, t.pagePath] }),
+    index("ga_event_daily_event_idx").on(t.eventName, t.date),
+    index("ga_event_daily_job_idx").on(t.siteJobKey, t.date),
+  ],
+);
+
+/** GA4 traffic per day by channel group, source and medium. */
+export const gaChannelDaily = pgTable(
+  "ga_channel_daily",
+  {
+    date: day("date").notNull(),
+    channelGroup: text("channel_group").notNull(),
+    source: text("source").notNull(),
+    medium: text("medium").notNull(),
+    sessions: integer("sessions").notNull(),
+    activeUsers: integer("active_users").notNull(),
+    newUsers: integer("new_users").notNull(),
+    engagedSessions: integer("engaged_sessions").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.date, t.channelGroup, t.source, t.medium] })],
+);
+
+/** Published GTM container versions, one row per version seen. */
+export const gtmVersions = pgTable("gtm_versions", {
+  versionId: text("version_id").primaryKey(),
+  name: text("name"),
+  fingerprint: text("fingerprint"),
+  tagCount: integer("tag_count").notNull(),
+  triggerCount: integer("trigger_count").notNull(),
+  variableCount: integer("variable_count").notNull(),
+  sendsJobId: boolean("sends_job_id").notNull(),
+  firstSeenAt: ts("first_seen_at").notNull().defaultNow(),
+  lastSeenAt: ts("last_seen_at").notNull().defaultNow(),
+  data: jsonb("data").notNull(),
+});
+
+/* ------------------------------------------------------------------ smoov */
+
+export const smoovLists = pgTable("smoov_lists", {
+  id: integer("id").primaryKey(),
+  name: text("name"),
+  contactsCount: integer("contacts_count"),
+  data: jsonb("data").notNull(),
+  syncedAt: syncedAt(),
+});
+
+/** Campaigns to track — SMOOV's API cannot list them, so admins register ids. */
+export const smoovCampaigns = pgTable("smoov_campaigns", {
+  id: integer("id").primaryKey(),
+  label: text("label").notNull(),
+  addedBy: text("added_by").notNull(),
+  addedAt: ts("added_at").notNull().defaultNow(),
+  active: boolean("active").notNull().default(true),
+});
+
+/** Latest aggregated statistics per tracked campaign. */
+export const smoovCampaignStats = pgTable("smoov_campaign_stats", {
+  campaignId: integer("campaign_id").primaryKey(),
+  sentAt: ts("sent_at"),
+  sent: integer("sent"),
+  opens: integer("opens"),
+  clicks: integer("clicks"),
+  bounces: integer("bounces"),
+  unsubscribes: integer("unsubscribes"),
+  data: jsonb("data").notNull(),
+  fetchedAt: ts("fetched_at").notNull().defaultNow(),
 });
 
 /** Schema discovery runs, generated on the server so credentials never leave it. */

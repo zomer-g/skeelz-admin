@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",
+    "google-auth-library": "11.0.2",
     "jose": "6.2.12",
     "next": "16.3.5",
     "pg": "8.23.0",

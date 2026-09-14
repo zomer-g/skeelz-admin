@@ -36,6 +36,13 @@
       "when": 1789365137733,
       "tag": "0004_closed_hammerhead",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789366338195,
+      "tag": "0005_lethal_zuras",
+      "breakpoints": true
     }
   ]
 }

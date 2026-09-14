@@ -25,6 +25,9 @@ const ACTION_LABELS: Record<string, string> = {
   "salesforce.connection_test": "בדיקת חיבור Salesforce",
   "salesforce.schema_report": "דו״ח מבנה Salesforce",
   "sync.requested": "בקשת סנכרון",
+  "integration.test": "בדיקת חיבור",
+  "smoov.campaign_added": "קמפיין SMOOV נוסף למעקב",
+  "smoov.campaign_removed": "קמפיין SMOOV הוסר ממעקב",
 };
 
 const SCREEN_LABELS: [prefix: string, label: string][] = [
