@@ -335,6 +335,71 @@ export const gaChannelDaily = pgTable(
   (t) => [primaryKey({ columns: [t.date, t.channelGroup, t.source, t.medium] })],
 );
 
+/** GA4 sessions per day by UTM campaign, source and medium. */
+export const gaCampaignDaily = pgTable(
+  "ga_campaign_daily",
+  {
+    date: day("date").notNull(),
+    campaign: text("campaign").notNull(),
+    source: text("source").notNull(),
+    medium: text("medium").notNull(),
+    sessions: integer("sessions").notNull(),
+    newUsers: integer("new_users").notNull(),
+    engagedSessions: integer("engaged_sessions").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.date, t.campaign, t.source, t.medium] }), index("ga_campaign_daily_campaign_idx").on(t.campaign, t.date)],
+);
+
+/** Key site events per day by the session's UTM campaign. */
+export const gaCampaignEventDaily = pgTable(
+  "ga_campaign_event_daily",
+  {
+    date: day("date").notNull(),
+    campaign: text("campaign").notNull(),
+    eventName: text("event_name").notNull(),
+    eventCount: integer("event_count").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.date, t.campaign, t.eventName] })],
+);
+
+/** Where each campaign's sessions landed; job landing pages carry the job key. */
+export const gaCampaignLandingDaily = pgTable(
+  "ga_campaign_landing_daily",
+  {
+    date: day("date").notNull(),
+    campaign: text("campaign").notNull(),
+    landingPage: text("landing_page").notNull(),
+    siteJobKey: varchar("site_job_key", { length: 24 }),
+    sessions: integer("sessions").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.date, t.campaign, t.landingPage] }), index("ga_campaign_landing_campaign_idx").on(t.campaign)],
+);
+
+/* -------------------------------------------------------------- campaigns */
+
+/** Editor-maintained details of a campaign, keyed by its UTM campaign name. */
+export const campaignSettings = pgTable("campaign_settings", {
+  campaignKey: text("campaign_key").primaryKey(),
+  label: text("label"),
+  smoovCampaignId: integer("smoov_campaign_id"),
+  /** Overrides the detected send day (the campaign's busiest day). */
+  sendDay: day("send_day"),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: ts("updated_at").notNull().defaultNow(),
+});
+
+/** Jobs a campaign promoted, linked by an editor. */
+export const campaignJobs = pgTable(
+  "campaign_jobs",
+  {
+    campaignKey: text("campaign_key").notNull(),
+    jobCaseId: sfId("job_case_id").notNull(),
+    linkedBy: text("linked_by").notNull(),
+    linkedAt: ts("linked_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.campaignKey, t.jobCaseId] }), index("campaign_jobs_job_idx").on(t.jobCaseId)],
+);
+
 /** Published GTM container versions, one row per version seen. */
 export const gtmVersions = pgTable("gtm_versions", {
   versionId: text("version_id").primaryKey(),

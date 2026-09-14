@@ -48,7 +48,23 @@ function bucket(points: SeriesPoint[], weekly: boolean): { label: string; start:
  * the tooltip lists every series there. Two or more series get a legend, plus
  * end labels when those don't collide. The table view holds every value.
  */
-export function LineChart({ series, unit, height = 240 }: { series: ChartSeries[]; unit: string; height?: number }) {
+export interface ChartMarker {
+  day: string;
+  label: string;
+}
+
+export function LineChart({
+  series,
+  unit,
+  height = 240,
+  markers = [],
+}: {
+  series: ChartSeries[];
+  unit: string;
+  height?: number;
+  /** Events to mark on the time axis, e.g. mailing send days. */
+  markers?: ChartMarker[];
+}) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [hover, setHover] = useState<number | null>(null);
   const weekly = (series[0]?.points.length ?? 0) > WEEKLY_AFTER_DAYS;
@@ -77,6 +93,20 @@ export function LineChart({ series, unit, height = 240 }: { series: ChartSeries[
   const pathFor = (values: number[]) => values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const ticks = [0, max / 2, max];
   const xLabels = [...new Set([0, Math.floor((n - 1) / 2), n - 1])];
+
+  // A marker belongs to the bucket that contains its day (the week, on long ranges).
+  const bucketIndex = new Map(data[0]!.buckets.map((b, i) => [b.start, i]));
+  const markersAt = new Map<number, string[]>();
+  for (const m of markers) {
+    let start = m.day;
+    if (weekly) {
+      const d = new Date(`${m.day}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - d.getUTCDay());
+      start = d.toISOString().slice(0, 10);
+    }
+    const i = bucketIndex.get(start);
+    if (i !== undefined) markersAt.set(i, [...(markersAt.get(i) ?? []), m.label]);
+  }
 
   const onMove = (clientX: number) => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -120,6 +150,12 @@ export function LineChart({ series, unit, height = 240 }: { series: ChartSeries[
             <text key={i} x={x(i)} y={height - 8} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize={12} fill="var(--color-muted)">
               {data[0]!.buckets[i]!.label}
             </text>
+          ))}
+          {[...markersAt.keys()].map((i) => (
+            <g key={`marker-${i}`}>
+              <line x1={x(i)} x2={x(i)} y1={top} y2={top + innerH} stroke="var(--color-brand)" strokeWidth={1} opacity={0.45} />
+              <circle cx={x(i)} cy={top} r={3.5} fill="var(--color-brand)" />
+            </g>
           ))}
           {!multi ? (
             <path
@@ -169,9 +205,20 @@ export function LineChart({ series, unit, height = 240 }: { series: ChartSeries[
                 <span className="text-white/80">{multi ? s.label : unit}</span>
               </p>
             ))}
+            {(markersAt.get(hover) ?? []).map((label) => (
+              <p key={label} className="mt-1 border-t border-white/20 pt-1 text-white">
+                ✉ {label}
+              </p>
+            ))}
           </div>
         ) : null}
       </div>
+      {markersAt.size ? (
+        <p className="flex items-center gap-2 text-xs text-muted">
+          <span className="inline-block h-3 w-px bg-brand" aria-hidden />
+          ימי דיוור ({markersAt.size}) · ריחוף מעל הסימון מציג את שם הקמפיין
+        </p>
+      ) : null}
       <details className="text-sm">
         <summary className="cursor-pointer text-accent-dark underline-offset-4 hover:underline">הצגה כטבלה</summary>
         <div className="mt-2 max-h-64 overflow-auto">

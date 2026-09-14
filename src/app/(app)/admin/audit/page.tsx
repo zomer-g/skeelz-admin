@@ -28,6 +28,9 @@ const ACTION_LABELS: Record<string, string> = {
   "integration.test": "בדיקת חיבור",
   "smoov.campaign_added": "קמפיין SMOOV נוסף למעקב",
   "smoov.campaign_removed": "קמפיין SMOOV הוסר ממעקב",
+  "campaign.updated": "עדכון הגדרות קמפיין",
+  "campaign.job_linked": "קישור משרה לקמפיין",
+  "campaign.job_unlinked": "הסרת קישור משרה מקמפיין",
 };
 
 const SCREEN_LABELS: [prefix: string, label: string][] = [
@@ -39,6 +42,8 @@ const SCREEN_LABELS: [prefix: string, label: string][] = [
   ["/jobs/", "דשבורד · משרה"],
   ["/jobs", "דשבורד · משרות"],
   ["/marketing", "דשבורד · שיווק"],
+  ["/campaigns/", "דשבורד · דיוור"],
+  ["/campaigns", "דשבורד · דיוורים"],
   ["/", "דשבורד · מועמדים"],
 ];
 

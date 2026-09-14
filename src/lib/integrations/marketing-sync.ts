@@ -2,6 +2,9 @@ import { and, eq, gte, lte, sql } from "drizzle-orm";
 import { addDays, israelDay, israelMidnight } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import {
+  gaCampaignDaily,
+  gaCampaignEventDaily,
+  gaCampaignLandingDaily,
   gaChannelDaily,
   gaEventDaily,
   gaPageDaily,
@@ -39,6 +42,12 @@ const GA_REFRESH_DAYS = 3;
 const GA_CHUNK_DAYS = 31;
 const INSERT_CHUNK = 1000;
 
+/** GA's placeholder "campaigns" for untagged traffic. */
+export const NON_CAMPAIGNS = ["(direct)", "(organic)", "(referral)", "(not set)", "(data deleted)", "(ai-assistant)", "(cross-network)"];
+/** Site events worth attributing to campaigns. */
+const CAMPAIGN_EVENTS = ["open_job_page", "Job_application_click_1", "Job_application_yes", "sign_up_second_phase_complete"];
+const taggedCampaigns = { notExpression: { filter: { fieldName: "sessionCampaignName", inListFilter: { values: NON_CAMPAIGNS } } } };
+
 async function saveState(object: string, values: Partial<typeof syncState.$inferInsert>): Promise<void> {
   await getDb().insert(syncState).values({ object, ...values }).onConflictDoUpdate({ target: syncState.object, set: values });
 }
@@ -69,13 +78,68 @@ async function syncGa4(): Promise<{ rows: number; note: string }> {
       dimensions: ["date", "sessionDefaultChannelGroup", "sessionSource", "sessionMedium"],
       metrics: ["sessions", "activeUsers", "newUsers", "engagedSessions"],
     });
-    quota = channels.quotaRemaining ?? quota;
+    const campaigns = await runReport({
+      ...range,
+      dimensions: ["date", "sessionCampaignName", "sessionSource", "sessionMedium"],
+      metrics: ["sessions", "newUsers", "engagedSessions"],
+      dimensionFilter: taggedCampaigns,
+    });
+    const campaignEvents = await runReport({
+      ...range,
+      dimensions: ["date", "sessionCampaignName", "eventName"],
+      metrics: ["eventCount"],
+      dimensionFilter: {
+        andGroup: { expressions: [taggedCampaigns, { filter: { fieldName: "eventName", inListFilter: { values: CAMPAIGN_EVENTS } } }] },
+      },
+    });
+    const campaignLanding = await runReport({
+      ...range,
+      dimensions: ["date", "sessionCampaignName", "landingPage"],
+      metrics: ["sessions"],
+      dimensionFilter: taggedCampaigns,
+    });
+    quota = campaignLanding.quotaRemaining ?? channels.quotaRemaining ?? quota;
 
     // Replace the whole window: GA's numbers for recent days change after the fact.
     await db.transaction(async (tx) => {
       await tx.delete(gaPageDaily).where(and(gte(gaPageDaily.date, from), lte(gaPageDaily.date, to)));
       await tx.delete(gaEventDaily).where(and(gte(gaEventDaily.date, from), lte(gaEventDaily.date, to)));
       await tx.delete(gaChannelDaily).where(and(gte(gaChannelDaily.date, from), lte(gaChannelDaily.date, to)));
+      await tx.delete(gaCampaignDaily).where(and(gte(gaCampaignDaily.date, from), lte(gaCampaignDaily.date, to)));
+      await tx.delete(gaCampaignEventDaily).where(and(gte(gaCampaignEventDaily.date, from), lte(gaCampaignEventDaily.date, to)));
+      await tx.delete(gaCampaignLandingDaily).where(and(gte(gaCampaignLandingDaily.date, from), lte(gaCampaignLandingDaily.date, to)));
+
+      await insertChunks(
+        (rows) => tx.insert(gaCampaignDaily).values(rows).onConflictDoNothing(),
+        campaigns.rows.map((r) => ({
+          date: gaDate(r.dims.date!),
+          campaign: r.dims.sessionCampaignName!,
+          source: r.dims.sessionSource!,
+          medium: r.dims.sessionMedium!,
+          sessions: r.metrics.sessions!,
+          newUsers: r.metrics.newUsers!,
+          engagedSessions: r.metrics.engagedSessions!,
+        })),
+      );
+      await insertChunks(
+        (rows) => tx.insert(gaCampaignEventDaily).values(rows).onConflictDoNothing(),
+        campaignEvents.rows.map((r) => ({
+          date: gaDate(r.dims.date!),
+          campaign: r.dims.sessionCampaignName!,
+          eventName: r.dims.eventName!,
+          eventCount: r.metrics.eventCount!,
+        })),
+      );
+      await insertChunks(
+        (rows) => tx.insert(gaCampaignLandingDaily).values(rows).onConflictDoNothing(),
+        campaignLanding.rows.map((r) => ({
+          date: gaDate(r.dims.date!),
+          campaign: r.dims.sessionCampaignName!,
+          landingPage: r.dims.landingPage!,
+          siteJobKey: jobKeyFromPath(r.dims.landingPage!),
+          sessions: r.metrics.sessions!,
+        })),
+      );
 
       await insertChunks(
         (rows) => tx.insert(gaPageDaily).values(rows).onConflictDoNothing(),
@@ -114,7 +178,8 @@ async function syncGa4(): Promise<{ rows: number; note: string }> {
       );
     });
 
-    total += pages.rows.length + events.rows.length + channels.rows.length;
+    total +=
+      pages.rows.length + events.rows.length + channels.rows.length + campaigns.rows.length + campaignEvents.rows.length + campaignLanding.rows.length;
     await saveState("GA4", { cursor: israelMidnight(to) });
     from = addDays(to, 1);
   }

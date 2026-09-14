@@ -5,6 +5,7 @@ const TABS = [
   { key: "jobs", label: "משרות", href: "/jobs" },
   { key: "employers", label: "מעסיקים", href: null },
   { key: "marketing", label: "שיווק", href: "/marketing" },
+  { key: "campaigns", label: "דיוורים", href: "/campaigns" },
 ] as const;
 
 export type DashboardTab = (typeof TABS)[number]["key"];

@@ -175,6 +175,34 @@ export function buildJobRows(positions: Position[], ga: Map<string, JobGa>, fact
   }));
 }
 
+/** Positions by id, in the order given; unknown ids are skipped. */
+export async function loadPositionsByIds(ids: string[]): Promise<Position[]> {
+  if (!ids.length) return [];
+  const rows = (await run(positionsSql(sql`AND c.id IN ${ids}`))).map(toPosition);
+  const byId = new Map(rows.map((p) => [p.id, p]));
+  return ids.map((id) => byId.get(id)).filter((p): p is Position => Boolean(p));
+}
+
+/** Positions whose public job key is one of these. */
+export async function loadPositionsByJobKeys(keys: string[]): Promise<Position[]> {
+  if (!keys.length) return [];
+  return (await run(positionsSql(sql`AND c.site_job_key IN ${keys}`))).map(toPosition);
+}
+
+export async function searchPositions(q: string, limit = 8): Promise<Position[]> {
+  const needle = `%${q.trim()}%`;
+  if (needle === "%%") return [];
+  return (
+    await run(
+      positionsSql(sql`
+        AND (c.data->>'Position_cambium__c' ILIKE ${needle} OR c.data->>'Position_Name__c' ILIKE ${needle}
+             OR c.data->>'Subject' ILIKE ${needle} OR c.data->>'company_cambium__c' ILIKE ${needle}
+             OR c.data->>'CaseNumber' ILIKE ${needle} OR c.site_job_key ILIKE ${needle} OR c.id = ${q.trim()})
+        ORDER BY c.created_date DESC LIMIT ${limit}`),
+    )
+  ).map(toPosition);
+}
+
 export function matchesSearch(p: Position, q: string): boolean {
   const needle = q.trim().toLowerCase();
   if (!needle) return true;

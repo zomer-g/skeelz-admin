@@ -43,6 +43,13 @@
       "when": 1789366338195,
       "tag": "0005_lethal_zuras",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789370877870,
+      "tag": "0006_handy_texas_twister",
+      "breakpoints": true
     }
   ]
 }

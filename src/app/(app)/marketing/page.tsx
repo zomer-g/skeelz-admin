@@ -7,6 +7,7 @@ import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
+import { campaignLabel, isMailing, loadCampaignSummaries } from "@/lib/metrics/campaigns";
 import { loadApplicationFacts } from "@/lib/metrics/candidates";
 import { CHANNEL_LABELS, loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
 
@@ -31,7 +32,14 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
   const params = parseDashboardParams(search);
   const query = rangeQuery(params);
-  const [m, facts] = await Promise.all([loadMarketingMetrics(params), loadApplicationFacts()]);
+  const [m, facts, campaigns] = await Promise.all([
+    loadMarketingMetrics(params),
+    loadApplicationFacts(),
+    loadCampaignSummaries(params.fromDay, params.toDay),
+  ]);
+  // Mailings worth marking: tagged SMS / email / WhatsApp sends (or SMOOV-linked) that brought real traffic.
+  const mailings = campaigns.filter((c) => isMailing(c) && c.sessions >= 20);
+  const mailingMarkers = mailings.map((c) => ({ day: c.sendDay, label: `${campaignLabel(c)} (${fmtInt(c.sessions)} כניסות)` }));
   // Hires by the day they happened (status "התקבל" or the switch to the placement record type).
   const acceptedInRange = facts.filter((f) => f.acceptedAt && f.acceptedAt >= params.from && f.acceptedAt < params.to);
   const dailyAccepted = new Map<string, number>();
@@ -80,7 +88,29 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         </div>
 
         <Card title="כניסות לאורך זמן" className="mt-4">
-          <LineChart series={[{ label: "כניסות", color: "var(--color-accent)", points: series }]} unit="כניסות" />
+          <LineChart series={[{ label: "כניסות", color: "var(--color-accent)", points: series }]} unit="כניסות" markers={mailingMarkers} />
+        </Card>
+
+        <Card title={`דיוורים בטווח · ${fmtInt(mailings.length)}`} className="mt-4">
+          <Table head={["דיוור", "ערוץ", "יום שליחה", "כניסות", "פתיחות משרה", "לחיצות הגשה"]} empty={mailings.length === 0 ? "לא זוהו דיוורים בטווח" : undefined}>
+            {mailings.slice(0, 10).map((c) => (
+              <tr key={c.key}>
+                <td className="px-3 py-2">
+                  <a href={`/campaigns/${encodeURIComponent(c.key)}?${query}`} className="font-medium underline-offset-4 hover:underline" dir="auto">
+                    {campaignLabel(c)}
+                  </a>
+                </td>
+                <td className="px-3 py-2">{c.medium}</td>
+                <td className="whitespace-nowrap px-3 py-2 tabular-nums">{formatDay(c.sendDay)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(c.sessions)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(c.opens)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(c.applyClicks)}</td>
+              </tr>
+            ))}
+          </Table>
+          <p className="mt-3 text-xs text-muted">
+            דיוורים מזוהים מתגיות UTM (SMS / מייל) עם 20 כניסות ומעלה. הם מסומנים על הגרפים ביום השליחה. קישור למשרות ול-SMOOV נעשה בלשונית &quot;דיוורים&quot;.
+          </p>
         </Card>
 
         <SectionTitle hint="מאיפה מגיעים">ערוצים ומקורות</SectionTitle>
@@ -123,6 +153,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         <Card title="הגשות לאורך זמן · Salesforce מול Analytics" className="mt-4">
           <LineChart
             unit="הגשות"
+            markers={mailingMarkers}
             series={[
               { label: "הגשות ב-Salesforce", color: "var(--color-series-1)", points: days.map((day) => ({ day, value: m.dailyApplications.get(day) ?? 0 })) },
               { label: "אישורי הגשה ב-Analytics", color: "var(--color-series-2)", points: days.map((day) => ({ day, value: m.dailyApplyConfirmations.get(day) ?? 0 })) },
