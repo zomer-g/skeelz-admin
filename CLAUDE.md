@@ -30,6 +30,11 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 - **Employers:** employer lead = Case RecordType `lead_employer`, employer = its `AccountId`, pipeline = `Status` history
   (פנייה ראשונה → … → נחתם חוזה). A job is live on the site when `PStatus__c` = `Active` (Case `Status` is not maintained
   on jobs). Definitions in `docs/employers-tab-metrics.md`, code in `src/lib/metrics/employers.ts`.
+- **Entities** (`/applications`, `/companies`, `/candidates`; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
+  GET search forms, 50 per page. A company is jobs grouped by normalized `company_cambium__c` (`src/lib/metrics/company.ts`).
+  Candidate files are never mirrored: listed live via `ContentDocumentLink` and served only through
+  `/api/candidates/[id]/files/[documentId]`, which checks the file is linked to that candidate and writes an audit entry.
+  Anything interpolated into SOQL must pass `isSfId` first.
 - **Paid scope:** every figure built on jobs or applications honours `?scope=` (default `paid`, or `all`). Paid job =
   `isSponserd_cambium__c` or `Field18__c`; paid application = `A_Money__c` or a paid job (the site never sets
   `isSponserd_cambium__c` on applications). Defined once in `src/lib/metrics/paid.ts`; show `PaidSplit` so the other side

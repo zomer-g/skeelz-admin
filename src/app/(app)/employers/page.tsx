@@ -11,7 +11,7 @@ import { fmtDate, fmtDecimal, fmtInt } from "@/lib/format";
 import {
   computeLeadMetrics,
   daysSince,
-  loadActiveJobActivity,
+  loadJobActivity,
   loadJobsPerEmployer,
   loadLeadFacts,
   loadSignedEmployers,
@@ -55,7 +55,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
     loadSignedEmployers(),
     loadJobsPerEmployer(params.from, params.to),
     loadPositions(),
-    loadActiveJobActivity(),
+    loadJobActivity(),
   ]);
   const m = computeLeadMetrics(leads, params.from, params.to);
 

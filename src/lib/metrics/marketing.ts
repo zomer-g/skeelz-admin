@@ -76,7 +76,7 @@ export interface MarketingMetrics {
 }
 
 /** Accounts whose contacts are candidates are named with "מועמד". */
-const CANDIDATE_ACCOUNT_PATTERN = "%מועמד%";
+export const CANDIDATE_ACCOUNT_PATTERN = "%מועמד%";
 
 type Row = Record<string, unknown>;
 

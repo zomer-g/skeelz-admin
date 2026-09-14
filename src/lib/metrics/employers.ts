@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { CALL_PARTY, normStatus, RECORD_TYPES, stats, type Stats } from "./candidates";
+import { companyKeySql, employerEmailsSql } from "./company";
 import { jobPaidSql } from "./paid";
 
 /**
@@ -39,21 +40,9 @@ const norm = (col: string) => sql.raw(`btrim(regexp_replace(replace(${col}, chr(
 /** A logged call on the Task aliased `t`. */
 const isCall = sql.raw(`(t.task_subtype = 'Call' OR t.type ILIKE 'call%')`);
 
-/**
- * A company name folded for matching: no quotes or punctuation, no legal-form
- * words (בע"מ, עמותה, ltd …), single spaces. Jobs from the site all sit under one
- * shared Account, so this key is how such a job finds its employer.
- */
-const companyKey = (col: string) =>
-  sql.raw(
-    `nullif(btrim(regexp_replace(regexp_replace(' ' || regexp_replace(regexp_replace(lower(${col}), '["״׳'']', '', 'g'), '[^a-z0-9א-ת]+', ' ', 'g') || ' ', ' (בעמ|ער|עמותת|עמותה|חברת|ltd|inc) ', ' ', 'g'), ' +', ' ', 'g')), '')`,
-  );
-
-/** The employer's contact addresses on the job Case aliased `alias`. */
-const employerEmails = (alias: string) =>
-  sql.raw(
-    `array_remove(ARRAY[lower(nullif(${alias}.data->>'PEmail_cambium__c', '')), lower(nullif(${alias}.data->>'ContactEmail', '')), lower(nullif(${alias}.data->>'r_mail__c', ''))], NULL)`,
-  );
+// Site jobs share one Account, so a job finds its employer by company name (see ./company.ts).
+const companyKey = companyKeySql;
+const employerEmails = employerEmailsSql;
 
 type Row = Record<string, unknown>;
 const run = async <T extends Row>(query: ReturnType<typeof sql>) => (await getDb().execute<T>(query)).rows as T[];
@@ -322,11 +311,14 @@ export interface JobActivity {
 }
 
 /**
- * The last contact with the employer about each active job: any activity logged
- * on the job, or an email or call with the employer on one of its applications
- * (to or from the job's contact address, or a call marked "מעסיק").
+ * The last contact with the employer about each job: any activity logged on the
+ * job, or an email or call with the employer on one of its applications (to or
+ * from the job's contact address, or a call marked "מעסיק").
+ * Without `ids`, every active job.
  */
-export async function loadActiveJobActivity(): Promise<Map<string, JobActivity>> {
+export async function loadJobActivity(ids?: string[]): Promise<Map<string, JobActivity>> {
+  if (ids && !ids.length) return new Map();
+  const which = ids ? sql`p.id IN ${ids}` : sql`(p.data->>'PStatus__c') = ${ACTIVE_JOB_STATUS}`;
   const rows = await run(sql`
     SELECT p.id, la.at, la.kind, la.on_application
       FROM sf_case p
@@ -355,7 +347,7 @@ export async function loadActiveJobActivity(): Promise<Map<string, JobActivity>>
              AND btrim(t.call_party) = ${CALL_PARTY.employer}
         ) x WHERE x.at IS NOT NULL ORDER BY x.at DESC LIMIT 1
       ) la ON true
-     WHERE rt.developer_name = ${RECORD_TYPES.position} AND NOT p.is_deleted AND (p.data->>'PStatus__c') = ${ACTIVE_JOB_STATUS}`);
+     WHERE rt.developer_name = ${RECORD_TYPES.position} AND NOT p.is_deleted AND ${which}`);
   return new Map(
     rows.map((r) => [String(r.id), { at: asDate(r.at)!, kind: String(r.kind) as ActivityKind, onApplication: r.on_application === true }]),
   );

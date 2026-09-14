@@ -5,7 +5,10 @@ import { BarList } from "@/components/dashboard/BarList";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { LineChart } from "@/components/dashboard/LineChart";
+import { FieldList, Timeline } from "@/components/entities/EntityParts";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
+import { loadCaseTimeline } from "@/lib/entities/activity";
+import { jobStatusLabel, loadJobDetails } from "@/lib/entities/companies";
 import { pageAuth } from "@/lib/auth/guard";
 import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtDecimal, fmtInt, fmtPercent } from "@/lib/format";
@@ -46,7 +49,9 @@ export default async function JobPage({
   const createdDay = position.createdAt ? israelDay(position.createdAt) : range.fromDay;
   const chartFrom = createdDay > range.fromDay ? createdDay : range.fromDay;
 
-  const [facts, gaMap, dailyOpens, events] = await Promise.all([
+  const [details, timeline, facts, gaMap, dailyOpens, events] = await Promise.all([
+    loadJobDetails(id),
+    loadCaseTimeline(id),
     loadApplicationFacts(),
     key ? loadJobGa(range.fromDay, range.toDay, key) : Promise.resolve(new Map()),
     key ? loadJobDailyOpens(key, chartFrom, range.toDay) : Promise.resolve(new Map<string, number>()),
@@ -74,7 +79,15 @@ export default async function JobPage({
       <section className="mb-6 overflow-hidden rounded-card border-2 border-line">
         <header className="bg-accent px-6 py-4 text-white">
           <h1 className="text-2xl font-bold">{position.title ?? "(ללא שם)"}</h1>
-          <p className="text-white/85">{position.company ?? "—"}</p>
+          <p className="text-white/85">
+            {details?.companyKey ? (
+              <Link href={`/companies/${encodeURIComponent(details.companyKey)}`} className="underline underline-offset-4">
+                {position.company ?? details.companyName}
+              </Link>
+            ) : (
+              (position.company ?? "—")
+            )}
+          </p>
         </header>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2 bg-surface px-6 py-4 text-sm">
           <span>
@@ -86,6 +99,7 @@ export default async function JobPage({
             </span>
           ) : null}
           {position.paid ? <Badge tone="brand">משרה בתשלום</Badge> : <Badge>לא בתשלום</Badge>}
+          {details?.status ? <Badge tone={details.status === "Active" ? "success" : "neutral"}>באתר: {jobStatusLabel(details.status)}</Badge> : null}
           {position.status ? <Badge>{position.status}</Badge> : null}
           {position.manageStatus ? <Badge tone="accent">ניהול משרה: {position.manageStatus}</Badge> : null}
           <span className="ms-auto flex gap-4">
@@ -182,7 +196,11 @@ export default async function JobPage({
           <Table head={["מועמד", "הוגשה", "סטטוס נוכחי", "שלבים", "מגעים", ""]} empty={apps.length === 0 ? "אין הגשות בטווח" : undefined}>
             {apps.map((a) => (
               <tr key={a.id}>
-                <td className="px-3 py-2 font-medium">{a.candidateName ?? "—"}</td>
+                <td className="px-3 py-2 font-medium">
+                  <Link href={`/applications/${a.id}`} className="underline-offset-4 hover:underline">
+                    {a.candidateName ?? "(ללא שם)"}
+                  </Link>
+                </td>
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums">{fmtDate(a.createdAt)}</td>
                 <td className="px-3 py-2">{a.status ?? "—"}</td>
                 <td className="px-3 py-2">
@@ -207,6 +225,40 @@ export default async function JobPage({
               </tr>
             ))}
           </Table>
+          <p className="mt-3 text-sm">
+            <Link href={`/applications?job=${position.id}`} className="font-medium text-accent-dark underline underline-offset-4">
+              כל ההגשות למשרה, עם חיפוש
+            </Link>
+          </p>
+        </Card>
+
+        {details ? (
+          <Card title="פרטי המשרה" className="mt-4">
+            <FieldList
+              items={[
+                ["מיקום", details.location],
+                ["היקף", details.time],
+                ["איש קשר", details.contactName],
+                ["מייל איש הקשר", details.contactEmail ? <a href={`mailto:${details.contactEmail}`} dir="ltr">{details.contactEmail}</a> : null],
+                ["טלפון איש הקשר", details.contactPhone ? <a href={`tel:${details.contactPhone}`} dir="ltr">{details.contactPhone}</a> : null],
+                ["הגשה עצמית באתר", details.selfApply ? "כן" : null],
+                ["עודכנה באתר", details.siteUpdatedAt ? fmtDate(details.siteUpdatedAt) : null],
+                ["הערות פנימיות", details.comments ? <span className="whitespace-pre-line font-normal">{details.comments}</span> : null],
+              ]}
+            />
+            {details.description ? (
+              <details className="mt-4">
+                <summary className="cursor-pointer text-sm font-medium text-accent-dark">תיאור המשרה</summary>
+                <p className="mt-2 whitespace-pre-line text-sm" dir="auto">
+                  {details.description}
+                </p>
+              </details>
+            ) : null}
+          </Card>
+        ) : null}
+
+        <Card title="פעילות על המשרה" className="mt-4">
+          <Timeline items={timeline} empty="לא נרשמה פעילות על המשרה עצמה" />
         </Card>
       </DashboardShell>
     </>

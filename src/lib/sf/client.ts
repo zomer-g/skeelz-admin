@@ -182,6 +182,16 @@ export const sf = {
 
   describe: (objectName: string) => get<SfDescribe>(`${versionPath()}/sobjects/${encodeURIComponent(objectName)}/describe`),
 
+  /** Latest published bytes of a file (ContentVersion), as a raw GET response to stream on. */
+  async downloadVersion(versionId: string): Promise<Response> {
+    const { accessToken, instanceUrl } = await getToken(false);
+    return fetch(`${instanceUrl}${versionPath()}/sobjects/ContentVersion/${encodeURIComponent(versionId)}/VersionData`, {
+      method: "GET",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  },
+
   /** Every picklist's values as one record type offers them (UI API). */
   picklistValues: (objectName: string, recordTypeId: string) =>
     get<{ picklistFieldValues: Record<string, { values: { label: string; value: string }[] }> }>(

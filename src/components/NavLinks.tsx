@@ -14,9 +14,9 @@ interface NavItem {
 
 const ITEMS: NavItem[] = [
   { href: "/", label: "דשבורד", also: ["/jobs", "/employers", "/marketing", "/campaigns"] },
-  { href: "/applications", label: "הגשות", soon: true },
-  { href: "/companies", label: "חברות", soon: true },
-  { href: "/candidates", label: "מועמדים", soon: true },
+  { href: "/applications", label: "הגשות" },
+  { href: "/companies", label: "מעסיקים" },
+  { href: "/candidates", label: "מועמדים" },
 ];
 
 const ADMIN: NavItem = { href: "/admin/users", label: "ניהול", also: ["/admin"] };
