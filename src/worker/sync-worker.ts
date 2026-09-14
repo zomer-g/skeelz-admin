@@ -9,7 +9,7 @@
  *   3. an incremental Salesforce sync every SYNC_INTERVAL_MIN minutes (default 10)
  *   4. Google Analytics / Tag Manager / SMOOV every MARKETING_SYNC_INTERVAL_MIN (default 360)
  */
-import { asc, desc, eq, isNull } from "drizzle-orm";
+import { asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { syncRequests, syncRuns, syncState } from "@/lib/db/schema";
 import { ga4Configured } from "@/lib/google/ga4";
@@ -21,6 +21,7 @@ type JobMode = SyncMode | "marketing";
 
 const INTERVAL_MIN = Number(process.env.SYNC_INTERVAL_MIN ?? 10);
 const MARKETING_INTERVAL_MIN = Number(process.env.MARKETING_SYNC_INTERVAL_MIN ?? 360);
+const FAILED_RETRY_MIN = 30;
 const RECONCILE_HOUR_UTC = Number(process.env.SYNC_RECONCILE_HOUR_UTC ?? 0); // 02:00–03:00 Israel time
 const MODES = new Set<JobMode>(["incremental", "full", "reconcile", "marketing"]);
 
@@ -47,11 +48,17 @@ async function chooseScheduled(): Promise<JobMode | null> {
   }
   if (sf && Date.now() - lastIncrementalAt >= INTERVAL_MIN * 60_000) return "incremental";
   if (marketingConfigured()) {
+    const states = await getDb()
+      .select()
+      .from(syncState)
+      .where(inArray(syncState.object, ["GA4", "GTM", "SMOOV"]));
     // A migration that resets the GA mirror (or a first deploy) leaves no cursor: backfill now, not in six hours.
-    if (ga4Configured()) {
-      const [ga] = await getDb().select({ cursor: syncState.cursor }).from(syncState).where(eq(syncState.object, "GA4"));
-      if (!ga?.cursor) return "marketing";
-    }
+    if (ga4Configured() && !states.find((s) => s.object === "GA4")?.cursor) return "marketing";
+    // A source that failed (a key or permission since fixed) is retried every half hour, not every six.
+    const retryDue = states.some(
+      (s) => s.lastError && s.lastError !== "not visible to the integration user" && Date.now() - (s.lastStartedAt?.getTime() ?? 0) >= FAILED_RETRY_MIN * 60_000,
+    );
+    if (retryDue) return "marketing";
     // Survive restarts: a redeploy should not trigger a fresh Google/SMOOV pull every time.
     lastMarketingAt ||= await lastRunAt("marketing");
     if (Date.now() - lastMarketingAt >= MARKETING_INTERVAL_MIN * 60_000) return "marketing";

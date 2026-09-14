@@ -32,7 +32,8 @@ export function smoovAuthScheme(): AuthScheme | null {
 }
 
 async function get<T>(path: string, query: Record<string, string | number | boolean> = {}): Promise<T> {
-  const key = process.env.SMOOV_API_KEY;
+  // Trimmed: a key pasted into an env form easily picks up a trailing newline, which SMOOV rejects as 401.
+  const key = process.env.SMOOV_API_KEY?.trim();
   if (!key) throw new SmoovError("SMOOV_API_KEY is not set", 0);
 
   const url = new URL(`${BASE}${path}`);
