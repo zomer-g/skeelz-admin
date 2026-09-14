@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { JWT } from "google-auth-library";
 
 /**
@@ -26,8 +27,20 @@ interface ServiceAccount {
   private_key?: string;
 }
 
+/**
+ * Production: the key's JSON in GOOGLE_SERVICE_ACCOUNT_JSON (an xhostd secret).
+ * Local development: GOOGLE_SERVICE_ACCOUNT_FILE pointing at the downloaded key
+ * in the gitignored .secrets/ folder, so it never has to be pasted into .env.
+ */
 function readServiceAccount(): ServiceAccount | null {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  let raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  if (!raw && process.env.GOOGLE_SERVICE_ACCOUNT_FILE) {
+    try {
+      raw = readFileSync(process.env.GOOGLE_SERVICE_ACCOUNT_FILE, "utf8");
+    } catch {
+      return null;
+    }
+  }
   if (!raw) return null;
   try {
     return JSON.parse(raw) as ServiceAccount;

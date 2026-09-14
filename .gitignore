@@ -13,3 +13,6 @@ npm-debug.log*
 
 # Org-specific Salesforce schema (regenerate with npm run sf:describe)
 docs/sf-schema-report.md
+
+# Local credential files (Google service-account key)
+.secrets/

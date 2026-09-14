@@ -48,6 +48,10 @@ const DEFINITIONS: Omit<IntegrationStatus, "configured">[] = [
   },
 ];
 
+// Locally the Google key may come from a file instead of the JSON variable.
+const isSet = (key: string) =>
+  Boolean(process.env[key]) || (key === "GOOGLE_SERVICE_ACCOUNT_JSON" && Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_FILE));
+
 export function integrationStatus(): IntegrationStatus[] {
-  return DEFINITIONS.map((d) => ({ ...d, configured: d.envVars.every((k) => Boolean(process.env[k])) }));
+  return DEFINITIONS.map((d) => ({ ...d, configured: d.envVars.every(isSet) }));
 }
