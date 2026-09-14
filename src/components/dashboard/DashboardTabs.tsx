@@ -3,7 +3,7 @@ import Link from "next/link";
 const TABS = [
   { key: "candidates", label: "מועמדים", href: "/" },
   { key: "jobs", label: "משרות", href: "/jobs" },
-  { key: "employers", label: "מעסיקים", href: null },
+  { key: "employers", label: "מעסיקים", href: "/employers" },
   { key: "marketing", label: "שיווק", href: "/marketing" },
   { key: "campaigns", label: "דיוורים", href: "/campaigns" },
 ] as const;
@@ -16,17 +16,7 @@ export function DashboardTabs({ active, query = "" }: { active: DashboardTab; qu
     <nav className="mb-6 flex flex-wrap gap-1 border-b-2 border-black" aria-label="לשוניות הדשבורד">
       {TABS.map((t) => {
         const isActive = t.key === active;
-        const className = `-mb-[2px] rounded-t-card px-6 py-3 text-lg font-medium ${
-          isActive ? "bg-accent text-white" : t.href ? "text-ink hover:bg-accent/10" : "cursor-default text-muted/60"
-        }`;
-        if (!t.href) {
-          return (
-            <span key={t.key} aria-disabled title="בקרוב" className={className}>
-              {t.label}
-              <span className="ms-2 text-xs">בקרוב</span>
-            </span>
-          );
-        }
+        const className = `-mb-[2px] rounded-t-card px-6 py-3 text-lg font-medium ${isActive ? "bg-accent text-white" : "text-ink hover:bg-accent/10"}`;
         return (
           <Link key={t.key} href={query ? `${t.href}?${query}` : t.href} aria-current={isActive ? "page" : undefined} className={className}>
             {t.label}

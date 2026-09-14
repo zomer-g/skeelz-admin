@@ -182,6 +182,12 @@ export const sf = {
 
   describe: (objectName: string) => get<SfDescribe>(`${versionPath()}/sobjects/${encodeURIComponent(objectName)}/describe`),
 
+  /** Every picklist's values as one record type offers them (UI API). */
+  picklistValues: (objectName: string, recordTypeId: string) =>
+    get<{ picklistFieldValues: Record<string, { values: { label: string; value: string }[] }> }>(
+      `${versionPath()}/ui-api/object-info/${encodeURIComponent(objectName)}/picklist-values/${encodeURIComponent(recordTypeId)}`,
+    ),
+
   limits: () => get<SfLimits>(`${versionPath()}/limits`),
 
   /** The Run-As user the token acts for. */
