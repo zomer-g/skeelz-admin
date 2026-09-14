@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
+import { containsPattern } from "@/lib/entities/search";
 import { EMPLOYER_RESPONSE_STATUSES, RECORD_TYPES, STATUS, type ApplicationFacts } from "./candidates";
 import { jobPaidSql } from "./paid";
 
@@ -31,6 +32,8 @@ export interface Position {
   paid: boolean;
   /** Live on the site: `PStatus__c` is "Active". */
   active: boolean;
+  /** Last change in Salesforce (`SystemModstamp`). */
+  updatedAt: Date | null;
 }
 
 export interface JobGa {
@@ -76,7 +79,8 @@ function positionsSql(extra: ReturnType<typeof sql>) {
            c.data->>'new_pos_status__c' AS manage_status,
            c.site_job_key,
            ${jobPaidSql("c")} AS paid,
-           coalesce((c.data->>'PStatus__c') = 'Active', false) AS active
+           coalesce((c.data->>'PStatus__c') = 'Active', false) AS active,
+           c.system_modstamp
       FROM sf_case c
       JOIN sf_record_type rt ON rt.id = c.record_type_id
       LEFT JOIN sf_account acc ON acc.id = c.account_id
@@ -95,7 +99,26 @@ function toPosition(r: Row): Position {
     siteJobKey: str(r.site_job_key),
     paid: r.paid === true,
     active: r.active === true,
+    updatedAt: asDate(r.system_modstamp),
   };
+}
+
+/** A filtered page of jobs, newest first, with the total — for the external API. */
+export async function listPositions(opts: {
+  activeOnly: boolean;
+  paidOnly: boolean;
+  updatedSince: Date | null;
+  limit: number;
+  offset: number;
+}): Promise<{ rows: Position[]; total: number }> {
+  const filters = sql`${opts.activeOnly ? sql`AND (c.data->>'PStatus__c') = 'Active'` : sql.raw("")}
+    ${opts.paidOnly ? sql`AND ${jobPaidSql("c")}` : sql.raw("")}
+    ${opts.updatedSince ? sql`AND c.system_modstamp > ${opts.updatedSince}` : sql.raw("")}`;
+  const [rows, [count]] = await Promise.all([
+    run(positionsSql(sql`${filters} ORDER BY c.created_date DESC NULLS LAST, c.id LIMIT ${opts.limit} OFFSET ${opts.offset}`)),
+    run(sql`SELECT count(*)::int AS n FROM (${positionsSql(filters)}) matched`),
+  ]);
+  return { rows: rows.map(toPosition), total: num(count?.n) };
 }
 
 export async function loadPositions(): Promise<Position[]> {
@@ -199,14 +222,16 @@ export async function loadPositionsByJobKeys(keys: string[]): Promise<Position[]
 }
 
 export async function searchPositions(q: string, limit = 8): Promise<Position[]> {
-  const needle = `%${q.trim()}%`;
-  if (needle === "%%") return [];
+  // Bounded, and matched literally: "%" or "_" in the query is a character, not a wildcard.
+  const term = q.trim().slice(0, 200);
+  if (!term) return [];
+  const needle = containsPattern(term);
   return (
     await run(
       positionsSql(sql`
         AND (c.data->>'Position_cambium__c' ILIKE ${needle} OR c.data->>'Position_Name__c' ILIKE ${needle}
              OR c.data->>'Subject' ILIKE ${needle} OR c.data->>'company_cambium__c' ILIKE ${needle}
-             OR c.data->>'CaseNumber' ILIKE ${needle} OR c.site_job_key ILIKE ${needle} OR c.id = ${q.trim()})
+             OR c.data->>'CaseNumber' ILIKE ${needle} OR c.site_job_key ILIKE ${needle} OR c.id = ${term})
         ORDER BY c.created_date DESC LIMIT ${limit}`),
     )
   ).map(toPosition);

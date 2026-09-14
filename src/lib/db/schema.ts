@@ -446,6 +446,37 @@ export const smoovCampaignStats = pgTable("smoov_campaign_stats", {
   fetchedAt: ts("fetched_at").notNull().defaultNow(),
 });
 
+/* --------------------------------------------------------------- webhooks */
+
+/** The status each job/application Case had when the webhook last looked, to tell what changed since. */
+export const webhookCaseState = pgTable("webhook_case_state", {
+  caseId: sfId("case_id").primaryKey(),
+  status: text("status"),
+  siteStatus: text("site_status"),
+  seenAt: ts("seen_at").notNull().defaultNow(),
+});
+
+/** Outgoing events, posted by the sync worker with retries (src/lib/api/outbound.ts). */
+export const webhookDeliveries = pgTable(
+  "webhook_deliveries",
+  {
+    id: uuid("id").primaryKey(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: ts("next_attempt_at").notNull().defaultNow(),
+    deliveredAt: ts("delivered_at"),
+    failedAt: ts("failed_at"),
+    lastStatus: integer("last_status"),
+    lastError: text("last_error"),
+  },
+  (t) => [
+    index("webhook_deliveries_due_idx").on(t.nextAttemptAt).where(sql`delivered_at is null and failed_at is null`),
+    index("webhook_deliveries_type_created_idx").on(t.type, t.createdAt),
+  ],
+);
+
 /** Schema discovery runs, generated on the server so credentials never leave it. */
 export const sfSchemaReports = pgTable("sf_schema_reports", {
   id: bigserial("id", { mode: "number" }).primaryKey(),

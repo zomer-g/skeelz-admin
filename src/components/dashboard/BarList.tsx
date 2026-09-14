@@ -54,15 +54,17 @@ export function BarList({ items, caption, showShareOf }: { items: BarItem[]; cap
           <caption className="sr-only">{caption}</caption>
           <thead>
             <tr className="border-b border-line text-muted">
-              <th className="py-1 text-start font-medium">פריט</th>
-              <th className="py-1 text-start font-medium">כמות</th>
-              {showShareOf ? <th className="py-1 text-start font-medium">שיעור</th> : null}
+              <th scope="col" className="py-1 text-start font-medium">פריט</th>
+              <th scope="col" className="py-1 text-start font-medium">כמות</th>
+              {showShareOf ? <th scope="col" className="py-1 text-start font-medium">שיעור</th> : null}
             </tr>
           </thead>
           <tbody>
             {items.map((item) => (
               <tr key={item.label} className="border-b border-line/60">
-                <td className="py-1">{item.label}</td>
+                <th scope="row" className="py-1 text-start font-normal">
+                  {item.label}
+                </th>
                 <td className="py-1 tabular-nums">{fmtInt(item.value)}</td>
                 {showShareOf ? <td className="py-1 tabular-nums">{fmtPercent(item.value, showShareOf)}</td> : null}
               </tr>

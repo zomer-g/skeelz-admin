@@ -136,7 +136,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="ניהול" subtitle="מי נכנס, באילו מסכים צפה ואילו פעולות ביצע" />
+      <PageHeader title="ניהול · יומן פעילות" subtitle="מי נכנס, באילו מסכים צפה ואילו פעולות ביצע" />
       <AdminTabs />
 
       <div className="flex flex-col gap-8">
@@ -158,7 +158,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                   <td className="px-3 py-2 tabular-nums">{u.actions}</td>
                   <td className="px-3 py-2 text-end">
                     <Link href={filterHref({ user: u.actor })} className="text-sm font-medium text-accent-dark underline underline-offset-4">
-                      היומן שלו
+                      היומן שלו<span className="sr-only"> · {person?.name ?? u.actor}</span>
                     </Link>
                   </td>
                 </tr>
@@ -169,13 +169,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
         <Card title={userFilter ? `יומן · ${personByEmail.get(userFilter)?.name ?? userFilter}` : "יומן · כל המשתמשים"} tone="accent-light">
           <div className="mb-4 flex flex-wrap items-center gap-2">
-            <Link href={filterHref({ type: "all" })} className={pill(typeFilter === "all")}>
+            <Link href={filterHref({ type: "all" })} aria-current={typeFilter === "all" ? "true" : undefined} className={pill(typeFilter === "all")}>
               הכל
             </Link>
-            <Link href={filterHref({ type: "views" })} className={pill(typeFilter === "views")}>
+            <Link href={filterHref({ type: "views" })} aria-current={typeFilter === "views" ? "true" : undefined} className={pill(typeFilter === "views")}>
               צפיות במסכים
             </Link>
-            <Link href={filterHref({ type: "actions" })} className={pill(typeFilter === "actions")}>
+            <Link href={filterHref({ type: "actions" })} aria-current={typeFilter === "actions" ? "true" : undefined} className={pill(typeFilter === "actions")}>
               פעולות
             </Link>
             {userFilter ? (

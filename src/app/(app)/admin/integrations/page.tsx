@@ -1,9 +1,12 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Badge, buttonClass, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
+import { webhookConfigured } from "@/lib/api/outbound";
+import { inboundTokens } from "@/lib/api/tokens";
 import { pageAuth } from "@/lib/auth/guard";
 import { getDb } from "@/lib/db/client";
-import { gtmVersions, smoovCampaigns, smoovCampaignStats, syncState } from "@/lib/db/schema";
+import { gtmVersions, smoovCampaigns, smoovCampaignStats, syncState, webhookDeliveries } from "@/lib/db/schema";
 import { serviceAccountEmail } from "@/lib/google/auth";
 import { integrationStatus } from "@/lib/integrations";
 import { AdminTabs } from "../AdminTabs";
@@ -22,7 +25,7 @@ export default async function IntegrationsPage() {
   if (!auth.ok) return auth.render;
 
   const db = getDb();
-  const [states, campaigns, [liveGtm]] = await Promise.all([
+  const [states, campaigns, [liveGtm], deliveries, [queue]] = await Promise.all([
     db.select().from(syncState),
     db
       .select({ campaign: smoovCampaigns, stats: smoovCampaignStats })
@@ -31,6 +34,13 @@ export default async function IntegrationsPage() {
       .where(eq(smoovCampaigns.active, true))
       .orderBy(asc(smoovCampaigns.addedAt)),
     db.select().from(gtmVersions).orderBy(desc(gtmVersions.lastSeenAt)).limit(1),
+    db.select().from(webhookDeliveries).orderBy(desc(webhookDeliveries.createdAt)).limit(20),
+    db
+      .select({
+        pending: sql<number>`(count(*) filter (where ${webhookDeliveries.deliveredAt} is null and ${webhookDeliveries.failedAt} is null))::int`,
+        failed: sql<number>`(count(*) filter (where ${webhookDeliveries.failedAt} is not null))::int`,
+      })
+      .from(webhookDeliveries),
   ]);
   const stateByObject = new Map(states.map((s) => [s.object, s]));
   const integrations = integrationStatus();
@@ -38,7 +48,7 @@ export default async function IntegrationsPage() {
 
   return (
     <>
-      <PageHeader title="ניהול" subtitle="חיבורים למערכות חיצוניות" />
+      <PageHeader title="ניהול · חיבורים" subtitle="חיבורים למערכות חיצוניות" />
       <AdminTabs />
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -119,6 +129,56 @@ export default async function IntegrationsPage() {
                     <input type="hidden" name="id" value={campaign.id} />
                     <button className={buttonClass("quiet", "sm")}>הסרה</button>
                   </form>
+                </td>
+              </tr>
+            ))}
+          </Table>
+        </div>
+      </Card>
+
+      <Card title="API ו-webhooks" className="mt-8">
+        <div className="flex flex-col gap-4">
+          <p className="text-sm text-muted">
+            API נכנס לקריאת משרות ומדדים, ו-webhooks יוצאים על הגשות, משרות, תקלות סנכרון וסיכום יומי. הגדרות, מגבלות ודוגמאות ב
+            <Link href="/api-docs" className="font-medium text-accent-dark underline underline-offset-4">
+              תיעוד ה-API
+            </Link>
+            .
+          </p>
+          <ul className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            <li className="flex items-center gap-2">
+              API נכנס: {inboundTokens().length ? <Badge tone="success">פעיל</Badge> : <Badge>כבוי</Badge>}
+            </li>
+            <li className="flex items-center gap-2">
+              Webhooks: {webhookConfigured() ? <Badge tone="success">פעיל</Badge> : <Badge>כבוי</Badge>}
+            </li>
+            <li>
+              ממתינים למשלוח: <span className="font-medium tabular-nums">{fmt(queue?.pending ?? 0)}</span>
+            </li>
+            <li>
+              נכשלו: <span className="font-medium tabular-nums">{fmt(queue?.failed ?? 0)}</span>
+            </li>
+          </ul>
+          <ul className="flex flex-wrap gap-2" dir="ltr">
+            {["API_TOKEN", "API_TOKEN_PREVIOUS", "WEBHOOK_URL", "WEBHOOK_TOKEN"].map((v) => (
+              <li key={v} className="rounded-full bg-white px-3 py-1 font-mono text-xs text-ink ring-1 ring-line">
+                {v}
+              </li>
+            ))}
+          </ul>
+          <Table head={["אירוע", "נוצר", "ניסיונות", "מצב", "שגיאה אחרונה"]} empty={deliveries.length === 0 ? "עוד לא נוצרו אירועים" : undefined}>
+            {deliveries.map((d) => (
+              <tr key={d.id}>
+                <td className="px-3 py-2 font-mono text-xs" dir="ltr">
+                  {d.type}
+                </td>
+                <td className="whitespace-nowrap px-3 py-2">{formatDateTime(d.createdAt)}</td>
+                <td className="px-3 py-2 tabular-nums">{d.attempts}</td>
+                <td className="px-3 py-2">
+                  {d.deliveredAt ? <Badge tone="success">נמסר</Badge> : d.failedAt ? <Badge tone="warning">נכשל</Badge> : <Badge>ממתין</Badge>}
+                </td>
+                <td className="px-3 py-2 text-xs text-muted" dir="ltr">
+                  {d.lastError ?? "—"}
                 </td>
               </tr>
             ))}

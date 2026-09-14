@@ -17,7 +17,12 @@ export const dynamic = "force-dynamic";
 const RECENT_APPLICATIONS = 25;
 
 export default async function CompanyPage({ params }: { params: Promise<{ key: string }> }) {
-  const key = decodeURIComponent((await params).key);
+  let key: string;
+  try {
+    key = decodeURIComponent((await params).key);
+  } catch {
+    notFound(); // a stray "%" in the URL
+  }
   const auth = await pageAuth("viewer", `/companies/${encodeURIComponent(key)}`);
   if (!auth.ok) return auth.render;
 
@@ -99,7 +104,14 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs">
                   {last ? (
-                    <span className={days != null && days > NO_TOUCH_DAYS && j.status === "Active" ? "font-medium text-[#93370d]" : ""}>{fmtDate(last.at)}</span>
+                    days != null && days > NO_TOUCH_DAYS && j.status === "Active" ? (
+                      <span className="flex flex-wrap items-center gap-1">
+                        <span className="font-medium text-[#93370d]">{fmtDate(last.at)}</span>
+                        <Badge tone="warning">מעל {NO_TOUCH_DAYS} יום</Badge>
+                      </span>
+                    ) : (
+                      <span>{fmtDate(last.at)}</span>
+                    )
                   ) : (
                     <span className="text-muted">—</span>
                   )}
@@ -108,12 +120,12 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
                   <span className="flex justify-end gap-3">
                     {j.siteJobKey ? (
                       <a href={siteJobUrl(j.siteJobKey)} target="_blank" rel="noreferrer" className="font-medium text-accent-dark underline underline-offset-4">
-                        באתר
+                        באתר<span className="sr-only"> · {j.title ?? ""} (נפתח בלשונית חדשה)</span>
                       </a>
                     ) : null}
                     {sfRecordUrl(j.id) ? (
                       <a href={sfRecordUrl(j.id)!} target="_blank" rel="noreferrer" className="font-medium text-accent-dark underline underline-offset-4">
-                        Salesforce
+                        Salesforce<span className="sr-only"> · {j.title ?? ""} (נפתח בלשונית חדשה)</span>
                       </a>
                     ) : null}
                   </span>

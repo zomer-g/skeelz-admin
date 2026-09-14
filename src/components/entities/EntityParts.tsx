@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Badge, formatDateTime, Table } from "@/components/ui";
+import { Badge, formatDateTime, NewTabNote, Table } from "@/components/ui";
 import type { ActivityItem, ActivityKind } from "@/lib/entities/activity";
 import type { ApplicationRow } from "@/lib/entities/applications";
 import { fmtDate } from "@/lib/format";
@@ -23,7 +23,7 @@ export function EntityHeader({
     <>
       <p className="mb-4">
         <Link href={back.href} className="text-sm font-medium text-accent-dark underline underline-offset-4">
-          → {back.label}
+          <span aria-hidden>→</span> {back.label}
         </Link>
       </p>
       <section className="mb-6 overflow-hidden rounded-card border-2 border-line">
@@ -31,7 +31,7 @@ export function EntityHeader({
           <h1 className="text-2xl font-bold" dir="auto">
             {title}
           </h1>
-          {subtitle ? <div className="text-white/85">{subtitle}</div> : null}
+          {subtitle ? <div className="text-white">{subtitle}</div> : null}
         </header>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 bg-surface px-6 py-3 text-sm">
           {badges}
@@ -42,6 +42,7 @@ export function EntityHeader({
                 l.external ? (
                   <a key={l.label} href={l.href} target="_blank" rel="noreferrer" className="font-medium text-accent-dark underline underline-offset-4">
                     {l.label}
+                    <NewTabNote />
                   </a>
                 ) : (
                   <Link key={l.label} href={l.href} className="font-medium text-accent-dark underline underline-offset-4">

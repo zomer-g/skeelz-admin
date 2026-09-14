@@ -10,6 +10,7 @@ export function logoutUrl(returnTo = "/"): string {
 }
 
 function safePath(path: string): string {
-  // Only same-site paths: "//evil.com" and absolute URLs collapse to "/".
-  return path.startsWith("/") && !path.startsWith("//") ? path : "/";
+  // Only same-site paths: "//evil.com", "/\evil.com" (a browser reads "\" as "/"), absolute URLs
+  // and control characters all collapse to "/".
+  return /^\/(?![\/\\])[^\\\x00-\x1f]*$/.test(path) ? path : "/";
 }

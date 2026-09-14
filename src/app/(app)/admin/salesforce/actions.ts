@@ -61,6 +61,7 @@ export async function generateSchemaReport(_prev: ReportState, _form: FormData):
   } catch (err) {
     const message = describeError(err);
     console.error("[sf-schema-report] FAILED:", message);
+    await writeAudit(admin.email, "salesforce.schema_report", null, { ok: false, message });
     return { ok: false, message };
   }
 }

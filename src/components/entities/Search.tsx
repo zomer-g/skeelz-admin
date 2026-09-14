@@ -35,19 +35,20 @@ export function SearchForm({
         .map(([name, value]) => (
           <input key={name} type="hidden" name={name} value={value} />
         ))}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Two columns even on phones, so the filters don't push the results off the first screen; text fields take a full row there. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {fields.map((f) => {
           const id = `f-${f.name}`;
           if (f.kind === "check") {
             return (
-              <label key={f.name} htmlFor={id} className="flex items-center gap-2 self-end pb-2 text-sm">
-                <input id={id} type="checkbox" name={f.name} value="1" defaultChecked={values[f.name] === "1"} className="size-4 accent-[var(--color-accent)]" />
+              <label key={f.name} htmlFor={id} className="flex min-h-9 items-center gap-2 self-end text-sm">
+                <input id={id} type="checkbox" name={f.name} value="1" defaultChecked={values[f.name] === "1"} className="size-5 accent-[var(--color-accent)]" />
                 {f.label}
               </label>
             );
           }
           return (
-            <div key={f.name} className={`flex flex-col gap-1 ${f.kind === "text" && f.wide ? "sm:col-span-2" : ""}`}>
+            <div key={f.name} className={`flex min-w-0 flex-col gap-1 ${f.kind === "text" ? (f.wide ? "col-span-2" : "col-span-2 lg:col-span-1") : ""}`}>
               <label htmlFor={id} className="text-xs font-medium text-muted">
                 {f.label}
               </label>
@@ -97,19 +98,19 @@ export function Pager({ action, values, page, pageSize, total }: { action: strin
     return s ? `${action}?${s}` : action;
   };
   return (
-    <nav aria-label="דפים" className="mt-4 flex items-center justify-between gap-3 text-sm">
+    <nav aria-label="דפים" className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
       <span className="text-muted">
         עמוד {fmtInt(page)} מתוך {fmtInt(pages)} · {fmtInt(total)} תוצאות
       </span>
       <span className="flex gap-2">
         {page > 1 ? (
           <Link href={href(page - 1)} className={buttonClass("secondary", "sm")}>
-            → הקודם
+            <span aria-hidden>→</span> הקודם
           </Link>
         ) : null}
         {page < pages ? (
           <Link href={href(page + 1)} className={buttonClass("secondary", "sm")}>
-            הבא ←
+            הבא <span aria-hidden>←</span>
           </Link>
         ) : null}
       </span>

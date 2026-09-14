@@ -1,8 +1,8 @@
 import { cache } from "react";
-import { and, eq, gt, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import { getDb } from "@/lib/db/client";
-import { accessRequests, invites, users } from "@/lib/db/schema";
+import { accessRequests, auditLog, invites, users } from "@/lib/db/schema";
 import { readPreviewRole } from "./preview";
 import { hasRole, type Role } from "./roles";
 import { verifiedIdentity, type Identity } from "./xhost";
@@ -71,7 +71,20 @@ async function resolveUser(identity: Identity): Promise<SessionUser | null> {
     }
     if (row && (row.role !== "admin" || !row.active)) {
       // The configuration is the stronger statement; a row that disagrees is stale.
-      [row] = await db.update(users).set({ role: "admin", active: true }).where(eq(users.id, row.id)).returning();
+      const stale = row;
+      // Conditional, so of two racing requests only the one that restores it writes the audit entry.
+      const [restored] = await db
+        .update(users)
+        .set({ role: "admin", active: true })
+        .where(and(eq(users.id, stale.id), or(ne(users.role, "admin"), eq(users.active, false))))
+        .returning();
+      if (restored) {
+        await writeAudit(email, "user.env_admin_restored", email, {
+          from: { role: stale.role, active: stale.active },
+          to: { role: "admin", active: true },
+        });
+      }
+      row = restored ?? (await db.select().from(users).where(eq(users.id, stale.id)).limit(1))[0];
     }
   }
 
@@ -106,6 +119,7 @@ async function resolveUser(identity: Identity): Promise<SessionUser | null> {
   // An email is bound to the Google account that first used it.
   if (row.sub && row.sub !== identity.sub && identity.sub !== "dev-local") {
     console.warn(`[auth] ${email} presented a different Google subject; refusing`);
+    await auditSubjectMismatch(email, identity.sub);
     return null;
   }
 
@@ -136,6 +150,18 @@ async function resolveUser(identity: Identity): Promise<SessionUser | null> {
   };
 }
 
+/** Every refused request of that account lands here; throttled like the login entry, one per six hours. */
+async function auditSubjectMismatch(email: string, presentedSub: string): Promise<void> {
+  const [recent] = await getDb()
+    .select({ id: auditLog.id })
+    .from(auditLog)
+    .where(
+      and(eq(auditLog.actor, email), eq(auditLog.action, "auth.subject_mismatch"), gt(auditLog.at, new Date(Date.now() - 6 * 3600_000))),
+    )
+    .limit(1);
+  if (!recent) await writeAudit(email, "auth.subject_mismatch", email, { presentedSub });
+}
+
 // Anyone with a Google account can sign in and be refused; cap how many distinct
 // refused emails are kept so that cannot grow the table without bound.
 const MAX_ACCESS_REQUESTS = 1000;
@@ -143,13 +169,23 @@ const MAX_ACCESS_REQUESTS = 1000;
 async function recordAccessRequest(identity: Identity): Promise<void> {
   const db = getDb();
   const [existing] = await db
-    .select({ email: accessRequests.email })
+    .select({ lastAt: accessRequests.lastAt })
     .from(accessRequests)
     .where(eq(accessRequests.email, identity.email))
     .limit(1);
+  // A refused visitor's every page load lands here; one write per ten minutes is enough.
+  if (existing && Date.now() - existing.lastAt.getTime() < 10 * 60_000) return;
   if (!existing) {
     const [{ n }] = (await db.select({ n: sql<number>`count(*)::int` }).from(accessRequests)) as [{ n: number }];
-    if (n >= MAX_ACCESS_REQUESTS) return;
+    if (n >= MAX_ACCESS_REQUESTS) {
+      // Full: the longest-quiet requests make room, so a new one is never silently dropped.
+      const oldest = db
+        .select({ email: accessRequests.email })
+        .from(accessRequests)
+        .orderBy(asc(accessRequests.lastAt))
+        .limit(n - MAX_ACCESS_REQUESTS + 1);
+      await db.delete(accessRequests).where(inArray(accessRequests.email, oldest));
+    }
   }
   await db
     .insert(accessRequests)

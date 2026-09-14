@@ -93,10 +93,10 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
     { label: "נחתם חוזה", value: m.stages.signed },
   ].map((s, i) => ({ ...s, color: FUNNEL[i] }));
 
-  const sfLink = (id: string) =>
+  const sfLink = (id: string, name: string | null) =>
     sfBase ? (
       <a href={`${sfBase}/${id}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-accent-dark underline underline-offset-4">
-        Salesforce
+        Salesforce<span className="sr-only"> · {name ?? ""} (נפתח בלשונית חדשה)</span>
       </a>
     ) : null;
 
@@ -131,11 +131,11 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
           />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card title="שלבי הפנייה · הלידים שנכנסו בטווח">
+          <Card level={3} title="שלבי הפנייה · הלידים שנכנסו בטווח">
             <BarList caption="לידים לפי השלבים שהגיעו אליהם" items={pipeline} showShareOf={m.newLeads || undefined} />
             <p className="mt-3 text-xs text-muted">ליד נספר בכל שלב שהגיע אליו, לפי היסטוריית הסטטוסים.</p>
           </Card>
-          <Card title="תוצאות וסטטוס נוכחי">
+          <Card level={3} title="תוצאות וסטטוס נוכחי">
             <BarList
               caption="לידים שהגיעו לתוצאה אחרת"
               items={[
@@ -165,7 +165,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
           <StatCard label={`בלי מגע מעל ${NO_TOUCH_DAYS} יום`} value={fmtInt(noTouch.length)} hint="שיחה או מייל יוצא, בליד, במשרות או בהגשות" />
         </div>
 
-        <Card title={`חוזים שלא יצאה מהם משרה · ${fmtInt(noJob.length)}`} className="mt-4">
+        <Card level={3} title={`חוזים שלא יצאה מהם משרה · ${fmtInt(noJob.length)}`} className="mt-4">
           <Table
             head={["מעסיק", "נחתם", "ימים מאז החתימה", "מטפל", ""]}
             empty={noJob.length === 0 ? (employers.length ? "לכל המעסיקים שחתמו נפתחה משרה" : "עדיין אין מעסיקים שחתמו") : undefined}
@@ -176,7 +176,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums">{fmtDate(e.signedAt)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(daysSince(e.signedAt, now) ?? 0)}</td>
                 <td className="px-3 py-2">{e.ownerName ?? "—"}</td>
-                <td className="px-3 py-2 text-end">{sfLink(e.leadId)}</td>
+                <td className="px-3 py-2 text-end">{sfLink(e.leadId, e.name)}</td>
               </tr>
             ))}
           </Table>
@@ -186,7 +186,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
           </p>
         </Card>
 
-        <Card title={`מעסיקים בלי מגע מעל ${NO_TOUCH_DAYS} יום · ${fmtInt(noTouch.length)}`} tone="accent-light" className="mt-4">
+        <Card level={3} title={`מעסיקים בלי מגע מעל ${NO_TOUCH_DAYS} יום · ${fmtInt(noTouch.length)}`} tone="accent-light" className="mt-4">
           <Table
             head={["מעסיק", "נחתם", "מגע אחרון", "ימים בלי מגע", "משרות פעילות", "מטפל", ""]}
             empty={noTouch.length === 0 ? (employers.length ? `עם כל המעסיקים היה מגע ב-${NO_TOUCH_DAYS} הימים האחרונים` : "עדיין אין מעסיקים שחתמו") : undefined}
@@ -199,11 +199,11 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
                   <td className="whitespace-nowrap px-3 py-2 tabular-nums">{fmtDate(e.signedAt)}</td>
                   <td className="whitespace-nowrap px-3 py-2 tabular-nums">{e.lastTouchAt ? fmtDate(e.lastTouchAt) : "—"}</td>
                   <td className="whitespace-nowrap px-3 py-2">
-                    {days == null ? <Badge tone="brand">לא נרשם מגע</Badge> : <Badge tone="warning">⏳ {fmtInt(days)} ימים</Badge>}
+                    {days == null ? <Badge tone="brand">לא נרשם מגע</Badge> : <Badge tone="warning"><span aria-hidden>⏳</span> {fmtInt(days)} ימים</Badge>}
                   </td>
                   <td className="px-3 py-2 tabular-nums">{fmtInt(activeOf(e))}</td>
                   <td className="px-3 py-2">{e.ownerName ?? "—"}</td>
-                  <td className="px-3 py-2 text-end">{sfLink(e.accountId)}</td>
+                  <td className="px-3 py-2 text-end">{sfLink(e.accountId, e.name)}</td>
                 </tr>
               );
             })}
@@ -216,7 +216,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
           <StatCard label={`לא אומתו מעל ${NO_TOUCH_DAYS} יום`} value={fmtInt(stale)} hint="כולל משרות שלא נרשמה עליהן פעילות" />
           <StatCard label="לא נרשמה פעילות מעולם" value={fmtInt(neverTouched)} hint="אין פעילות על המשרה, ואין מייל או שיחה מול המעסיק בהגשות" />
         </div>
-        <Card title={`משרות פעילות לפי אימות אחרון · ${fmtInt(activeJobs.length)}`} className="mt-4">
+        <Card level={3} title={`משרות פעילות לפי אימות אחרון · ${fmtInt(activeJobs.length)}`} className="mt-4">
           <Table head={["משרה", "נפתחה", "אימות אחרון", "ימים מאז", ""]} empty={activeJobs.length === 0 ? "אין משרות פעילות" : undefined}>
             {activeJobs.slice(0, MAX_ROWS).map(({ position: p, last }) => {
               const days = daysSince(last?.at ?? null, now);
@@ -240,12 +240,12 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
                     {days == null ? (
                       <Badge tone="brand">לא נרשמה פעילות</Badge>
                     ) : days > NO_TOUCH_DAYS ? (
-                      <Badge tone="warning">⏳ {fmtInt(days)} ימים</Badge>
+                      <Badge tone="warning"><span aria-hidden>⏳</span> {fmtInt(days)} ימים</Badge>
                     ) : (
                       <span className="tabular-nums">{fmtInt(days)}</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 text-end">{sfLink(p.id)}</td>
+                  <td className="px-3 py-2 text-end">{sfLink(p.id, p.title)}</td>
                 </tr>
               );
             })}

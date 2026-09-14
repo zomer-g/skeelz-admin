@@ -30,7 +30,7 @@ export default async function UsersPage() {
 
   return (
     <>
-      <PageHeader title="ניהול" subtitle="מי נכנס למערכת ובאיזו הרשאה" />
+      <PageHeader title="ניהול · משתמשים והרשאות" subtitle="מי נכנס למערכת ובאיזו הרשאה" />
       <AdminTabs />
 
       <div className="flex flex-col gap-8">
@@ -56,12 +56,16 @@ export default async function UsersPage() {
                     <div className="flex flex-wrap items-center justify-end gap-2">
                       <form action={approveRequest} className="flex items-center gap-2">
                         <input type="hidden" name="email" value={r.email} />
-                        <RoleSelect defaultValue="viewer" />
-                        <button className={buttonClass("primary", "sm")}>אישור</button>
+                        <RoleSelect defaultValue="viewer" who={r.email} />
+                        <button className={buttonClass("primary", "sm")}>
+                          אישור<span className="sr-only"> · {r.email}</span>
+                        </button>
                       </form>
                       <form action={dismissRequest}>
                         <input type="hidden" name="email" value={r.email} />
-                        <button className={buttonClass("quiet", "sm")}>הסרה</button>
+                        <button className={buttonClass("quiet", "sm")}>
+                          הסרה<span className="sr-only"> · {r.email}</span>
+                        </button>
                       </form>
                     </div>
                   </td>
@@ -78,7 +82,7 @@ export default async function UsersPage() {
               const isConfigured = configuredAdmins.includes(u.email);
               const locked = isSelf || isConfigured;
               return (
-                <tr key={u.id} className={u.active ? "" : "opacity-60"}>
+                <tr key={u.id} className={u.active ? "" : "bg-panel"}>
                   <td className="px-3 py-3">
                     <p className="font-medium">{u.name ?? "—"}</p>
                     <p className="text-xs text-muted" dir="ltr">
@@ -95,8 +99,10 @@ export default async function UsersPage() {
                     ) : (
                       <form action={changeRole} className="flex items-center gap-2">
                         <input type="hidden" name="id" value={u.id} />
-                        <RoleSelect defaultValue={u.role} />
-                        <button className={buttonClass("secondary", "sm")}>עדכון</button>
+                        <RoleSelect defaultValue={u.role} who={u.email} />
+                        <button className={buttonClass("secondary", "sm")}>
+                          עדכון<span className="sr-only"> · {u.email}</span>
+                        </button>
                       </form>
                     )}
                   </td>
@@ -112,6 +118,7 @@ export default async function UsersPage() {
                         <input type="hidden" name="active" value={String(!u.active)} />
                         <button className={buttonClass(u.active ? "danger" : "secondary", "sm")}>
                           {u.active ? "השבתה" : "הפעלה מחדש"}
+                          <span className="sr-only"> · {u.email}</span>
                         </button>
                       </form>
                     )}
@@ -140,7 +147,9 @@ export default async function UsersPage() {
                 <td className="px-3 py-3 text-end">
                   <form action={revokeInvite}>
                     <input type="hidden" name="id" value={i.id} />
-                    <button className={buttonClass("danger", "sm")}>ביטול</button>
+                    <button className={buttonClass("danger", "sm")}>
+                      ביטול<span className="sr-only"> · {i.email}</span>
+                    </button>
                   </form>
                 </td>
               </tr>
@@ -152,9 +161,9 @@ export default async function UsersPage() {
   );
 }
 
-function RoleSelect({ defaultValue }: { defaultValue: Role }) {
+function RoleSelect({ defaultValue, who }: { defaultValue: Role; who: string }) {
   return (
-    <select name="role" defaultValue={defaultValue} className={smallFieldClass} aria-label="תפקיד">
+    <select name="role" defaultValue={defaultValue} className={smallFieldClass} aria-label={`תפקיד · ${who}`}>
       {ROLES.map((r) => (
         <option key={r} value={r}>
           {ROLE_LABELS[r]}

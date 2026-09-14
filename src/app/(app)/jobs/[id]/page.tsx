@@ -69,19 +69,19 @@ export default async function JobPage({
 
   return (
     <>
-      <DashboardTabs active="jobs" query={query} />
+      <DashboardTabs active="jobs" query={query} heading={false} />
       <p className="mb-4">
         <Link href={`/jobs?${query}`} className="text-sm font-medium text-accent-dark underline underline-offset-4">
-          → כל המשרות
+          <span aria-hidden>→</span> כל המשרות
         </Link>
       </p>
 
       <section className="mb-6 overflow-hidden rounded-card border-2 border-line">
         <header className="bg-accent px-6 py-4 text-white">
           <h1 className="text-2xl font-bold">{position.title ?? "(ללא שם)"}</h1>
-          <p className="text-white/85">
+          <p className="text-white">
             {details?.companyKey ? (
-              <Link href={`/companies/${encodeURIComponent(details.companyKey)}`} className="underline underline-offset-4">
+              <Link href={`/companies/${encodeURIComponent(details.companyKey)}`} className="underline underline-offset-4 focus-visible:outline-white">
                 {position.company ?? details.companyName}
               </Link>
             ) : (
@@ -105,14 +105,14 @@ export default async function JobPage({
           <span className="ms-auto flex gap-4">
             {key ? (
               <a href={siteJobUrl(key)} target="_blank" rel="noreferrer" className="font-medium text-accent-dark underline underline-offset-4">
-                דף המשרה באתר
+                דף המשרה באתר<span className="sr-only"> (נפתח בלשונית חדשה)</span>
               </a>
             ) : (
               <span className="text-muted">המשרה לא עלתה לאתר</span>
             )}
             {sfBase ? (
               <a href={`${sfBase}/${position.id}`} target="_blank" rel="noreferrer" className="font-medium text-accent-dark underline underline-offset-4">
-                Salesforce
+                Salesforce<span className="sr-only"> (נפתח בלשונית חדשה)</span>
               </a>
             ) : null}
           </span>
@@ -218,7 +218,7 @@ export default async function JobPage({
                 <td className="px-3 py-2 text-end">
                   {sfBase ? (
                     <a href={`${sfBase}/${a.id}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-accent-dark underline underline-offset-4">
-                      Salesforce
+                      Salesforce<span className="sr-only"> · {a.candidateName ?? ""} (נפתח בלשונית חדשה)</span>
                     </a>
                   ) : null}
                 </td>

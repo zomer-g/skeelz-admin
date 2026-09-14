@@ -10,6 +10,9 @@ import { loginUrl, XHOST_COOKIE } from "@/lib/auth/urls";
  * behind xhostd's proxy the server does not reliably know its public host (a
  * relative Location throws "Invalid URL"). Pages render the sign-in screen
  * themselves instead — see lib/auth/guard.tsx.
+ *
+ * /api/v1 is for other systems and authenticates with the shared API token
+ * (lib/api/inbound.ts), so it is left out here.
  */
 export function proxy(req: NextRequest) {
   if (process.env.NODE_ENV === "development" && process.env.DEV_AUTH_EMAIL) return NextResponse.next();
@@ -18,6 +21,6 @@ export function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Every API route except the unauthenticated health check.
-  matcher: ["/api/((?!health$).*)"],
+  // Every API route except the unauthenticated health check and the token-authenticated /api/v1.
+  matcher: ["/api/((?!health$|v1/).*)"],
 };

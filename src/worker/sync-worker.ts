@@ -8,8 +8,10 @@
  *   2. the nightly Salesforce reconcile, in the SYNC_RECONCILE_HOUR_UTC hour
  *   3. an incremental Salesforce sync every SYNC_INTERVAL_MIN minutes (default 10)
  *   4. Google Analytics / Tag Manager / SMOOV every MARKETING_SYNC_INTERVAL_MIN (default 360)
+ * and then, when WEBHOOK_URL is set, delivers due webhook events (src/lib/api/outbound.ts).
  */
 import { asc, desc, eq, inArray, isNull } from "drizzle-orm";
+import { deliverPending, detectCaseChanges, enqueueSyncFailures, maybeDailySummary } from "@/lib/api/outbound";
 import { getDb } from "@/lib/db/client";
 import { syncRequests, syncRuns, syncState } from "@/lib/db/schema";
 import { ga4Configured } from "@/lib/google/ga4";
@@ -26,6 +28,15 @@ const RECONCILE_HOUR_UTC = Number(process.env.SYNC_RECONCILE_HOUR_UTC ?? 0); // 
 const MODES = new Set<JobMode>(["incremental", "full", "reconcile", "marketing"]);
 
 const log = (msg: string) => console.log(`[sync-worker] ${new Date().toISOString()} ${msg}`);
+
+/** Webhook work never takes a sync down with it. */
+async function safely(label: string, work: () => Promise<unknown>): Promise<void> {
+  try {
+    await work();
+  } catch (err) {
+    log(`${label} failed: ${(err as Error).message}`);
+  }
+}
 
 let running = false;
 let lastIncrementalAt = 0;
@@ -75,6 +86,7 @@ async function run(mode: JobMode, trigger: string): Promise<void> {
     const results = await runMarketingSync(trigger);
     const summary = results.map((r) => `${r.source} ${r.error ? `ERROR ${r.error}` : `+${r.rows}${r.note ? ` (${r.note})` : ""}`}`);
     log(`marketing finished in ${Math.round((Date.now() - started) / 1000)}s: ${summary.join("; ") || "nothing configured"}`);
+    await safely("webhook failures", () => enqueueSyncFailures(results));
     return;
   }
 
@@ -84,11 +96,19 @@ async function run(mode: JobMode, trigger: string): Promise<void> {
   }
   if (mode !== "reconcile") lastIncrementalAt = Date.now();
   const summary = await runSync(mode, trigger);
-  if (summary.locked) log(`${mode} skipped: another sync holds the lock`);
-  else {
-    const failed = summary.results.filter((r) => r.error).map((r) => r.object);
-    log(`${mode} finished in ${Math.round(summary.ms / 1000)}s${failed.length ? `; failed: ${failed.join(", ")}` : ""}`);
+  if (summary.locked) {
+    log(`${mode} skipped: another sync holds the lock`);
+    return;
   }
+  const failed = summary.results.filter((r) => r.error).map((r) => r.object);
+  log(`${mode} finished in ${Math.round(summary.ms / 1000)}s${failed.length ? `; failed: ${failed.join(", ")}` : ""}`);
+  await safely("webhook changes", async () => {
+    const changes = await detectCaseChanges();
+    if (changes.baseline) log("webhook: recorded the current jobs and applications as the baseline");
+    else if (changes.suppressed) log("webhook: too many changes at once (mirror rebuild?); recorded without sending");
+    else if (changes.events) log(`webhook: queued ${changes.events} events`);
+    await enqueueSyncFailures(summary.results.map((r) => ({ source: r.object, error: r.error })));
+  });
 }
 
 async function tick(): Promise<void> {
@@ -108,11 +128,15 @@ async function tick(): Promise<void> {
       const mode = MODES.has(request.mode as JobMode) ? (request.mode as JobMode) : "incremental";
       await run(mode, `manual:${request.requestedBy}`);
       await db.update(syncRequests).set({ doneAt: new Date() }).where(eq(syncRequests.id, request.id));
-      return;
+    } else {
+      const mode = await chooseScheduled();
+      if (mode) await run(mode, "schedule");
     }
 
-    const mode = await chooseScheduled();
-    if (mode) await run(mode, "schedule");
+    await safely("webhook delivery", async () => {
+      await maybeDailySummary();
+      await deliverPending();
+    });
   } catch (err) {
     log(`tick failed: ${(err as Error).stack ?? err}`);
   } finally {

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/lib/audit";
 import { isRole } from "@/lib/auth/roles";
 import { envAdmins, requireUser } from "@/lib/auth/session";
-import { getDb } from "@/lib/db/client";
+import { getDb, type Db } from "@/lib/db/client";
 import { accessRequests, invites, users } from "@/lib/db/schema";
 
 // Every action re-checks the caller: a server action is a public endpoint,
@@ -13,7 +13,10 @@ import { accessRequests, invites, users } from "@/lib/db/schema";
 
 export type ActionState = { ok: boolean; message: string } | null;
 
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_RE = /^[0-9a-f-]{36}$/i;
 const INVITE_DAYS = 14;
 const PATH = "/admin/users";
 
@@ -56,7 +59,10 @@ export async function changeRole(form: FormData): Promise<void> {
   if (!isRole(role)) throw new Error("invalid role");
 
   const target = await loadChangeableUser(id, admin.id);
-  await getDb().update(users).set({ role }).where(eq(users.id, target.id));
+  await getDb().transaction(async (tx) => {
+    if (role !== "admin") await keepLastAdmin(tx, target.id);
+    await tx.update(users).set({ role }).where(eq(users.id, target.id));
+  });
   await writeAudit(admin.email, "user.role_changed", target.email, { from: target.role, to: role });
   revalidatePath(PATH);
 }
@@ -67,7 +73,10 @@ export async function setActive(form: FormData): Promise<void> {
   const active = form.get("active") === "true";
 
   const target = await loadChangeableUser(id, admin.id);
-  await getDb().update(users).set({ active }).where(eq(users.id, target.id));
+  await getDb().transaction(async (tx) => {
+    if (!active) await keepLastAdmin(tx, target.id);
+    await tx.update(users).set({ active }).where(eq(users.id, target.id));
+  });
   await writeAudit(admin.email, active ? "user.reactivated" : "user.deactivated", target.email);
   revalidatePath(PATH);
 }
@@ -75,6 +84,7 @@ export async function setActive(form: FormData): Promise<void> {
 export async function revokeInvite(form: FormData): Promise<void> {
   const admin = await requireUser("admin");
   const id = String(form.get("id") ?? "");
+  if (!UUID_RE.test(id)) throw new Error("invalid id");
   const [invite] = await getDb()
     .update(invites)
     .set({ revokedAt: new Date() })
@@ -92,9 +102,10 @@ export async function approveRequest(form: FormData): Promise<void> {
   if (!EMAIL_RE.test(email) || !isRole(role)) throw new Error("invalid request");
 
   const db = getDb();
-  await db.insert(users).values({ email, role }).onConflictDoNothing();
+  const [created] = await db.insert(users).values({ email, role }).onConflictDoNothing().returning({ id: users.id });
   await db.delete(accessRequests).where(eq(accessRequests.email, email));
-  await writeAudit(admin.email, "access_request.approved", email, { role });
+  // An existing user keeps their role, so there is no approval to record.
+  if (created) await writeAudit(admin.email, "access_request.approved", email, { role });
   revalidatePath(PATH);
 }
 
@@ -107,6 +118,7 @@ export async function dismissRequest(form: FormData): Promise<void> {
 }
 
 async function loadChangeableUser(id: string, selfId: string) {
+  if (!UUID_RE.test(id)) throw new Error("invalid id");
   const [target] = await getDb().select().from(users).where(eq(users.id, id)).limit(1);
   if (!target) throw new Error("user not found");
   // Guard rails the UI also enforces: nobody locks themselves out, and
@@ -114,4 +126,17 @@ async function loadChangeableUser(id: string, selfId: string) {
   if (target.id === selfId) throw new Error("cannot change your own access");
   if (envAdmins().includes(target.email)) throw new Error("user is an admin by configuration");
   return target;
+}
+
+/**
+ * Refuses to demote or deactivate the last active admin. The admin rows are locked for the
+ * transaction, so two admins removing each other at the same moment cannot both succeed.
+ */
+async function keepLastAdmin(tx: Tx, targetId: string): Promise<void> {
+  const admins = await tx
+    .select({ id: users.id })
+    .from(users)
+    .where(and(eq(users.role, "admin"), eq(users.active, true)))
+    .for("update");
+  if (admins.length <= 1 && admins.some((a) => a.id === targetId)) throw new Error("cannot remove the last active admin");
 }

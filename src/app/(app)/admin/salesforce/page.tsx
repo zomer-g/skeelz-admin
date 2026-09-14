@@ -35,7 +35,7 @@ export default async function SalesforcePage() {
 
   return (
     <>
-      <PageHeader title="ניהול" subtitle="חיבור Salesforce (קריאה בלבד)" />
+      <PageHeader title="ניהול · Salesforce" subtitle="חיבור Salesforce (קריאה בלבד)" />
       <AdminTabs />
 
       <div className="flex flex-col gap-8">

@@ -36,7 +36,7 @@ export default async function SyncPage() {
 
   return (
     <>
-      <PageHeader title="ניהול" subtitle="סנכרון Salesforce לבסיס הנתונים המקומי (קריאה בלבד)" />
+      <PageHeader title="ניהול · סנכרון" subtitle="סנכרון Salesforce לבסיס הנתונים המקומי (קריאה בלבד)" />
       <AdminTabs />
 
       <div className="flex flex-col gap-8">

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useRef } from "react";
+import { useActiveInStrip } from "./useActiveInStrip";
 
 interface NavItem {
   href: string;
@@ -26,16 +28,19 @@ function isActive(item: NavItem, pathname: string): boolean {
   return (item.also ?? []).some((p) => pathname === p || pathname.startsWith(`${p}/`));
 }
 
-export function NavLinks({ isAdmin }: { isAdmin: boolean }) {
+/** One scrolling row on phones, wrapping from `lg` up. */
+export function NavLinks({ isAdmin, className = "" }: { isAdmin: boolean; className?: string }) {
   const pathname = usePathname();
+  const activeRef = useRef<HTMLAnchorElement>(null);
+  useActiveInStrip(activeRef, pathname);
   const items = isAdmin ? [...ITEMS, ADMIN] : ITEMS;
 
   return (
-    <nav className="flex flex-wrap items-center gap-1" aria-label="ניווט ראשי">
+    <nav className={`flex items-center gap-1 overflow-x-auto p-1 [scrollbar-width:thin] lg:flex-wrap lg:overflow-visible ${className}`} aria-label="ניווט ראשי">
       {items.map((item) => {
         if (item.soon) {
           return (
-            <span key={item.href} className="cursor-default rounded-full px-4 py-2 text-muted/60" title="בקרוב">
+            <span key={item.href} className="shrink-0 cursor-default rounded-full px-4 py-2 text-muted" title="בקרוב">
               {item.label}
             </span>
           );
@@ -44,9 +49,10 @@ export function NavLinks({ isAdmin }: { isAdmin: boolean }) {
         return (
           <Link
             key={item.href}
+            ref={active ? activeRef : undefined}
             href={item.href}
-            aria-current={active ? "page" : undefined}
-            className={`rounded-full px-4 py-2 font-medium transition-colors ${active ? "bg-accent text-white" : "text-ink hover:bg-accent/10"}`}
+            aria-current={active ? (pathname === item.href ? "page" : "true") : undefined}
+            className={`shrink-0 whitespace-nowrap rounded-full px-3 py-2 font-medium transition-colors sm:px-4 ${active ? "bg-accent text-white" : "text-ink hover:bg-accent/10"}`}
           >
             {item.label}
           </Link>

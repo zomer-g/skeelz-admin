@@ -85,6 +85,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
                     dir="auto"
                   >
                     {fileName(f)}
+                    <span className="sr-only"> (נפתח בלשונית חדשה)</span>
                   </a>
                   <span className="text-xs text-muted">
                     {fileSize(f.size)} · {fmtDate(f.createdAt)}

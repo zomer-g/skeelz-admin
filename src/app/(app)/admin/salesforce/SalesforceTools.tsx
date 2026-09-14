@@ -23,14 +23,16 @@ export function SalesforceTools({ configured }: { configured: boolean }) {
           </form>
         </div>
 
+        {/* Live regions stay mounted, so a result is announced when it arrives. */}
+        <div role="status">
         {conn && !conn.ok ? (
-          <p role="status" className="rounded-card bg-danger-soft/40 px-4 py-3 text-sm text-danger" dir="auto">
+          <p className="rounded-card bg-danger-soft/40 px-4 py-3 text-sm text-danger" dir="auto">
             {conn.message}
           </p>
         ) : null}
 
         {conn && conn.ok ? (
-          <div role="status" className="rounded-card bg-white p-4 text-sm ring-1 ring-line">
+          <div className="rounded-card bg-white p-4 text-sm ring-1 ring-line">
             <p className="mb-3 flex flex-wrap items-center gap-2">
               <Badge tone="success">החיבור תקין</Badge>
               <span dir="ltr" className="text-muted">
@@ -68,6 +70,7 @@ export function SalesforceTools({ configured }: { configured: boolean }) {
             </ul>
           </div>
         ) : null}
+        </div>
       </section>
 
       <section className="flex flex-col gap-4 border-t-2 border-line pt-6">
@@ -84,11 +87,9 @@ export function SalesforceTools({ configured }: { configured: boolean }) {
             </button>
           </form>
         </div>
-        {report ? (
-          <p role="status" className={`text-sm ${report.ok ? "text-success" : "text-danger"}`} dir="auto">
-            {report.message}
-          </p>
-        ) : null}
+        <p role="status" className={`text-sm ${report?.ok ? "text-success" : "text-danger"}`} dir="auto">
+          {report?.message ?? ""}
+        </p>
       </section>
     </div>
   );

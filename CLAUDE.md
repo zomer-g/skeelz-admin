@@ -15,7 +15,19 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 ## Rules that matter
 - **Auth:** identity = xhostd SSO cookie `__Host-xhost_id`, verified in `src/lib/auth/xhost.ts`. Access =
   `ADMIN_EMAILS` / active `users` row / open invite (`src/lib/auth/session.ts`). Every page calls
-  `pageAuth(minRole, path)`; every server action / route handler calls `requireUser(minRole)`. Never rely on the layout.
+  `pageAuth(minRole, path)`; every server action / route handler calls `requireUser(minRole)` (`/api/v1` routes use
+  `withApiToken` instead). Never rely on the layout.
+  The only pages without it hold no data: `/accessibility` and `/privacy` (public by law, framed by `PublicDoc`) and `not-found.tsx`.
+- **Security headers:** CSP and friends in `next.config.ts`. The browser loads nothing cross-origin (fonts self-hosted,
+  GA/SMOOV/SF server-side only) — keep it that way or extend the CSP. The candidate file route sends its own sandboxing
+  CSP and is rate-limited (60 opens/hour per user, counted from the audit log).
+- **External API** (contract and limits in `src/lib/api/spec.ts`, docs page `/api-docs` for signed-in users): inbound
+  `GET /api/v1/{jobs,jobs/:id,metrics}` behind the shared `API_TOKEN` (+ `API_TOKEN_PREVIOUS` while rotating) through
+  `withApiToken` — constant-time compare, header only, in-memory rate limits and lockout. Outbound webhooks
+  (`src/lib/api/outbound.ts`) are detected and delivered by the sync worker: `webhook_case_state` remembers what was
+  reported, `webhook_deliveries` queues events with retries, each POST is HMAC-signed with `WEBHOOK_TOKEN`. Both
+  directions carry jobs, statuses, ids and aggregates only — never candidate names, contact details or files
+  (`src/lib/api/data.ts`). A new endpoint or event must keep that and be added to `spec.ts` and the docs page.
 - **Roles:** viewer < editor (dashboard config) < admin (users, integrations, sync). Admins can "view as" a lower
   role (cookie `skeelz_view_as`, honoured only when `realRole` is admin); `user.role` is the effective role that every
   check uses — only the preview switch itself checks `realRole`.
@@ -41,6 +53,16 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   stays visible. Site-wide GA traffic has no job and is not scoped.
 - **Design:** tokens in `src/app/globals.css` (brand magenta `#CD0077` for CTAs, teal `#218283` panels, pill
   controls, 20px cards). Rubik only. Use logical CSS (`ms-*`, `text-start`), never left/right.
+- **Accessibility (IS 5568 = WCAG 2.1 AA, legally required):** text ≥ 4.5:1 and field borders ≥ 3:1 — `danger`, `success`
+  and `field` tokens were darkened for this, don't lighten them; light-teal card bands take `text-ink`. One h1 per page
+  (dashboard tabs render an sr-only h1; pass `heading={false}` where the page has its own). `Card` titles are headings:
+  `level={3}` under a section h2. Status/error messages live in an always-mounted `role="status"`. Repeated link/button
+  text gets sr-only context (`Salesforce<span className="sr-only"> · name</span>`); new-tab links say so. Charts keep
+  the "הצגה כטבלה" table. Visually-hidden text inside a scroll box needs `relative` on the box or it widens the page.
+  Keep `/accessibility` and `/privacy` current (review date; the contact address is `CONTACT_EMAIL` in `PublicDoc.tsx`) —
+  both are linked from the footer, sign-in and refusal screens.
+- **Mobile:** every page must work at 320–375px with no sideways page scroll. Wide tables scroll inside `Table`; the main
+  nav and dashboard tabs are one sideways-scrolling row on phones (`useActiveInStrip` keeps the current item visible).
 - Secrets only via xhostd `set_env(secret=true)`; never log them or send them to the client.
 - No server-side redirects to absolute URLs: behind xhostd the server doesn't know its public host, and Next's
   proxy rejects a relative `Location`. Anonymous page requests render `SignInScreen` (200); `src/proxy.ts` only 401s the API.

@@ -33,7 +33,9 @@ function Delta({ before, after }: { before: number; after: number }) {
   const diff = after - before;
   return (
     <span className="tabular-nums">
-      {fmtInt(before)} → <span className="font-bold">{fmtInt(after)}</span>
+      <span className="sr-only">לפני </span>
+      {fmtInt(before)} <span aria-hidden>→</span>
+      <span className="sr-only">, אחרי</span> <span className="font-bold">{fmtInt(after)}</span>
       {diff !== 0 ? <span className={`ms-1 text-xs ${diff > 0 ? "text-success" : "text-danger"}`}>({diff > 0 ? "+" : ""}{fmtInt(diff)})</span> : null}
     </span>
   );
@@ -46,7 +48,12 @@ export default async function CampaignPage({
   params: Promise<{ key: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const key = decodeURIComponent((await params).key);
+  let key: string;
+  try {
+    key = decodeURIComponent((await params).key);
+  } catch {
+    notFound(); // a stray "%" in the URL
+  }
   const search = await searchParams;
   const auth = await pageAuth("viewer", viewPath(`/campaigns/${encodeURIComponent(key)}`, search));
   if (!auth.ok) return auth.render;
@@ -78,10 +85,10 @@ export default async function CampaignPage({
 
   return (
     <>
-      <DashboardTabs active="campaigns" query={query} />
+      <DashboardTabs active="campaigns" query={query} heading={false} />
       <p className="mb-4">
         <Link href={`/campaigns?${query}`} className="text-sm font-medium text-accent-dark underline underline-offset-4">
-          → כל הקמפיינים
+          <span aria-hidden>→</span> כל הקמפיינים
         </Link>
       </p>
 
@@ -91,7 +98,7 @@ export default async function CampaignPage({
             {campaignLabel(summary)}
           </h1>
           {summary.label ? (
-            <p className="text-white/85" dir="ltr">
+            <p className="text-white" dir="ltr">
               {summary.key}
             </p>
           ) : null}

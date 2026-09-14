@@ -18,13 +18,15 @@
   --color-surface: #f5f5f5;
   --color-panel: #efefef;
   --color-line: #dee2e6;
-  --color-field: #98a2b3;
+  /* Field borders need 3:1 against white and the grey cards (WCAG 1.4.11): 4.97 / 4.56. */
+  --color-field: #667085;
 
   --color-ink: #212529;
   --color-muted: #475467;
-  --color-success: #039855;
+  /* Text colours need 4.5:1 on white, the grey cards and their own soft backgrounds (WCAG 1.4.3). */
+  --color-success: #027a48;
   --color-success-soft: #ecfdf3;
-  --color-danger: #f04438;
+  --color-danger: #b42318;
   --color-danger-soft: #ffcdca;
 
   /* Ordinal ramp for ordered stages (funnel): one teal hue, light → dark.
@@ -58,7 +60,10 @@ body {
   color: var(--color-ink);
 }
 
-:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+/* In the base layer so `focus-visible:outline-*` utilities can recolour it on dark or teal backgrounds. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }

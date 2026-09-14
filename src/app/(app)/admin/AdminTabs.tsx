@@ -14,7 +14,7 @@ const TABS = [
 export function AdminTabs() {
   const pathname = usePathname();
   return (
-    <div className="mb-8 flex flex-wrap gap-2 border-b-2 border-line pb-3">
+    <nav aria-label="לשוניות ניהול" className="mb-8 flex flex-wrap gap-2 border-b-2 border-line pb-3">
       {TABS.map((t) => {
         const active = pathname.startsWith(t.href);
         return (
@@ -30,6 +30,6 @@ export function AdminTabs() {
           </Link>
         );
       })}
-    </div>
+    </nav>
   );
 }

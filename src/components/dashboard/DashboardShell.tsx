@@ -79,7 +79,7 @@ export function DashboardShell({
               onChange={(e) => setQ(e.target.value)}
               placeholder={search.placeholder}
               aria-label={search.placeholder}
-              className="h-10 min-w-[16rem] flex-1 rounded-full border border-field bg-white px-4 text-sm shadow-field focus:outline-none focus:ring-2 focus:ring-accent"
+              className="h-10 min-w-[10rem] flex-1 rounded-full border border-field bg-white px-4 text-sm shadow-field placeholder:text-muted focus:outline-hidden focus:ring-2 focus:ring-accent"
             />
             <button type="submit" className="rounded-full bg-brand px-5 py-2 text-sm font-medium text-white hover:bg-brand-hover">
               חיפוש
@@ -148,6 +148,9 @@ export function DashboardShell({
           </div>
         ) : null}
       </div>
+      <p role="status" className="sr-only">
+        {pending ? "טוען נתונים…" : ""}
+      </p>
       <div aria-busy={pending} className={`transition-opacity ${pending ? "opacity-50" : "opacity-100"}`}>
         {children}
       </div>

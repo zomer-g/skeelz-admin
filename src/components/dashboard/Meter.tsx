@@ -23,8 +23,9 @@ export function Meter({ label, part, whole, partLabel, restLabel }: {
         role="meter"
         aria-label={label}
         aria-valuemin={0}
-        aria-valuemax={whole}
-        aria-valuenow={part}
+        aria-valuemax={Math.max(whole, 1)}
+        aria-valuenow={Math.min(part, Math.max(whole, 1))}
+        aria-valuetext={`${fmtPercent(part, whole)}: ${partLabel} ${fmtInt(part)} מתוך ${fmtInt(whole)}`}
       >
         <div className="h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
       </div>

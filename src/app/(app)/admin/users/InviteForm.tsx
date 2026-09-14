@@ -7,13 +7,23 @@ import { inviteUser, type ActionState } from "./actions";
 
 export function InviteForm() {
   const [state, action, pending] = useActionState<ActionState, FormData>(inviteUser, null);
+  const failed = Boolean(state && !state.ok);
 
   return (
     <form action={action} className="flex flex-col gap-4">
       <div className="flex flex-wrap items-end gap-3">
-        <label className="flex min-w-[16rem] flex-1 flex-col gap-2">
-          <span className="text-sm font-medium text-muted">אימייל (חשבון Google)</span>
-          <input name="email" type="email" required dir="ltr" placeholder="name@example.com" className={`${fieldClass} text-start`} />
+        <label className="flex min-w-[min(16rem,100%)] flex-1 flex-col gap-2">
+          <span className="text-sm font-medium text-muted">אימייל (חשבון Google, חובה)</span>
+          <input
+            name="email"
+            type="email"
+            required
+            dir="ltr"
+            placeholder="name@example.com"
+            aria-invalid={failed || undefined}
+            aria-describedby="invite-result"
+            className={`${fieldClass} text-start`}
+          />
         </label>
         <label className="flex flex-col gap-2">
           <span className="text-sm font-medium text-muted">תפקיד</span>
@@ -29,11 +39,10 @@ export function InviteForm() {
           {pending ? "יוצר הזמנה…" : "הזמנה"}
         </button>
       </div>
-      {state ? (
-        <p role="status" className={`text-sm ${state.ok ? "text-success" : "text-danger"}`}>
-          {state.message}
-        </p>
-      ) : null}
+      {/* Always mounted, so the result is announced when it arrives. */}
+      <p id="invite-result" role="status" className={`text-sm ${failed ? "text-danger" : "text-success"}`}>
+        {state?.message ?? ""}
+      </p>
     </form>
   );
 }

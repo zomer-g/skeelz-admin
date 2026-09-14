@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { BarList } from "@/components/dashboard/BarList";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
@@ -19,6 +20,7 @@ import {
 } from "@/lib/metrics/candidates";
 import { inScope } from "@/lib/metrics/paid";
 
+export const metadata: Metadata = { title: "דשבורד מועמדים" };
 export const dynamic = "force-dynamic";
 
 // Ordinal ramp for funnel stages: one hue, lighter to darker as the pipeline narrows.
@@ -130,10 +132,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <Card title="בקשות קורות חיים">
+          <Card level={3} title="בקשות קורות חיים">
             <Meter label='שלחו קו"ח מתוך אלה שהתבקשו' part={m.cvReceived} whole={m.requestedCv} partLabel="שלחו" restLabel="לא שלחו (עדיין)" />
           </Card>
-          <Card title={`נדחו על ידינו · ${fmtInt(m.rejectedByUs)}`} className="lg:col-span-2">
+          <Card level={3} title={`נדחו על ידינו · ${fmtInt(m.rejectedByUs)}`} className="lg:col-span-2">
             <BarList
               caption="נדחו על ידינו לפי סיבת הדחייה"
               items={m.rejectReasons.map((r) => ({ label: r.reason, value: r.count }))}
@@ -154,10 +156,10 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <StatCard label="התקבלו לעבודה" value={fmtInt(m.accepted)} hint={`${fmtPercent(m.accepted, m.sentToEmployer)} מהנשלחים`} />
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card title="תגובת מעסיק">
+          <Card level={3} title="תגובת מעסיק">
             <Meter label="קיבלו תגובה כלשהי מהמעסיק" part={m.employerResponded} whole={m.sentToEmployer} partLabel="קיבלו תגובה" restLabel="ללא תגובה" />
           </Card>
-          <Card title="מגעים עם המעסיק">
+          <Card level={3} title="מגעים עם המעסיק">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-medium text-muted">עד שהמעסיק ענה</p>
@@ -184,7 +186,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <SectionTitle hint={`נשלחו קו"ח לפני יותר מ-${WAITING_DAYS} ימים ואין עדיין תגובה · בכל ההגשות, לא רק בטווח`}>
           ממתינים לתגובת מעסיק
         </SectionTitle>
-        <Card title={`${fmtInt(m.waiting.length)} הגשות ממתינות`} tone="accent-light">
+        <Card level={3} title={`${fmtInt(m.waiting.length)} הגשות ממתינות`} tone="accent-light">
           <Table
             head={["מועמד", "משרה", "חברה", "נשלח", "ממתין", "מטפל", ""]}
             empty={m.waiting.length === 0 ? "אין הגשות שממתינות מעל 5 ימים" : undefined}
@@ -196,13 +198,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 <td className="px-3 py-2">{w.company ?? "—"}</td>
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums">{fmtDate(w.sentAt)}</td>
                 <td className="whitespace-nowrap px-3 py-2">
-                  <Badge tone={w.daysWaiting > 14 ? "brand" : "warning"}>⏳ {fmtInt(w.daysWaiting)} ימים</Badge>
+                  <Badge tone={w.daysWaiting > 14 ? "brand" : "warning"}><span aria-hidden>⏳</span> {fmtInt(w.daysWaiting)} ימים</Badge>
                 </td>
                 <td className="px-3 py-2">{w.ownerName ?? "—"}</td>
                 <td className="px-3 py-2 text-end">
                   {sfBase ? (
                     <a href={`${sfBase}/${w.id}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-accent-dark underline underline-offset-4">
-                      Salesforce
+                      Salesforce<span className="sr-only"> · {w.candidateName ?? ""} (נפתח בלשונית חדשה)</span>
                     </a>
                   ) : null}
                 </td>

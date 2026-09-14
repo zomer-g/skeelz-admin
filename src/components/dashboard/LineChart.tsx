@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 export interface SeriesPoint {
   day: string; // YYYY-MM-DD
@@ -45,8 +45,9 @@ function bucket(points: SeriesPoint[], weekly: boolean): { label: string; start:
 /**
  * Line chart for one to four series on one axis: 2px strokes, a 10% wash under
  * a single series, hairline grid. The crosshair snaps to the nearest date and
- * the tooltip lists every series there. Two or more series get a legend, plus
- * end labels when those don't collide. The table view holds every value.
+ * the tooltip lists every series there; arrow keys move it too, and a live
+ * region reads it out. Two or more series get a legend, plus end labels when
+ * those don't collide. The table view holds every value and mailing.
  */
 export interface ChartMarker {
   day: string;
@@ -66,9 +67,20 @@ export function LineChart({
   markers?: ChartMarker[];
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const liveId = useId();
   const [hover, setHover] = useState<number | null>(null);
   const weekly = (series[0]?.points.length ?? 0) > WEEKLY_AFTER_DAYS;
   const data = useMemo(() => series.map((s) => ({ ...s, buckets: bucket(s.points, weekly) })), [series, weekly]);
+
+  // Escape dismisses the tooltip wherever the pointer or focus is (WCAG 1.4.13).
+  useEffect(() => {
+    if (hover === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setHover(null);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [hover]);
 
   const n = data[0]?.buckets.length ?? 0;
   const allValues = data.flatMap((s) => s.buckets.map((b) => b.value));
@@ -93,9 +105,10 @@ export function LineChart({
   const pathFor = (values: number[]) => values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(" ");
   const ticks = [0, max / 2, max];
   const xLabels = [...new Set([0, Math.floor((n - 1) / 2), n - 1])];
+  const buckets = data[0]!.buckets;
 
   // A marker belongs to the bucket that contains its day (the week, on long ranges).
-  const bucketIndex = new Map(data[0]!.buckets.map((b, i) => [b.start, i]));
+  const bucketIndex = new Map(buckets.map((b, i) => [b.start, i]));
   const markersAt = new Map<number, string[]>();
   for (const m of markers) {
     let start = m.day;
@@ -116,6 +129,13 @@ export function LineChart({
     setHover(Math.max(0, Math.min(n - 1, i)));
   };
 
+  const spoken =
+    hover === null
+      ? ""
+      : `${buckets[hover]!.label}: ${data.map((s) => `${multi ? s.label : unit} ${fmt(s.buckets[hover]!.value)}`).join(", ")}${(markersAt.get(hover) ?? [])
+          .map((l) => `, דיוור: ${l}`)
+          .join("")}`;
+
   return (
     <figure className="flex flex-col gap-2">
       {multi ? (
@@ -128,15 +148,33 @@ export function LineChart({
           ))}
         </ul>
       ) : null}
-      <div className="relative" dir="ltr">
+      {/* The pointer may move onto the tooltip without it closing: leaving is tracked on the wrapper. */}
+      <div className="relative" dir="ltr" onPointerLeave={() => setHover(null)}>
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${height}`}
-          className="h-auto w-full touch-none select-none"
+          className="h-auto w-full touch-pan-y select-none"
           role="img"
-          aria-label={`${unit} לאורך זמן`}
+          tabIndex={0}
+          aria-label={`${unit} לאורך זמן, ${buckets[0]!.label} עד ${buckets[n - 1]!.label}, שיא ${fmt(Math.max(...allValues))}. מקשי החצים עוברים בין התאריכים; כל הנתונים בטבלה שמתחת.`}
+          aria-describedby={liveId}
+          onPointerDown={(e) => onMove(e.clientX)}
           onPointerMove={(e) => onMove(e.clientX)}
-          onPointerLeave={() => setHover(null)}
+          onFocus={() => setHover((h) => h ?? n - 1)}
+          onBlur={() => setHover(null)}
+          onKeyDown={(e) => {
+            // The chart runs left to right, so ArrowRight is later in time.
+            const step: Record<string, (h: number | null) => number> = {
+              ArrowRight: (h) => Math.min(n - 1, (h ?? -1) + 1),
+              ArrowLeft: (h) => Math.max(0, (h ?? n) - 1),
+              Home: () => 0,
+              End: () => n - 1,
+            };
+            const move = step[e.key];
+            if (!move) return;
+            e.preventDefault();
+            setHover((h) => move(h));
+          }}
         >
           {ticks.map((t) => (
             <g key={t}>
@@ -148,7 +186,7 @@ export function LineChart({
           ))}
           {xLabels.map((i) => (
             <text key={i} x={x(i)} y={height - 8} textAnchor={i === 0 ? "start" : i === n - 1 ? "end" : "middle"} fontSize={12} fill="var(--color-muted)">
-              {data[0]!.buckets[i]!.label}
+              {buckets[i]!.label}
             </text>
           ))}
           {[...markersAt.keys()].map((i) => (
@@ -159,7 +197,7 @@ export function LineChart({
           ))}
           {!multi ? (
             <path
-              d={`${pathFor(data[0]!.buckets.map((b) => b.value))} L${x(n - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`}
+              d={`${pathFor(buckets.map((b) => b.value))} L${x(n - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`}
               fill={data[0]!.color}
               opacity={0.1}
             />
@@ -193,14 +231,15 @@ export function LineChart({
         </svg>
         {hover !== null ? (
           <div
-            className="pointer-events-none absolute top-2 z-10 -translate-x-1/2 rounded-card bg-ink px-3 py-2 text-xs text-white shadow-field"
+            className="absolute top-2 z-10 -translate-x-1/2 rounded-card bg-ink px-3 py-2 text-xs text-white shadow-field"
             style={{ left: `${Math.min(85, Math.max(15, (x(hover) / W) * 100))}%` }}
             dir="rtl"
+            aria-hidden
           >
-            <p className="mb-1 text-white/80">{data[0]!.buckets[hover]!.label}</p>
+            <p className="mb-1 text-white/80">{buckets[hover]!.label}</p>
             {data.map((s) => (
               <p key={s.label} className="flex items-center gap-2">
-                {multi ? <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: s.color }} aria-hidden /> : null}
+                {multi ? <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: s.color }} /> : null}
                 <span className="text-sm font-bold tabular-nums">{fmt(s.buckets[hover]!.value)}</span>
                 <span className="text-white/80">{multi ? s.label : unit}</span>
               </p>
@@ -212,36 +251,54 @@ export function LineChart({
             ))}
           </div>
         ) : null}
+        <p id={liveId} aria-live="polite" className="sr-only">
+          {spoken}
+        </p>
       </div>
       {markersAt.size ? (
         <p className="flex items-center gap-2 text-xs text-muted">
           <span className="inline-block h-3 w-px bg-brand" aria-hidden />
-          ימי דיוור ({markersAt.size}) · ריחוף מעל הסימון מציג את שם הקמפיין
+          ימי דיוור ({markersAt.size}) · ריחוף, הקשה או מקשי החצים על הגרף מציגים את שם הקמפיין
         </p>
       ) : null}
       <details className="text-sm">
         <summary className="cursor-pointer text-accent-dark underline-offset-4 hover:underline">הצגה כטבלה</summary>
-        <div className="mt-2 max-h-64 overflow-auto">
+        <div className="relative mt-2 max-h-64 overflow-auto" tabIndex={0}>
           <table className="w-full text-start">
+            <caption className="sr-only">{`${unit} לפי ${weekly ? "שבוע" : "יום"}`}</caption>
             <thead>
               <tr className="border-b border-line text-muted">
-                <th className="py-1 text-start font-medium">{weekly ? "שבוע" : "יום"}</th>
+                <th scope="col" className="py-1 text-start font-medium">
+                  {weekly ? "שבוע" : "יום"}
+                </th>
                 {data.map((s) => (
-                  <th key={s.label} className="py-1 text-start font-medium">
+                  <th key={s.label} scope="col" className="py-1 text-start font-medium">
                     {multi ? s.label : unit}
                   </th>
                 ))}
+                {markersAt.size ? (
+                  <th scope="col" className="py-1 text-start font-medium">
+                    דיוור
+                  </th>
+                ) : null}
               </tr>
             </thead>
             <tbody>
-              {data[0]!.buckets.map((b, i) => (
+              {buckets.map((b, i) => (
                 <tr key={b.start} className="border-b border-line/60">
-                  <td className="py-1">{b.label}</td>
+                  <th scope="row" className="py-1 text-start font-normal">
+                    {b.label}
+                  </th>
                   {data.map((s) => (
                     <td key={s.label} className="py-1 tabular-nums">
                       {fmt(s.buckets[i]!.value)}
                     </td>
                   ))}
+                  {markersAt.size ? (
+                    <td className="py-1" dir="auto">
+                      {(markersAt.get(i) ?? []).join(" · ")}
+                    </td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>

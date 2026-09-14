@@ -65,6 +65,8 @@ export async function verifiedIdentity(): Promise<Identity | null> {
     });
     const email = typeof payload.email === "string" ? payload.email.trim().toLowerCase() : "";
     if (!email || !payload.sub) return null;
+    // An unverified email proves nothing; xhostd may omit the claim, so only an explicit false refuses.
+    if (payload.email_verified === false) return null;
     return {
       sub: payload.sub,
       email,
