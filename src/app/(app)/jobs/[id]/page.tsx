@@ -5,9 +5,7 @@ import { BarList } from "@/components/dashboard/BarList";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { LineChart } from "@/components/dashboard/LineChart";
-import { FieldList, Timeline } from "@/components/entities/EntityParts";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
-import { loadCaseTimeline } from "@/lib/entities/activity";
 import { jobStatusLabel, loadJobDetails } from "@/lib/entities/companies";
 import { pageAuth } from "@/lib/auth/guard";
 import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
@@ -49,9 +47,8 @@ export default async function JobPage({
   const createdDay = position.createdAt ? israelDay(position.createdAt) : range.fromDay;
   const chartFrom = createdDay > range.fromDay ? createdDay : range.fromDay;
 
-  const [details, timeline, facts, gaMap, dailyOpens, events] = await Promise.all([
+  const [details, facts, gaMap, dailyOpens, events] = await Promise.all([
     loadJobDetails(id),
-    loadCaseTimeline(id),
     loadApplicationFacts(),
     key ? loadJobGa(range.fromDay, range.toDay, key) : Promise.resolve(new Map()),
     key ? loadJobDailyOpens(key, chartFrom, range.toDay) : Promise.resolve(new Map<string, number>()),
@@ -102,7 +99,10 @@ export default async function JobPage({
           {details?.status ? <Badge tone={details.status === "Active" ? "success" : "neutral"}>באתר: {jobStatusLabel(details.status)}</Badge> : null}
           {position.status ? <Badge>{position.status}</Badge> : null}
           {position.manageStatus ? <Badge tone="accent">ניהול משרה: {position.manageStatus}</Badge> : null}
-          <span className="ms-auto flex gap-4">
+          <span className="ms-auto flex flex-wrap gap-4">
+            <Link href={`/positions/${position.id}`} className="font-medium text-accent-dark underline underline-offset-4">
+              כרטיס המשרה
+            </Link>
             {key ? (
               <a href={siteJobUrl(key)} target="_blank" rel="noreferrer" className="font-medium text-accent-dark underline underline-offset-4">
                 דף המשרה באתר<span className="sr-only"> (נפתח בלשונית חדשה)</span>
@@ -232,34 +232,6 @@ export default async function JobPage({
           </p>
         </Card>
 
-        {details ? (
-          <Card title="פרטי המשרה" className="mt-4">
-            <FieldList
-              items={[
-                ["מיקום", details.location],
-                ["היקף", details.time],
-                ["איש קשר", details.contactName],
-                ["מייל איש הקשר", details.contactEmail ? <a href={`mailto:${details.contactEmail}`} dir="ltr">{details.contactEmail}</a> : null],
-                ["טלפון איש הקשר", details.contactPhone ? <a href={`tel:${details.contactPhone}`} dir="ltr">{details.contactPhone}</a> : null],
-                ["הגשה עצמית באתר", details.selfApply ? "כן" : null],
-                ["עודכנה באתר", details.siteUpdatedAt ? fmtDate(details.siteUpdatedAt) : null],
-                ["הערות פנימיות", details.comments ? <span className="whitespace-pre-line font-normal">{details.comments}</span> : null],
-              ]}
-            />
-            {details.description ? (
-              <details className="mt-4">
-                <summary className="cursor-pointer text-sm font-medium text-accent-dark">תיאור המשרה</summary>
-                <p className="mt-2 whitespace-pre-line text-sm" dir="auto">
-                  {details.description}
-                </p>
-              </details>
-            ) : null}
-          </Card>
-        ) : null}
-
-        <Card title="פעילות על המשרה" className="mt-4">
-          <Timeline items={timeline} empty="לא נרשמה פעילות על המשרה עצמה" />
-        </Card>
       </DashboardShell>
     </>
   );

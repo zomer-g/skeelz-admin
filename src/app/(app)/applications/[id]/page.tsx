@@ -89,7 +89,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
             [
               "משרה",
               app.jobId ? (
-                <Link href={`/jobs/${app.jobId}`} className="underline underline-offset-4">
+                <Link href={`/positions/${app.jobId}`} className="underline underline-offset-4">
                   {app.jobTitle ?? "(ללא שם)"}
                 </Link>
               ) : (

@@ -42,6 +42,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 - **Employers:** employer lead = Case RecordType `lead_employer`, employer = its `AccountId`, pipeline = `Status` history
   (פנייה ראשונה → … → נחתם חוזה). A job is live on the site when `PStatus__c` = `Active` (Case `Status` is not maintained
   on jobs). Definitions in `docs/employers-tab-metrics.md`, code in `src/lib/metrics/employers.ts`.
+- **Dashboard tabs** (`docs/dashboard-tabs.md`): `/` executive summary · `/talent` candidate pool · `/jobs` jobs + the
+  application pipeline (`ApplicationPipeline`) · `/employers` · `/marketing` · `/campaigns`. A job has two pages: `/jobs/[id]`
+  (dashboard analytics) and `/positions/[id]` (the entity card, under מעסיקים) — entity pages link to `/positions`.
 - **Entities** (`/applications`, `/companies`, `/candidates`; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
   GET search forms, 50 per page. A company is jobs grouped by normalized `company_cambium__c` (`src/lib/metrics/company.ts`).
   Candidate files are never mirrored: listed live via `ContentDocumentLink` and served only through
@@ -66,3 +69,13 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 - Secrets only via xhostd `set_env(secret=true)`; never log them or send them to the client.
 - No server-side redirects to absolute URLs: behind xhostd the server doesn't know its public host, and Next's
   proxy rejects a relative `Location`. Anonymous page requests render `SignInScreen` (200); `src/proxy.ts` only 401s the API.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

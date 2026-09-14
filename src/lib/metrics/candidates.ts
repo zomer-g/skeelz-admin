@@ -1,4 +1,5 @@
 import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { cached } from "@/lib/cache";
 import { getDb } from "@/lib/db/client";
 import { sfCase, sfRecordType, syncState } from "@/lib/db/schema";
 import { jobPaidSql } from "./paid";
@@ -117,7 +118,12 @@ interface FactsRow {
   employer_calls: number;
 }
 
-export async function loadApplicationFacts(): Promise<ApplicationFacts[]> {
+/** Cached briefly (see lib/cache.ts): most dashboard pages load the same facts on every render. */
+export function loadApplicationFacts(): Promise<ApplicationFacts[]> {
+  return cached("application-facts", queryApplicationFacts);
+}
+
+async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
   const result = await getDb().execute<FactsRow & Record<string, unknown>>(sql`
     WITH apps AS (
       SELECT c.id, c.status, c.created_date, c.closed_date, c.contact_id, c.parent_id, c.owner_id, c.data,

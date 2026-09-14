@@ -48,13 +48,15 @@ const SCREEN_LABELS: [prefix: string, label: string][] = [
   ["/companies", "מעסיקים"],
   ["/candidates/", "מועמד"],
   ["/candidates", "מועמדים"],
+  ["/positions/", "משרה"],
+  ["/talent", "דשבורד · מועמדים"],
   ["/jobs/", "דשבורד · משרה"],
   ["/jobs", "דשבורד · משרות"],
   ["/marketing", "דשבורד · שיווק"],
   ["/employers", "דשבורד · מעסיקים"],
   ["/campaigns/", "דשבורד · דיוור"],
   ["/campaigns", "דשבורד · דיוורים"],
-  ["/", "דשבורד · מועמדים"],
+  ["/", "דשבורד · תקציר מנהלים"],
 ];
 
 const RANGE_LABELS: Record<string, string> = {

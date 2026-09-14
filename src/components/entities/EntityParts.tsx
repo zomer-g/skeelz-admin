@@ -143,7 +143,7 @@ export function ApplicationsTable({ rows, hide = [], empty = "אין הגשות"
           {showJob ? (
             <td className="px-3 py-2">
               {a.jobId ? (
-                <Link href={`/jobs/${a.jobId}`} className="underline-offset-4 hover:underline">
+                <Link href={`/positions/${a.jobId}`} className="underline-offset-4 hover:underline">
                   {a.jobTitle ?? "(ללא שם)"}
                 </Link>
               ) : (

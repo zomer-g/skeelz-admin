@@ -76,7 +76,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
             return (
               <tr key={j.id}>
                 <td className="px-3 py-2">
-                  <Link href={`/jobs/${j.id}`} className="font-medium underline-offset-4 hover:underline">
+                  <Link href={`/positions/${j.id}`} className="font-medium underline-offset-4 hover:underline">
                     {j.title ?? "(ללא שם)"}
                   </Link>{" "}
                   {j.paid ? <Badge tone="brand">בתשלום</Badge> : null}

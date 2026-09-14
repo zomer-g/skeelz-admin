@@ -5,7 +5,8 @@ import { useRef } from "react";
 import { useActiveInStrip } from "../useActiveInStrip";
 
 const TABS = [
-  { key: "candidates", label: "מועמדים", href: "/" },
+  { key: "summary", label: "תקציר מנהלים", href: "/" },
+  { key: "candidates", label: "מועמדים", href: "/talent" },
   { key: "jobs", label: "משרות", href: "/jobs" },
   { key: "employers", label: "מעסיקים", href: "/employers" },
   { key: "marketing", label: "שיווק", href: "/marketing" },

@@ -3,62 +3,61 @@ import Link from "next/link";
 import { BarList } from "@/components/dashboard/BarList";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
-import { Meter } from "@/components/dashboard/Meter";
+import { LineChart } from "@/components/dashboard/LineChart";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
-import { Badge, Card, StatCard, Table } from "@/components/ui";
+import { Card, StatCard } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
-import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
-import { fmtDate, fmtDecimal, fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
-import {
-  computeCandidateMetrics,
-  countNewJobs,
-  loadApplicationFacts,
-  STATUS_HISTORY_START,
-  syncFreshness,
-  WAITING_DAYS,
-  type Stats,
-} from "@/lib/metrics/candidates";
+import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
+import { searchCompanies } from "@/lib/entities/companies";
+import { fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
+import { campaignLabel, isMailing, loadCampaignSummaries } from "@/lib/metrics/campaigns";
+import { computeCandidateMetrics, countNewJobs, loadApplicationFacts, syncFreshness } from "@/lib/metrics/candidates";
+import { computeLeadMetrics, loadLeadFacts } from "@/lib/metrics/employers";
+import { loadPositions } from "@/lib/metrics/jobs";
+import { loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
 import { inScope } from "@/lib/metrics/paid";
+import { loadTalentMetrics } from "@/lib/metrics/talent";
 
-export const metadata: Metadata = { title: "דשבורד מועמדים" };
+export const metadata: Metadata = { title: "תקציר מנהלים" };
 export const dynamic = "force-dynamic";
 
-// Ordinal ramp for funnel stages: one hue, lighter to darker as the pipeline narrows.
-const FUNNEL_COLORS = [
-  "var(--color-funnel-1)",
-  "var(--color-funnel-2)",
-  "var(--color-funnel-3)",
-  "var(--color-funnel-4)",
-  "var(--color-funnel-5)",
-  "var(--color-funnel-6)",
-];
+const FUNNEL = ["var(--color-funnel-1)", "var(--color-funnel-2)", "var(--color-funnel-3)", "var(--color-funnel-4)", "var(--color-funnel-5)", "var(--color-funnel-6)"];
 
-function statsHint(s: Stats, unit: string): string {
-  if (!s.count) return "אין נתונים";
-  return `ממוצע ${fmtDecimal(s.avg)} ${unit} · מתוך ${fmtInt(s.count)} הגשות`;
-}
-
-function SectionTitle({ children, hint }: { children: string; hint?: string }) {
+function Section({ title, hint, href, children }: { title: string; hint?: string; href?: string; children: React.ReactNode }) {
   return (
-    <div className="mb-4 mt-10 flex flex-wrap items-baseline gap-3 first:mt-0">
-      <h2 className="text-xl font-bold">{children}</h2>
-      {hint ? <span className="text-sm text-muted">{hint}</span> : null}
-    </div>
+    <section className="mt-10 first:mt-0">
+      <div className="mb-4 flex flex-wrap items-baseline gap-3">
+        <h2 className="text-xl font-bold">{title}</h2>
+        {hint ? <span className="text-sm text-muted">{hint}</span> : null}
+        {href ? (
+          <Link href={href} className="ms-auto text-sm font-medium text-accent-dark underline underline-offset-4">
+            לפירוט<span className="sr-only"> · {title}</span>
+          </Link>
+        ) : null}
+      </div>
+      {children}
+    </section>
   );
 }
 
-export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+/**
+ * Executive summary: the headline of every tab on one page. Pipeline figures use
+ * the event basis — what happened in the range — which is how a summary reads.
+ */
+export default async function SummaryPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const search = await searchParams;
   const auth = await pageAuth("viewer", viewPath("/", search));
   if (!auth.ok) return auth.render;
 
   const params = parseDashboardParams(search);
+  const query = rangeQuery(params);
+  const withQuery = (path: string) => (query ? `${path}?${query}` : path);
   const freshness = await syncFreshness();
 
   if (!freshness.casesSyncedAt) {
     return (
       <>
-        <DashboardTabs active="candidates" />
+        <DashboardTabs active="summary" />
         <Card title="הנתונים עוד לא סונכרנו">
           <p className="text-muted">הסנכרון הראשון מ-Salesforce עוד לא הסתיים. הדשבורד יתמלא אחריו.</p>
           {auth.user.role === "admin" ? (
@@ -71,152 +70,131 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     );
   }
 
-  const [facts, newJobs] = await Promise.all([loadApplicationFacts(), countNewJobs(params.from, params.to)]);
-  const m = computeCandidateMetrics(facts.filter(inScope(params.scope)), params.scope === "paid" ? newJobs.paid : newJobs.all, params);
-  const created = facts.filter((f) => f.createdAt >= params.from && f.createdAt < params.to);
-  const hired = facts.filter((f) => f.acceptedAt && f.acceptedAt >= params.from && f.acceptedAt < params.to);
-  const nowScope = params.basis === "application" ? "מתוך ההגשות בטווח, כרגע" : "כרגע, בכל ההגשות";
-  const sfBase = process.env.SF_LOGIN_URL?.replace(/\/+$/, "");
+  const paidOnly = params.scope === "paid";
+  const [facts, newJobs, marketing, campaigns, talent, positions, leads, companies] = await Promise.all([
+    loadApplicationFacts(),
+    countNewJobs(params.from, params.to),
+    loadMarketingMetrics(params),
+    loadCampaignSummaries(params.fromDay, params.toDay),
+    loadTalentMetrics(params),
+    loadPositions(),
+    loadLeadFacts(),
+    searchCompanies({ q: "", location: "", paid: paidOnly ? "paid" : "", sort: "", all: false }, { pageSize: 1 }),
+  ]);
 
-  const funnel = [
-    { label: "הגשות", value: m.applications },
-    { label: 'התבקשו לשלוח קו"ח', value: m.requestedCv },
-    { label: 'קו"ח נשלחו למעסיק', value: m.sentToEmployer },
-    { label: "קיבלו תגובה מהמעסיק", value: m.employerResponded },
-    { label: "זומנו לראיון", value: m.interviews },
-    { label: "התקבלו", value: m.accepted },
-  ].map((s, i) => ({ ...s, color: FUNNEL_COLORS[i] }));
+  const scoped = facts.filter(inScope(params.scope));
+  const pipeline = computeCandidateMetrics(scoped, paidOnly ? newJobs.paid : newJobs.all, { ...params, basis: "event" });
+  const leadMetrics = computeLeadMetrics(leads, params.from, params.to);
+  const activeJobs = positions.filter((p) => p.active);
+  const activeInScope = activeJobs.filter(inScope(params.scope));
+
+  const mailings = campaigns.filter((c) => isMailing(c) && c.sessions >= 20);
+  const markers = mailings.map((c) => ({ day: c.sendDay, label: `${campaignLabel(c)} (${fmtInt(c.sessions)} כניסות)` }));
+  const days = eachDay(params.fromDay, params.toDay);
+  const dailyHires = new Map<string, number>();
+  for (const f of scoped) {
+    if (!f.acceptedAt || f.acceptedAt < params.from || f.acceptedAt >= params.to) continue;
+    const day = israelDay(f.acceptedAt);
+    dailyHires.set(day, (dailyHires.get(day) ?? 0) + 1);
+  }
+  const ev = (name: string) => marketing.events.get(name) ?? 0;
+  const hasGa = Boolean(marketing.gaSyncedAt);
 
   return (
     <>
-      <DashboardTabs active="candidates" query={rangeQuery(params)} />
-
-      <DashboardShell preset={params.preset} basis={params.basis} scope={params.scope} fromDay={params.fromDay} toDay={params.toDay}>
+      <DashboardTabs active="summary" query={query} />
+      <DashboardShell preset={params.preset} scope={params.scope} fromDay={params.fromDay} toDay={params.toDay} showBasis={false}>
         <PaidSplit
           scope={params.scope}
           items={[
-            { label: "משרות חדשות", paid: newJobs.paid, total: newJobs.all },
-            { label: "הגשות", paid: created.filter((f) => f.paid).length, total: created.length },
-            { label: "התקבלו לעבודה", paid: hired.filter((f) => f.paid).length, total: hired.length },
+            { label: "משרות פעילות באתר", paid: activeJobs.filter((p) => p.paid).length, total: activeJobs.length },
+            { label: "הגשות", paid: marketing.split.applications.paid, total: marketing.split.applications.all },
           ]}
         />
         <p className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
           <span>
             {formatDay(params.fromDay)} – {formatDay(params.toDay)}
           </span>
-          <span>נתונים מ-Salesforce עודכנו {fmtRelative(freshness.casesSyncedAt)}</span>
-          {!freshness.callsAvailable ? <Badge tone="warning">שיחות עדיין לא נכללות במגעים</Badge> : null}
+          <span>Salesforce עודכן {fmtRelative(freshness.casesSyncedAt)}</span>
+          {marketing.gaSyncedAt ? <span>Google Analytics עודכן {fmtRelative(marketing.gaSyncedAt)}</span> : null}
         </p>
 
-        <SectionTitle hint="משרות והגשות שנכנסו">קליטה</SectionTitle>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="משרות חדשות" value={fmtInt(m.newJobs)} hint="משרות שנפתחו בטווח" />
-          <StatCard label="הגשות שהתקבלו" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" />
-          <StatCard label='הגשות בסטטוס "חדש"' value={fmtInt(m.statusNew)} hint={nowScope} />
-          <StatCard
-            label="זמן למגע ראשון"
-            value={m.firstTouchHours.median == null ? "—" : `${fmtDecimal(m.firstTouchHours.median)} שע׳`}
-            hint={`חציון · ${statsHint(m.firstTouchHours, "שע׳")}`}
-          />
-        </div>
+        <Section title="מועמדים" hint="המאגר ומה קרה בו בטווח" href={withQuery("/talent")}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="מועמדים במאגר" value={fmtInt(talent.candidates)} hint={`${fmtPercent(talent.withCv, talent.candidates)} עם קו"ח`} />
+            <StatCard label="מועמדים חדשים" value={fmtInt(talent.newInRange)} />
+            <StatCard label="מועמדים פעילים" value={fmtInt(talent.active)} />
+            <StatCard label="הגישו מועמדות" value={fmtInt(talent.applicants)} hint={`${fmtInt(talent.returning)} מהם מגישים חוזרים`} />
+          </div>
+        </Section>
 
-        <SectionTitle hint="מההגשה ועד קורות החיים">מול המועמד</SectionTitle>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label='התבקשו לשלוח קו"ח' value={fmtInt(m.requestedCv)} />
-          <StatCard label="שלחו בפועל" value={fmtInt(m.cvReceived)} hint={`${fmtPercent(m.cvReceived, m.requestedCv)} מאלה שהתבקשו`} />
-          <StatCard label="בטיפול מועמד/מעסיק" value={fmtInt(m.inHandling)} hint={nowScope} />
-          <StatCard
-            label='מגעים עד שליחת קו"ח'
-            value={fmtDecimal(m.touchesUntilSent.avg)}
-            hint={`ממוצע · מיילים ${fmtDecimal(m.touchMix.candidate.emails)} · שיחות ${fmtDecimal(m.touchMix.candidate.calls)} · ${fmtInt(m.touchesUntilSent.count)} הגשות`}
-          />
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-3">
-          <Card level={3} title="בקשות קורות חיים">
-            <Meter label='שלחו קו"ח מתוך אלה שהתבקשו' part={m.cvReceived} whole={m.requestedCv} partLabel="שלחו" restLabel="לא שלחו (עדיין)" />
-          </Card>
-          <Card level={3} title={`נדחו על ידינו · ${fmtInt(m.rejectedByUs)}`} className="lg:col-span-2">
+        <Section title="משרות והגשות" hint="מה קרה בטווח" href={withQuery("/jobs")}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard label="משרות פעילות באתר" value={fmtInt(activeInScope.length)} hint={`${fmtInt(pipeline.newJobs)} משרות חדשות בטווח`} />
+            <StatCard label="הגשות" value={fmtInt(pipeline.applications)} hint={hasGa ? `${fmtPercent(pipeline.applications, ev(SITE_EVENTS.openJob))} מפתיחות המשרה` : undefined} />
+            <StatCard label='קו"ח שנשלחו למעסיקים' value={fmtInt(pipeline.sentToEmployer)} hint={`${fmtInt(pipeline.employerResponded)} קיבלו תגובה`} />
+            <StatCard label="התקבלו לעבודה" value={fmtInt(pipeline.accepted)} hint={`${fmtInt(pipeline.interviews)} זומנו לראיון`} />
+          </div>
+          <Card level={3} title="מהאתר ועד השמה" className="mt-4">
             <BarList
-              caption="נדחו על ידינו לפי סיבת הדחייה"
-              items={m.rejectReasons.map((r) => ({ label: r.reason, value: r.count }))}
+              caption="משפך מפתיחת משרה ועד השמה"
+              showShareOf={hasGa ? ev(SITE_EVENTS.openJob) || undefined : pipeline.applications || undefined}
+              items={[
+                ...(hasGa
+                  ? [
+                      { label: "פתיחות משרה באתר", value: ev(SITE_EVENTS.openJob) },
+                      { label: 'לחיצות "הגש מועמדות"', value: ev(SITE_EVENTS.applyClick) },
+                    ]
+                  : []),
+                { label: "הגשות ב-Salesforce", value: pipeline.applications },
+                { label: 'קו"ח נשלחו למעסיק', value: pipeline.sentToEmployer },
+                { label: "זומנו לראיון", value: pipeline.interviews },
+                { label: "התקבלו", value: pipeline.accepted },
+              ].map((s, i, all) => ({ ...s, color: FUNNEL[i + (FUNNEL.length - all.length)] }))}
             />
-            <p className="mt-3 text-xs text-muted">הגשה עם כמה סיבות נספרת בכל אחת מהן.</p>
+            <p className="mt-3 text-xs text-muted">כל שלב נספר לפי מתי שקרה בטווח. פתיחות ולחיצות מ-Google Analytics, השאר מ-Salesforce.</p>
           </Card>
-        </div>
+        </Section>
 
-        <SectionTitle hint="מהשליחה ועד התשובה">מול המעסיק</SectionTitle>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label='קו"ח שנשלחו למעסיק' value={fmtInt(m.sentToEmployer)} />
-          <StatCard
-            label="זמן להעברה"
-            value={m.daysToTransfer.median == null ? "—" : `${fmtDecimal(m.daysToTransfer.median)} ימים`}
-            hint={`חציון · ${statsHint(m.daysToTransfer, "ימים")}`}
-          />
-          <StatCard label="זומנו לראיון" value={fmtInt(m.interviews)} hint={`${fmtPercent(m.interviews, m.sentToEmployer)} מהנשלחים`} />
-          <StatCard label="התקבלו לעבודה" value={fmtInt(m.accepted)} hint={`${fmtPercent(m.accepted, m.sentToEmployer)} מהנשלחים`} />
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card level={3} title="תגובת מעסיק">
-            <Meter label="קיבלו תגובה כלשהי מהמעסיק" part={m.employerResponded} whole={m.sentToEmployer} partLabel="קיבלו תגובה" restLabel="ללא תגובה" />
-          </Card>
-          <Card level={3} title="מגעים עם המעסיק">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-sm font-medium text-muted">עד שהמעסיק ענה</p>
-                <p className="text-3xl font-bold">{fmtDecimal(m.touchesUntilResponse.responded.avg)}</p>
-                <p className="text-xs text-muted">ממוצע · {fmtInt(m.touchesUntilResponse.responded.count)} הגשות</p>
+        <Section title="מעסיקים" hint="לידים, חוזים ומעסיקים עם משרות פעילות" href={withQuery("/employers")}>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <StatCard label="מעסיקים עם משרות פעילות" value={fmtInt(companies.total)} hint={paidOnly ? "עם משרה פעילה בתשלום" : undefined} />
+            <StatCard label="לידים חדשים של מעסיקים" value={fmtInt(leadMetrics.newLeads)} />
+            <StatCard label="חוזים שנחתמו" value={fmtInt(leadMetrics.signed.length)} />
+          </div>
+        </Section>
+
+        <Section title="אתר ודיוור" hint="Google Analytics ו-SMOOV, עם ימי הדיוור מסומנים" href={withQuery("/marketing")}>
+          {hasGa ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <StatCard label="כניסות לאתר" value={fmtInt(marketing.sessions)} hint={`${fmtPercent(marketing.engagedSessions, marketing.sessions)} עם מעורבות`} />
+                <StatCard label="משתמשים חדשים" value={fmtInt(marketing.newUsers)} />
+                <StatCard label="פתיחות משרה" value={fmtInt(ev(SITE_EVENTS.openJob))} hint={paidOnly ? "של משרות בתשלום" : undefined} />
+                <StatCard label="דיוורים בטווח" value={fmtInt(mailings.length)} hint={mailings.length ? `${fmtInt(mailings.reduce((s, c) => s + c.sessions, 0))} כניסות מהם` : undefined} />
               </div>
-              <div>
-                <p className="text-sm font-medium text-muted">כשהמעסיק לא ענה</p>
-                <p className="text-3xl font-bold">{fmtDecimal(m.touchesUntilResponse.notResponded.avg)}</p>
-                <p className="text-xs text-muted">ממוצע · {fmtInt(m.touchesUntilResponse.notResponded.count)} הגשות</p>
+              <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+                <Card level={3} title="כניסות לאתר">
+                  <LineChart unit="כניסות" markers={markers} series={[{ label: "כניסות", color: "var(--color-accent)", points: days.map((day) => ({ day, value: marketing.dailySessions.get(day) ?? 0 })) }]} />
+                </Card>
+                <Card level={3} title="הגשות והשמות">
+                  <LineChart
+                    unit="הגשות"
+                    markers={markers}
+                    series={[
+                      { label: "הגשות", color: "var(--color-series-1)", points: days.map((day) => ({ day, value: marketing.dailyApplications.get(day) ?? 0 })) },
+                      { label: "התקבלו לעבודה", color: "var(--color-series-3)", points: days.map((day) => ({ day, value: dailyHires.get(day) ?? 0 })) },
+                    ]}
+                  />
+                </Card>
               </div>
-            </div>
-            <p className="mt-4 text-xs text-muted">
-              בממוצע להגשה שנשלחה: מיילים {fmtDecimal(m.touchMix.employer.emails)} · שיחות {fmtDecimal(m.touchMix.employer.calls)}
-            </p>
-          </Card>
-        </div>
-
-        <SectionTitle hint={params.basis === "application" ? "ההגשות שנוצרו בטווח" : "האירועים שקרו בטווח"}>משפך</SectionTitle>
-        <Card>
-          <BarList caption="משפך ההגשות" items={funnel} showShareOf={m.applications || undefined} />
-        </Card>
-
-        <SectionTitle hint={`נשלחו קו"ח לפני יותר מ-${WAITING_DAYS} ימים ואין עדיין תגובה · בכל ההגשות, לא רק בטווח`}>
-          ממתינים לתגובת מעסיק
-        </SectionTitle>
-        <Card level={3} title={`${fmtInt(m.waiting.length)} הגשות ממתינות`} tone="accent-light">
-          <Table
-            head={["מועמד", "משרה", "חברה", "נשלח", "ממתין", "מטפל", ""]}
-            empty={m.waiting.length === 0 ? "אין הגשות שממתינות מעל 5 ימים" : undefined}
-          >
-            {m.waiting.map((w) => (
-              <tr key={w.id}>
-                <td className="px-3 py-2 font-medium">{w.candidateName ?? "—"}</td>
-                <td className="px-3 py-2">{w.jobTitle ?? "—"}</td>
-                <td className="px-3 py-2">{w.company ?? "—"}</td>
-                <td className="whitespace-nowrap px-3 py-2 tabular-nums">{fmtDate(w.sentAt)}</td>
-                <td className="whitespace-nowrap px-3 py-2">
-                  <Badge tone={w.daysWaiting > 14 ? "brand" : "warning"}><span aria-hidden>⏳</span> {fmtInt(w.daysWaiting)} ימים</Badge>
-                </td>
-                <td className="px-3 py-2">{w.ownerName ?? "—"}</td>
-                <td className="px-3 py-2 text-end">
-                  {sfBase ? (
-                    <a href={`${sfBase}/${w.id}`} target="_blank" rel="noreferrer" className="text-sm font-medium text-accent-dark underline underline-offset-4">
-                      Salesforce<span className="sr-only"> · {w.candidateName ?? ""} (נפתח בלשונית חדשה)</span>
-                    </a>
-                  ) : null}
-                </td>
-              </tr>
-            ))}
-          </Table>
-        </Card>
-
-        <p className="mt-8 text-xs text-muted">
-          היסטוריית הסטטוסים ב-Salesforce נשמרת מ-{fmtDate(STATUS_HISTORY_START)}: מדדי שלבים והזמנים מחושבים רק להגשות שיש להן היסטוריה.
-          מגעים = מיילים יוצאים{freshness.callsAvailable ? ' ושיחות (Log a Call) שנרשמו על ההגשה. שיחה משויכת למועמד או למעסיק לפי השדה "צד לשיחה"' : " שנרשמו על ההגשה"}.
-        </p>
+            </>
+          ) : (
+            <Card>
+              <p className="text-muted">Google Analytics עוד לא סונכרן.</p>
+            </Card>
+          )}
+        </Section>
       </DashboardShell>
     </>
   );

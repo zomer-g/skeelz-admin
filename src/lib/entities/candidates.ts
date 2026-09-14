@@ -112,7 +112,7 @@ export async function loadCandidateFilterOptions(): Promise<{ districts: string[
 }
 
 /** Skill checkboxes on the Contact, with their labels. */
-const SKILL_FIELDS: [field: string, label: string][] = [
+export const SKILL_FIELDS: [field: string, label: string][] = [
   ["Team_work__c", "עבודה בצוות"],
   ["Service__c", "שירותיות"],
   ["Creative_thinking__c", "חשיבה יצירתית"],

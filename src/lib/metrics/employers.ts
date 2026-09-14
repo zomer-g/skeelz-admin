@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { cached } from "@/lib/cache";
 import { getDb } from "@/lib/db/client";
 import { CALL_PARTY, normStatus, RECORD_TYPES, stats, type Stats } from "./candidates";
 import { companyKeySql, employerEmailsSql } from "./company";
@@ -75,7 +76,12 @@ export interface LeadFacts {
   calls: number;
 }
 
-export async function loadLeadFacts(): Promise<LeadFacts[]> {
+/** Cached briefly (see lib/cache.ts). */
+export function loadLeadFacts(): Promise<LeadFacts[]> {
+  return cached("lead-facts", queryLeadFacts);
+}
+
+async function queryLeadFacts(): Promise<LeadFacts[]> {
   // A stage counts from its first appearance in the status history; a lead that
   // sits in a stage with no history for it (created straight into it) reached it when created.
   const reached = (key: keyof typeof LEAD_STATUS) =>

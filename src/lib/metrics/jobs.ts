@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { cached } from "@/lib/cache";
 import { getDb } from "@/lib/db/client";
 import { containsPattern } from "@/lib/entities/search";
 import { EMPLOYER_RESPONSE_STATUSES, RECORD_TYPES, STATUS, type ApplicationFacts } from "./candidates";
@@ -121,8 +122,9 @@ export async function listPositions(opts: {
   return { rows: rows.map(toPosition), total: num(count?.n) };
 }
 
-export async function loadPositions(): Promise<Position[]> {
-  return (await run(positionsSql(sql.raw("")))).map(toPosition);
+/** Cached briefly (see lib/cache.ts): the jobs, employers and summary pages all load every job. */
+export function loadPositions(): Promise<Position[]> {
+  return cached("positions", async () => (await run(positionsSql(sql.raw("")))).map(toPosition));
 }
 
 export async function loadPosition(id: string): Promise<Position | null> {

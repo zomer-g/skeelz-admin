@@ -1,4 +1,5 @@
 import { sql } from "drizzle-orm";
+import { cached } from "@/lib/cache";
 import type { DashboardParams } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { RECORD_TYPES } from "./candidates";
@@ -86,7 +87,12 @@ async function rows<T extends Row>(query: ReturnType<typeof sql>): Promise<T[]> 
 
 const n = (v: unknown) => Number(v ?? 0);
 
-export async function loadMarketingMetrics(p: DashboardParams): Promise<MarketingMetrics> {
+/** Cached briefly per range and scope (see lib/cache.ts). */
+export function loadMarketingMetrics(p: DashboardParams): Promise<MarketingMetrics> {
+  return cached(`marketing:${p.fromDay}:${p.toDay}:${p.scope}`, () => queryMarketingMetrics(p));
+}
+
+async function queryMarketingMetrics(p: DashboardParams): Promise<MarketingMetrics> {
   const inDays = (column: string) => sql`${sql.raw(column)} >= ${p.fromDay}::date AND ${sql.raw(column)} <= ${p.toDay}::date`;
   const paidOnly = p.scope === "paid";
   // Applications with their job, so the paid test can fall back to the job's own flag.

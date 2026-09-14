@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ApplicationPipeline, SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
-import { fmtDate, fmtInt } from "@/lib/format";
-import { loadApplicationFacts } from "@/lib/metrics/candidates";
+import { fmtDate, fmtInt, fmtRelative } from "@/lib/format";
+import { computeCandidateMetrics, countNewJobs, loadApplicationFacts, syncFreshness } from "@/lib/metrics/candidates";
 import { buildJobRows, loadJobGa, loadPositions, matchesSearch, type JobRow } from "@/lib/metrics/jobs";
 import { inScope } from "@/lib/metrics/paid";
 
@@ -16,6 +17,7 @@ export const dynamic = "force-dynamic";
 
 const MAX_ROWS = 150;
 
+/** Jobs tab: every job-side figure — the jobs themselves, and the pipeline their applications go through. */
 export default async function JobsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const search = await searchParams;
   const auth = await pageAuth("viewer", viewPath("/jobs", search));
@@ -25,7 +27,15 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const query = rangeQuery(params);
   const q = typeof search.q === "string" ? search.q.trim() : "";
 
-  const [positions, ga, facts] = await Promise.all([loadPositions(), loadJobGa(params.fromDay, params.toDay), loadApplicationFacts()]);
+  const [positions, ga, facts, newJobs, freshness] = await Promise.all([
+    loadPositions(),
+    loadJobGa(params.fromDay, params.toDay),
+    loadApplicationFacts(),
+    countNewJobs(params.from, params.to),
+    syncFreshness(),
+  ]);
+  const pipeline = computeCandidateMetrics(facts.filter(inScope(params.scope)), params.scope === "paid" ? newJobs.paid : newJobs.all, params);
+
   const all = buildJobRows(positions, ga, facts, params.from, params.to);
   const inView = (r: JobRow) => inScope(params.scope)(r.position);
   const activeAll = all.filter((r) => r.ga.opens > 0 || r.ga.pageViews > 0 || r.funnel.applications > 0);
@@ -44,29 +54,36 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     { opens: 0, clicks: 0, applications: 0 },
   );
   const detailQuery = query ? `?${query}` : "";
+  const hired = facts.filter((f) => f.acceptedAt && f.acceptedAt >= params.from && f.acceptedAt < params.to);
 
   return (
     <>
       <DashboardTabs active="jobs" query={query} />
       <DashboardShell
         preset={params.preset}
+        basis={params.basis}
         scope={params.scope}
         fromDay={params.fromDay}
         toDay={params.toDay}
-        showBasis={false}
         search={{ value: q, placeholder: "חיפוש משרה: שם, חברה או מספר Case" }}
       >
         <PaidSplit
           scope={params.scope}
           items={[
+            { label: "משרות חדשות", paid: newJobs.paid, total: newJobs.all },
             { label: "משרות עם פעילות", paid: activeAll.filter((r) => r.position.paid).length, total: activeAll.length },
-            { label: "הגשות למשרות האלה", paid: applicationsOf(activeAll.filter((r) => r.position.paid)), total: applicationsOf(activeAll) },
+            { label: "הגשות", paid: applicationsOf(activeAll.filter((r) => r.position.paid)), total: applicationsOf(activeAll) },
+            { label: "התקבלו לעבודה", paid: hired.filter((f) => f.paid).length, total: hired.length },
           ]}
         />
-        <p className="mb-6 text-sm text-muted">
-          {formatDay(params.fromDay)} – {formatDay(params.toDay)} · פתיחות ולחיצות מ-Google Analytics, הגשות שנוצרו בטווח מ-Salesforce
+        <p className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
+          <span>
+            {formatDay(params.fromDay)} – {formatDay(params.toDay)} · פתיחות ולחיצות מ-Google Analytics, הגשות מ-Salesforce
+          </span>
+          {freshness.casesSyncedAt ? <span>נתונים מ-Salesforce עודכנו {fmtRelative(freshness.casesSyncedAt)}</span> : null}
         </p>
 
+        <SectionTitle hint="נפתחו באתר או קיבלו הגשות בטווח">משרות באתר</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="משרות עם פעילות" value={fmtInt(active.length)} hint="נפתחו באתר או קיבלו הגשות" />
           <StatCard label="פתיחות משרה" value={fmtInt(totals.opens)} hint="של משרות שמזוהות ב-Salesforce" />
@@ -74,10 +91,10 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           <StatCard label="הגשות" value={fmtInt(totals.applications)} />
         </div>
 
-        <Card
-          title={q ? `תוצאות עבור "${q}" · ${fmtInt(matched.length)}` : `משרות עם פעילות בטווח · ${fmtInt(active.length)}`}
-          className="mt-8"
-        >
+        <ApplicationPipeline m={pipeline} basis={params.basis} callsAvailable={freshness.callsAvailable} />
+
+        <SectionTitle hint="פתיחות, לחיצות ושלבי ההגשה לכל משרה">כל המשרות</SectionTitle>
+        <Card level={3} title={q ? `תוצאות עבור "${q}" · ${fmtInt(matched.length)}` : `משרות עם פעילות בטווח · ${fmtInt(active.length)}`}>
           <Table
             head={["משרה", "נפתחה", "פתיחות", "לחיצות הגשה", "הגשות", "נשלחו", "ראיון", "התקבלו"]}
             empty={rows.length === 0 ? (q ? "לא נמצאו משרות" : "אין משרות עם פעילות בטווח") : undefined}
