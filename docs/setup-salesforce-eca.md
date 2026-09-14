@@ -36,7 +36,12 @@
 
    באותו מסך מסמנים **Read Access** לכל השדות (Field Permissions). ה-View All Records נדרש כדי שהסנכרון יראה את כל הרשומות, גם כאלה שמשתמש האינטגרציה אינו הבעלים שלהן.
 3. **לא** מסמנים Create, Edit או Delete.
-4. **Manage Assignments → Add Assignment** ובוחרים את משתמש האינטגרציה.
+4. **משימות ופגישות (שיחות מ-Log a Call):** ל-Tasks ול-Events אין הרשאות ב-Object Settings, שם תמיד יופיע `--`. מגדירים אותן כך:
+   - **System Permissions → Edit**, ומסמנים את **Access Activities**, **Edit Tasks** ו-**Edit Events**. בסיילספורס אין לפעילויות הרשאת קריאה בלבד, אבל הלקוח שלנו אינו מסוגל לכתוב.
+   - ב-Object Settings, ב-**Tasks** וב-**Events**, מסמנים **Read Access** לשדות.
+   - ⚠️ **Activity History** (`DevopsActivityLog`) הוא יומן של DevOps Center, **לא** שיחות. אין צורך לתת עליו הרשאה.
+   - **השינוי לא מיידי:** סיילספורס מחיל הרשאות חדשות רק על סשן חדש. הפלטפורמה מחליפה סשן פעם בשעה, ולכן שינוי הרשאות נכנס לתוקף תוך שעה לכל היותר.
+5. **Manage Assignments → Add Assignment** ובוחרים את משתמש האינטגרציה.
 
 > היסטוריית Case (CaseHistory) ו-RecordTypes נקראות אוטומטית כשיש הרשאת קריאה ל-Case.
 

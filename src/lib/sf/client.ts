@@ -69,10 +69,32 @@ async function requestToken(): Promise<Token> {
   return { accessToken: body.access_token, instanceUrl: body.instance_url!.replace(/\/+$/, ""), fetchedAt: Date.now() };
 }
 
+async function revokeToken(t: Token): Promise<void> {
+  try {
+    const { loginUrl } = config();
+    await fetch(`${loginUrl}/services/oauth2/revoke`, {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({ token: t.accessToken }),
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    // Best effort: a failed revoke only delays the permission refresh.
+  }
+}
+
 async function getToken(forceRefresh: boolean): Promise<Token> {
-  if (!forceRefresh && token && Date.now() - token.fetchedAt < TOKEN_MAX_AGE_MS) return token;
+  const stale = token !== null && Date.now() - token.fetchedAt >= TOKEN_MAX_AGE_MS;
+  if (!forceRefresh && token && !stale) return token;
   // Concurrent callers share one token request.
-  pendingToken ??= requestToken().finally(() => {
+  pendingToken ??= (async () => {
+    // The Client Credentials flow hands back the Run-As user's existing session
+    // while it lives, and a session keeps the permissions it started with. The
+    // sync never lets it idle out, so without this a permission granted in
+    // Salesforce would never take effect. Ending it hourly bounds that to an hour.
+    if (stale && token) await revokeToken(token);
+    return requestToken();
+  })().finally(() => {
     pendingToken = null;
   });
   token = await pendingToken;
