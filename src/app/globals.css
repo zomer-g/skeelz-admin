@@ -36,6 +36,13 @@
   --color-funnel-5: #0b5b5c;
   --color-funnel-6: #064849;
 
+  /* Categorical series for multi-line charts, in fixed order (dataviz reference
+     palette slots 1–3; validated on the #f5f5f5 card surface). Brand teal fails the
+     chroma floor as a series colour, so it stays for single-series charts only. */
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+
   --radius-card: 20px;
   --radius-modal: 30px;
 

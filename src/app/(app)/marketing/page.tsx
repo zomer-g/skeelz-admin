@@ -5,8 +5,9 @@ import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { LineChart } from "@/components/dashboard/LineChart";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
-import { eachDay, formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
+import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
+import { loadApplicationFacts } from "@/lib/metrics/candidates";
 import { CHANNEL_LABELS, loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
 
 export const metadata: Metadata = { title: "שיווק" };
@@ -30,7 +31,14 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
   const params = parseDashboardParams(search);
   const query = rangeQuery(params);
-  const m = await loadMarketingMetrics(params);
+  const [m, facts] = await Promise.all([loadMarketingMetrics(params), loadApplicationFacts()]);
+  // Hires by the day they happened (status "התקבל" or the switch to the placement record type).
+  const acceptedInRange = facts.filter((f) => f.acceptedAt && f.acceptedAt >= params.from && f.acceptedAt < params.to);
+  const dailyAccepted = new Map<string, number>();
+  for (const f of acceptedInRange) {
+    const day = israelDay(f.acceptedAt!);
+    dailyAccepted.set(day, (dailyAccepted.get(day) ?? 0) + 1);
+  }
 
   if (!m.gaSyncedAt) {
     return (
@@ -44,7 +52,12 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
   }
 
   const ev = (name: string) => m.events.get(name) ?? 0;
-  const series = eachDay(params.fromDay, params.toDay).map((day) => ({ day, value: m.dailySessions.get(day) ?? 0 }));
+  const days = eachDay(params.fromDay, params.toDay);
+  const series = days.map((day) => ({ day, value: m.dailySessions.get(day) ?? 0 }));
+  const candidateTotals = m.candidateAccounts.reduce(
+    (t, a) => ({ contacts: t.contacts + a.contacts, newInRange: t.newInRange + a.newInRange, applicants: t.applicants + a.applicants }),
+    { contacts: 0, newInRange: 0, applicants: 0 },
+  );
 
   return (
     <>
@@ -67,7 +80,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         </div>
 
         <Card title="כניסות לאורך זמן" className="mt-4">
-          <LineChart points={series} unit="כניסות" />
+          <LineChart series={[{ label: "כניסות", color: "var(--color-accent)", points: series }]} unit="כניסות" />
         </Card>
 
         <SectionTitle hint="מאיפה מגיעים">ערוצים ומקורות</SectionTitle>
@@ -94,6 +107,60 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
             </Table>
           </Card>
         </div>
+
+        <SectionTitle hint="Salesforce במקביל ל-Google Analytics">הגשות ומועמדים</SectionTitle>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard label="הגשות ב-Salesforce" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" />
+          <StatCard label="התקבלו לעבודה" value={fmtInt(acceptedInRange.length)} hint="לפי תאריך הקבלה" />
+          <StatCard label="מועמדים שהגישו" value={fmtInt(m.applicantsTotal)} hint="מועמדים שונים עם הגשה בטווח" />
+          <StatCard
+            label="אישורי הגשה ב-Analytics"
+            value={fmtInt(ev(SITE_EVENTS.applyYes))}
+            hint={`מול ${fmtInt(m.applications)} הגשות שנקלטו ב-Salesforce`}
+          />
+        </div>
+
+        <Card title="הגשות לאורך זמן · Salesforce מול Analytics" className="mt-4">
+          <LineChart
+            unit="הגשות"
+            series={[
+              { label: "הגשות ב-Salesforce", color: "var(--color-series-1)", points: days.map((day) => ({ day, value: m.dailyApplications.get(day) ?? 0 })) },
+              { label: "אישורי הגשה ב-Analytics", color: "var(--color-series-2)", points: days.map((day) => ({ day, value: m.dailyApplyConfirmations.get(day) ?? 0 })) },
+              { label: "התקבלו לעבודה", color: "var(--color-series-3)", points: days.map((day) => ({ day, value: dailyAccepted.get(day) ?? 0 })) },
+            ]}
+          />
+          <p className="mt-3 text-xs text-muted">
+            פער בין Analytics ל-Salesforce נובע בדרך כלל מחוסמי פרסומות ומסירוב לעוגיות (אירוע שלא נמדד), או מהגשות שנוצרו ב-Salesforce שלא דרך האתר.
+          </p>
+        </Card>
+
+        <Card title="מועמדים לפי Account ב-Salesforce" className="mt-4">
+          <Table head={["Account", "מועמדים", "נוספו בטווח", "הגישו בטווח", "שיעור מגישים"]} empty={m.candidateAccounts.length === 0 ? "לא נמצאו Accounts של מועמדים" : undefined}>
+            {m.candidateAccounts.map((a) => (
+              <tr key={a.account}>
+                <td className="px-3 py-2 font-medium">{a.account}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(a.contacts)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(a.newInRange)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(a.applicants)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtPercent(a.applicants, a.contacts)}</td>
+              </tr>
+            ))}
+            {m.candidateAccounts.length > 1 ? (
+              <tr className="border-t-2 border-line font-medium">
+                <td className="px-3 py-2">סה״כ</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(candidateTotals.contacts)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(candidateTotals.newInRange)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(candidateTotals.applicants)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtPercent(candidateTotals.applicants, candidateTotals.contacts)}</td>
+              </tr>
+            ) : null}
+          </Table>
+          <p className="mt-3 text-xs text-muted">
+            כל ה-Accounts ששמם כולל &quot;מועמד&quot;. מגישים = מועמדים עם הגשה (הגשות קמביום או השמה) שנוצרה בטווח. בסה״כ בטווח הגישו{" "}
+            {fmtInt(m.applicantsTotal)} מועמדים שונים
+            {m.applicantsTotal > candidateTotals.applicants ? `, מתוכם ${fmtInt(m.applicantsTotal - candidateTotals.applicants)} מחוץ ל-Accounts האלה` : ""}.
+          </p>
+        </Card>
 
         <SectionTitle hint="מהכניסה ועד הגשה שנקלטה">פעולות באתר</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

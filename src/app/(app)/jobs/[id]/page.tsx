@@ -151,7 +151,7 @@ export default async function JobPage({
 
         {key ? (
           <Card title="פתיחות המשרה לאורך זמן" className="mt-4">
-            <LineChart points={series} unit="פתיחות משרה" />
+            <LineChart series={[{ label: "פתיחות משרה", color: "var(--color-accent)", points: series }]} unit="פתיחות משרה" />
           </Card>
         ) : null}
 

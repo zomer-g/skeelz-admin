@@ -53,7 +53,18 @@ export interface MarketingMetrics {
   jobPages: { jobs: number; views: number };
   applications: number;
   gaSyncedAt: Date | null;
+  /** Salesforce: accounts that hold candidates (name contains "מועמד"). */
+  candidateAccounts: { account: string; contacts: number; newInRange: number; applicants: number }[];
+  /** Distinct contacts with an application created in the range, whatever their account. */
+  applicantsTotal: number;
+  /** Salesforce applications created per Israel day. */
+  dailyApplications: Map<string, number>;
+  /** GA "Job_application_yes" (the apply confirmation) per day. */
+  dailyApplyConfirmations: Map<string, number>;
 }
+
+/** Accounts whose contacts are candidates are named with "מועמד". */
+const CANDIDATE_ACCOUNT_PATTERN = "%מועמד%";
 
 type Row = Record<string, unknown>;
 
@@ -65,6 +76,34 @@ const n = (v: unknown) => Number(v ?? 0);
 
 export async function loadMarketingMetrics(p: DashboardParams): Promise<MarketingMetrics> {
   const inDays = (column: string) => sql`${sql.raw(column)} >= ${p.fromDay}::date AND ${sql.raw(column)} <= ${p.toDay}::date`;
+
+  const appliedInRange = sql`
+    SELECT DISTINCT a.contact_id FROM sf_case a JOIN sf_record_type rt ON rt.id = a.record_type_id
+     WHERE rt.developer_name IN (${RECORD_TYPES.application}, ${RECORD_TYPES.accepted})
+       AND NOT a.is_deleted AND a.contact_id IS NOT NULL
+       AND a.created_date >= ${p.from} AND a.created_date < ${p.to}`;
+
+  const [sfAccounts, sfApplicants, sfDaily, gaApplyDaily] = await Promise.all([
+    rows(sql`
+      WITH acc AS (SELECT id, name FROM sf_account WHERE NOT is_deleted AND name ILIKE ${CANDIDATE_ACCOUNT_PATTERN}),
+           applied AS (${appliedInRange})
+      SELECT acc.name,
+             count(c.id) AS contacts,
+             count(c.id) FILTER (WHERE c.created_date >= ${p.from} AND c.created_date < ${p.to}) AS new_in_range,
+             count(c.id) FILTER (WHERE c.id IN (SELECT contact_id FROM applied)) AS applicants
+        FROM acc JOIN sf_contact c ON c.account_id = acc.id AND NOT c.is_deleted
+       GROUP BY acc.name ORDER BY 2 DESC`),
+    rows(sql`SELECT count(*) AS n FROM (${appliedInRange}) x`),
+    rows(sql`
+      SELECT to_char(c.created_date AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM-DD') AS day, count(*) AS n
+        FROM sf_case c JOIN sf_record_type rt ON rt.id = c.record_type_id
+       WHERE rt.developer_name IN (${RECORD_TYPES.application}, ${RECORD_TYPES.accepted})
+         AND NOT c.is_deleted AND c.created_date >= ${p.from} AND c.created_date < ${p.to}
+       GROUP BY 1`),
+    rows(sql`
+      SELECT date::text AS day, sum(event_count) AS n FROM ga_event_daily
+       WHERE ${inDays("date")} AND event_name = ${SITE_EVENTS.applyYes} GROUP BY 1`),
+  ]);
 
   const [totals, pages, series, channels, sources, events, topPages, jobPages, apps, state] = await Promise.all([
     rows(sql`SELECT sum(sessions) AS sessions, sum(new_users) AS new_users, sum(engaged_sessions) AS engaged FROM ga_channel_daily WHERE ${inDays("date")}`),
@@ -110,5 +149,14 @@ export async function loadMarketingMetrics(p: DashboardParams): Promise<Marketin
     jobPages: { jobs: n(jobPages[0]?.jobs), views: n(jobPages[0]?.views) },
     applications: n(apps[0]?.n),
     gaSyncedAt: syncedAt ? new Date(syncedAt as string | Date) : null,
+    candidateAccounts: sfAccounts.map((r) => ({
+      account: String(r.name),
+      contacts: n(r.contacts),
+      newInRange: n(r.new_in_range),
+      applicants: n(r.applicants),
+    })),
+    applicantsTotal: n(sfApplicants[0]?.n),
+    dailyApplications: new Map(sfDaily.map((r) => [String(r.day), n(r.n)])),
+    dailyApplyConfirmations: new Map(gaApplyDaily.map((r) => [String(r.day), n(r.n)])),
   };
 }
