@@ -29,6 +29,8 @@ const ACTION_LABELS: Record<string, string> = {
   "smoov.campaign_added": "קמפיין SMOOV נוסף למעקב",
   "smoov.campaign_removed": "קמפיין SMOOV הוסר ממעקב",
   "campaign.updated": "עדכון הגדרות קמפיין",
+  "preview.started": "צפייה בהרשאה נמוכה",
+  "preview.ended": "יציאה ממצב צפייה",
   "campaign.job_linked": "קישור משרה לקמפיין",
   "campaign.job_unlinked": "הסרת קישור משרה מקמפיין",
 };

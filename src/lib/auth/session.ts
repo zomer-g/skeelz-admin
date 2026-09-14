@@ -3,6 +3,7 @@ import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import { getDb } from "@/lib/db/client";
 import { accessRequests, invites, users } from "@/lib/db/schema";
+import { readPreviewRole } from "./preview";
 import { hasRole, type Role } from "./roles";
 import { verifiedIdentity, type Identity } from "./xhost";
 
@@ -18,7 +19,11 @@ export interface SessionUser {
   email: string;
   name: string | null;
   picture: string | null;
+  /** The effective role: what every page, action and API check uses. */
   role: Role;
+  /** The role the user really holds; differs from `role` while an admin previews a lower one. */
+  realRole: Role;
+  previewing: boolean;
   /** Admin by ADMIN_EMAILS; the UI can't demote or deactivate these. */
   envAdmin: boolean;
 }
@@ -40,7 +45,10 @@ export const getSession = cache(async (): Promise<Session> => {
   const identity = await verifiedIdentity();
   if (!identity) return { status: "anonymous" };
   const user = await resolveUser(identity);
-  return user ? { status: "ok", identity, user } : { status: "refused", identity };
+  if (!user) return { status: "refused", identity };
+  // An admin previewing a lower role gets exactly that role everywhere.
+  const preview = user.realRole === "admin" ? await readPreviewRole() : null;
+  return { status: "ok", identity, user: preview ? { ...user, role: preview, previewing: true } : user };
 });
 
 async function resolveUser(identity: Identity): Promise<SessionUser | null> {
@@ -122,6 +130,8 @@ async function resolveUser(identity: Identity): Promise<SessionUser | null> {
     name: identity.name ?? row.name,
     picture: identity.picture ?? row.picture,
     role: row.role,
+    realRole: row.role,
+    previewing: false,
     envAdmin: isEnvAdmin,
   };
 }

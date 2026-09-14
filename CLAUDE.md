@@ -16,7 +16,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 - **Auth:** identity = xhostd SSO cookie `__Host-xhost_id`, verified in `src/lib/auth/xhost.ts`. Access =
   `ADMIN_EMAILS` / active `users` row / open invite (`src/lib/auth/session.ts`). Every page calls
   `pageAuth(minRole, path)`; every server action / route handler calls `requireUser(minRole)`. Never rely on the layout.
-- **Roles:** viewer < editor (dashboard config) < admin (users, integrations, sync).
+- **Roles:** viewer < editor (dashboard config) < admin (users, integrations, sync). Admins can "view as" a lower
+  role (cookie `skeelz_view_as`, honoured only when `realRole` is admin); `user.role` is the effective role that every
+  check uses — only the preview switch itself checks `realRole`.
 - **Salesforce is read-only in phase 1.** The SF client must expose no write methods. Candidates/employer
   contacts = Contact, companies = Account, jobs/applications/leads = Case by RecordType.
 - **Job key:** the public site's job URL is `/job/<24-hex Mongo id>`; that id (`site_job_key`) joins SF Cases to GA4.

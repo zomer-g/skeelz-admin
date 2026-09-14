@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- SKEELZ admin: brand teal tile, rising dashboard bars, the logo's spark in magenta.
+       Deliberately unlike the public sites' icons so browser tabs can't be confused. -->
+  <rect width="64" height="64" rx="14" fill="#218283"/>
+  <rect x="13" y="36" width="10" height="16" rx="3" fill="#ffffff"/>
+  <rect x="27" y="26" width="10" height="26" rx="3" fill="#ffffff"/>
+  <rect x="41" y="18" width="10" height="34" rx="3" fill="#ffffff"/>
+  <circle cx="50" cy="13" r="8" fill="#CD0077" stroke="#218283" stroke-width="3"/>
+</svg>
