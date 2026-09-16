@@ -67,3 +67,82 @@ body {
     outline-offset: 2px;
   }
 }
+
+/*
+ * Tables on phones (see Table in components/ui.tsx): every row is a card. The
+ * first cell is the card's title; each other cell shows its column heading
+ * (data-label) beside the value. Column headers stay for screen readers.
+ */
+@media (max-width: 639px) {
+  .table-cards {
+    overflow-x: visible;
+  }
+  .table-cards thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .table-cards tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+  .table-cards tbody > tr {
+    display: block;
+    border: 1px solid var(--color-line) !important;
+    border-radius: 16px;
+    background: #ffffff;
+    padding: 0.25rem 0.875rem;
+  }
+  /* A value cell: the heading sits at the start, the value (however many lines) in the rest. */
+  .table-cards tbody > tr > td,
+  .table-cards tbody > tr > th {
+    display: block;
+    position: relative;
+    min-height: 1.75rem;
+    padding: 0.4rem 0 !important;
+    padding-inline-start: calc(36% + 0.75rem) !important;
+    white-space: normal !important;
+    text-align: start !important;
+    overflow-wrap: anywhere;
+  }
+  .table-cards tbody > tr > td:not(:first-child) + td {
+    border-top: 1px dashed var(--color-line);
+  }
+  .table-cards tbody > tr > :is(td, th)::before {
+    content: attr(data-label);
+    position: absolute;
+    inset-inline-start: 0;
+    top: 0.5rem;
+    width: 36%;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    color: var(--color-muted);
+  }
+  /* The first cell is the title: full width, no heading. So is an actions cell (empty heading). */
+  .table-cards tbody > tr > :is(td, th):first-child,
+  .table-cards tbody > tr > :is(td, th)[data-label=""] {
+    padding-inline-start: 0 !important;
+  }
+  .table-cards tbody > tr > :is(td, th):first-child::before,
+  .table-cards tbody > tr > :is(td, th)[data-label=""]::before {
+    content: none;
+  }
+  .table-cards tbody > tr > :is(td, th):first-child {
+    font-size: 0.9375rem;
+    padding-top: 0.6rem !important;
+    padding-bottom: 0.6rem !important;
+    border-bottom: 1px solid var(--color-line);
+  }
+  .table-cards tbody > tr > [data-label=""] > * {
+    justify-content: flex-start;
+  }
+  /* A cell whose content is empty says nothing on a card. */
+  .table-cards tbody > tr > td:empty {
+    display: none;
+  }
+}

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { Explained } from "./Explained";
 
 type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
@@ -102,14 +102,32 @@ export function Badge({ tone = "neutral", children }: { tone?: BadgeTone; childr
 }
 
 /**
- * Tables scroll inside their own box so the page never scrolls sideways. The box
- * takes focus so a keyboard can scroll it too. An empty column head is read as "פעולות".
+ * Gives every cell its column heading as `data-label`, which the phone layout
+ * (`.table-cards` in globals.css) shows beside the value. Rows are the `<tr>`
+ * children; conditionally skipped cells (null) don't shift the headings.
+ */
+function labelCells(children: ReactNode, head: string[]): ReactNode {
+  return Children.map(children, (row) => {
+    if (!isValidElement<{ children?: ReactNode }>(row) || row.type !== "tr") return row;
+    let column = 0;
+    const cells = Children.map(row.props.children, (cell) =>
+      isValidElement(cell) ? cloneElement(cell as ReactElement<Record<string, unknown>>, { "data-label": head[column++] ?? "" }) : cell,
+    );
+    return cloneElement(row, {}, cells);
+  });
+}
+
+/**
+ * Wide screens: a table that scrolls inside its own box so the page never scrolls
+ * sideways (the box takes focus so a keyboard can scroll it too). Phones: each row
+ * becomes a card, its first cell as the title and every other value beside its
+ * column heading. An empty column head is read as "פעולות".
  */
 export function Table({ head, children, empty, caption }: { head: string[]; children: ReactNode; empty?: string; caption?: string }) {
   return (
     // `relative` keeps visually-hidden text (absolutely positioned) inside the scroll box instead of widening the page.
-    <div className="relative overflow-x-auto" tabIndex={0} role={caption ? "region" : undefined} aria-label={caption}>
-      <table className="w-full min-w-[40rem] border-collapse text-start text-sm">
+    <div className="table-cards relative overflow-x-auto" tabIndex={0} role={caption ? "region" : undefined} aria-label={caption}>
+      <table className="w-full min-w-[40rem] border-collapse text-start text-sm max-sm:min-w-0">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr className="border-b-2 border-line text-muted">
@@ -120,7 +138,7 @@ export function Table({ head, children, empty, caption }: { head: string[]; chil
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-line">{children}</tbody>
+        <tbody className="divide-y divide-line">{labelCells(children, head)}</tbody>
       </table>
       {empty ? <p className="px-3 py-6 text-center text-muted">{empty}</p> : null}
     </div>
