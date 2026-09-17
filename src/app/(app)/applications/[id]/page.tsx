@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { EntityHeader, FieldList, Timeline } from "@/components/entities/EntityParts";
+import { InfoTip } from "@/components/Explained";
 import { Badge, Card } from "@/components/ui";
+import { EXPLAIN } from "@/lib/dashboard/explain";
 import { pageAuth } from "@/lib/auth/guard";
 import { loadCaseTimeline } from "@/lib/entities/activity";
 import { APPLICATION_TYPES, loadApplication } from "@/lib/entities/applications";
@@ -38,6 +40,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
           <>
             <Badge tone="accent">{app.status ?? "ללא סטטוס"}</Badge>
             <Badge tone={app.type === "accepted" ? "success" : "neutral"}>{APPLICATION_TYPES.find((t) => t.key === app.type)?.label}</Badge>
+            <InfoTip label='סטטוס "התקבל" מול "השמה"' text={EXPLAIN.statusVsPlacement} />
             {app.paid ? <Badge tone="brand">בתשלום</Badge> : <Badge>לא בתשלום</Badge>}
             <span className="tabular-nums text-muted">Case {app.caseNumber}</span>
           </>

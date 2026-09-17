@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ApplicationsTable } from "@/components/entities/EntityParts";
 import { Pager, SearchForm } from "@/components/entities/Search";
+import { InfoTip } from "@/components/Explained";
 import { Card, PageHeader } from "@/components/ui";
+import { EXPLAIN } from "@/lib/dashboard/explain";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
 import { APPLICATION_TYPES, loadApplicationFilterOptions, searchApplications, type ApplicationFilters } from "@/lib/entities/applications";
@@ -84,7 +86,14 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           { kind: "date", name: "to", label: "עד תאריך" },
         ]}
       />
-      <Card title={`הגשות · ${fmtInt(total)}`}>
+      <Card
+        title={
+          <span className="flex flex-wrap items-center gap-2">
+            הגשות · {fmtInt(total)}
+            <InfoTip label='סטטוס "התקבל" מול "השמה"' text={EXPLAIN.statusVsPlacement} />
+          </span>
+        }
+      >
         <ApplicationsTable rows={rows} empty="לא נמצאו הגשות" />
         <Pager action={ACTION} values={{ ...values, ...scope }} page={page} pageSize={PAGE_SIZE} total={total} />
       </Card>
