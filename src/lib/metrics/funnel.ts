@@ -382,8 +382,8 @@ export interface FunnelResult {
   hasGa: boolean;
 }
 
-export interface TimelineWeek {
-  start: string;
+export interface TimelineDay {
+  day: string;
   /** SF anchors: [hired, active, stuck, closed]. Site anchors: [count]. */
   values: number[];
 }
@@ -460,13 +460,6 @@ function percentile(sorted: number[], p: number): number | null {
   return sorted[idx]!;
 }
 
-/** Sunday that starts the Israel week containing `day`. */
-export function weekStart(day: string): string {
-  const d = new Date(`${day}T12:00:00Z`);
-  d.setUTCDate(d.getUTCDate() - d.getUTCDay());
-  return d.toISOString().slice(0, 10);
-}
-
 export interface FunnelInput {
   apps: FunnelApp[];
   jobs: Map<string, JobContext>;
@@ -479,14 +472,14 @@ export interface FunnelInput {
   to: Date;
   fromDay: string;
   toDay: string;
-  /** First week the timeline shows. */
+  /** First day the timeline shows. */
   timelineFromDay: string;
   now?: Date;
 }
 
 export interface FunnelOutput {
   funnel: FunnelResult;
-  timeline: TimelineWeek[];
+  timeline: TimelineDay[];
   breakdown: BreakdownRow[];
   /** The filtered applications, for the pipeline figures below the funnel. */
   filtered: FunnelApp[];
@@ -635,13 +628,13 @@ export function computeFunnel(input: FunnelInput): FunnelOutput {
     hasGa,
   };
 
-  /* -- the timeline: the anchor stage per week, over all time. */
-  const weeks = new Map<string, number[]>();
-  const todayWeek = weekStart(israelDay(now));
-  for (let w = weekStart(input.timelineFromDay); w <= todayWeek; w = addDays(w, 7)) weeks.set(w, anchorIsSite ? [0] : [0, 0, 0, 0]);
+  /* -- the timeline: the anchor stage per Israel day, over all time. */
+  const daily = new Map<string, number[]>();
+  const today = israelDay(now);
+  for (let d = input.timelineFromDay; d <= today; d = addDays(d, 1)) daily.set(d, anchorIsSite ? [0] : [0, 0, 0, 0]);
   if (anchorIsSite) {
     const add = (day: string, n: number) => {
-      const bucket = weeks.get(weekStart(day));
+      const bucket = daily.get(day);
       if (bucket) bucket[0]! += n;
     };
     if (anchor === "sessions") for (const [day, n] of ga.sessions) add(day, n);
@@ -651,11 +644,11 @@ export function computeFunnel(input: FunnelInput): FunnelOutput {
     for (const a of filtered) {
       const at = reachedAt(a, sfAnchor);
       if (!at) continue;
-      const bucket = weeks.get(weekStart(israelDay(at)));
+      const bucket = daily.get(israelDay(at));
       if (bucket) bucket[slot[a.outcome]]! += 1;
     }
   }
-  const timeline = [...weeks].map(([start, values]) => ({ start, values }));
+  const timeline = [...daily].map(([day, values]) => ({ day, values }));
 
   /* -- the breakdown: the same cohort, split by one dimension. */
   // Companies are grouped by their folded name, so spelling variants share a row (shown as the first seen).

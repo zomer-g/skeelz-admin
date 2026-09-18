@@ -38,8 +38,8 @@ import { loadPositions } from "@/lib/metrics/jobs";
 export const metadata: Metadata = { title: "הגשות" };
 export const dynamic = "force-dynamic";
 
-/** Applications in Salesforce start in February 2025; the timeline starts there. */
-const TIMELINE_FROM = "2025-02-01";
+/** Applications in Salesforce start in early 2025; the timeline starts with that year so whole months can be picked. */
+const TIMELINE_FROM = "2025-01-01";
 const MAX_GROUPS = 30;
 const MAX_OPEN = 50;
 const PATH = "/pipeline";
@@ -160,7 +160,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
 
       <div className="mb-6 flex flex-col gap-5 rounded-card border-2 border-line bg-surface p-4">
         <RangeTimeline
-          weeks={timeline}
+          days={timeline}
           segments={
             anchorIsSite
               ? [{ label: anchorStage.short, color: "var(--color-accent)" }]
@@ -175,7 +175,6 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
           preset={params.preset}
           fromDay={params.fromDay}
           toDay={params.toDay}
-          today={israelDay(now)}
           query={withoutRange.toString()}
         />
 
