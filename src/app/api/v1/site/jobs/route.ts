@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
-import { apiJson, withApiToken } from "@/lib/api/inbound";
-import { siteFeedTokens } from "@/lib/api/tokens";
+import { apiJson, withApiKey } from "@/lib/api/inbound";
 import { cached } from "@/lib/cache";
 import { getDb } from "@/lib/db/client";
 import { RECORD_TYPES } from "@/lib/metrics/candidates";
@@ -11,7 +10,8 @@ export const dynamic = "force-dynamic";
 /**
  * The job feed for the new public site (skeelz-site): every job live on the site,
  * with what the public job page shows and nothing more — no employer contact
- * details, no applications, no people. Opened only by SITE_FEED_TOKEN.
+ * details, no applications, no people. Opened only by a key with `site-feed:read`
+ * (SITE_FEED_TOKEN, or a key issued at /admin/api); API_TOKEN does not have it.
  */
 
 const list = (v: unknown) =>
@@ -63,11 +63,8 @@ async function loadFeed() {
   }));
 }
 
-export const GET = withApiToken(
-  "GET /api/v1/site/jobs",
-  async () => {
-    const jobs = await cached("site-feed", loadFeed);
-    return apiJson({ data: jobs, total: jobs.length, generated_at: new Date().toISOString() });
-  },
-  { tokens: siteFeedTokens, bucket: "site-feed" },
-);
+export const GET = withApiKey("/api/v1/site/jobs", "site-feed:read", async () => {
+  const jobs = await cached("site-feed", loadFeed);
+  return apiJson({ data: jobs, total: jobs.length, generated_at: new Date().toISOString() });
+});
+

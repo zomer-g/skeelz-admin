@@ -1,5 +1,5 @@
 import { applicationCounts, jobJson } from "@/lib/api/data";
-import { apiError, apiJson, withApiToken } from "@/lib/api/inbound";
+import { apiError, apiJson, withApiKey } from "@/lib/api/inbound";
 import { addDays, israelDay } from "@/lib/dashboard/params";
 import { isSfId } from "@/lib/entities/search";
 import { loadJobGa, loadPosition, loadPositionsByJobKeys } from "@/lib/metrics/jobs";
@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 const SITE_KEY = /^[0-9a-f]{24}$/i;
 
 /** One job by Salesforce id or public site key, with its application counts and 30 days of site exposure. */
-export const GET = withApiToken("GET /api/v1/jobs/:id", async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
+export const GET = withApiKey("/api/v1/jobs/{id}", "jobs:read", async (_req: Request, { params }: { params: Promise<{ id: string }> }) => {
   const { id } = await params;
   let job;
   if (SITE_KEY.test(id)) job = (await loadPositionsByJobKeys([id.toLowerCase()]))[0] ?? null;

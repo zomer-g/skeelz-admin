@@ -5,7 +5,9 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/admin/users", label: "משתמשים והרשאות" },
-  { href: "/admin/integrations", label: "חיבורים" },
+  { href: "/admin/api", label: "API ומפתחות" },
+  { href: "/admin/connections", label: "חיבורים" },
+  { href: "/admin/integrations", label: "מקורות נתונים" },
   { href: "/admin/salesforce", label: "Salesforce" },
   { href: "/admin/sync", label: "סנכרון" },
   { href: "/admin/texts", label: "טקסטים" },

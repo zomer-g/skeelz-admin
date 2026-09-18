@@ -1,12 +1,12 @@
 import { jobJson } from "@/lib/api/data";
-import { apiError, apiJson, choiceParam, intParam, withApiToken } from "@/lib/api/inbound";
+import { apiError, apiJson, choiceParam, intParam, withApiKey } from "@/lib/api/inbound";
 import { API_LIMITS } from "@/lib/api/spec";
 import { listPositions } from "@/lib/metrics/jobs";
 
 export const dynamic = "force-dynamic";
 
 /** Jobs, newest first. No people: see /api-docs. */
-export const GET = withApiToken("GET /api/v1/jobs", async (req: Request) => {
+export const GET = withApiKey("/api/v1/jobs", "jobs:read", async (req: Request) => {
   const params = new URL(req.url).searchParams;
   const status = choiceParam(params, "status", ["active", "all"] as const);
   const scope = choiceParam(params, "scope", ["paid", "all"] as const);

@@ -36,11 +36,20 @@ const ACTION_LABELS: Record<string, string> = {
   "preview.ended": "יציאה ממצב צפייה",
   "campaign.job_linked": "קישור משרה לקמפיין",
   "campaign.job_unlinked": "הסרת קישור משרה מקמפיין",
+  "api_key.created": "מפתח API נוצר",
+  "api_key.revoked": "מפתח API בוטל",
+  "api.used": "שימוש ב-API",
+  "api.denied": "גישה ל-API נדחתה",
+  "api.rate_limited": "חריגה ממגבלת ה-API",
+  "connection.updated": "עדכון חיבור למערכת אחרת",
+  "connection.checked": "בדיקת חיבור למערכת אחרת",
 };
 
 const SCREEN_LABELS: [prefix: string, label: string][] = [
   ["/admin/users", "ניהול · משתמשים והרשאות"],
-  ["/admin/integrations", "ניהול · חיבורים"],
+  ["/admin/integrations", "ניהול · מקורות נתונים"],
+  ["/admin/api", "ניהול · API ומפתחות"],
+  ["/admin/connections", "ניהול · חיבורים"],
   ["/admin/salesforce", "ניהול · Salesforce"],
   ["/admin/sync", "ניהול · סנכרון"],
   ["/admin/audit", "ניהול · יומן פעילות"],

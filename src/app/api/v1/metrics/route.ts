@@ -1,5 +1,5 @@
 import { cachedApplicationFacts, countActiveJobs, siteTotals } from "@/lib/api/data";
-import { apiError, apiJson, choiceParam, isDay, withApiToken } from "@/lib/api/inbound";
+import { apiError, apiJson, choiceParam, isDay, withApiKey } from "@/lib/api/inbound";
 import { API_LIMITS } from "@/lib/api/spec";
 import { addDays, israelDay, israelMidnight } from "@/lib/dashboard/params";
 import { computeCandidateMetrics, countNewJobs, syncFreshness } from "@/lib/metrics/candidates";
@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
 const round1 = (n: number | null) => (n == null ? null : Math.round(n * 10) / 10);
 
 /** The candidates-tab funnel and site totals for a range of Israel days. Aggregates only. */
-export const GET = withApiToken(
-  "GET /api/v1/metrics",
+export const GET = withApiKey(
+  "/api/v1/metrics",
+  "metrics:read",
   async (req: Request) => {
     const params = new URL(req.url).searchParams;
     const toDay = params.get("to") || israelDay();
@@ -60,5 +61,4 @@ export const GET = withApiToken(
       data_freshness: { salesforce_synced_at: freshness.casesSyncedAt?.toISOString() ?? null },
     });
   },
-  { heavy: true },
 );

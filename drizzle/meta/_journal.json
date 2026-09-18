@@ -64,6 +64,13 @@
       "when": 1789411612312,
       "tag": "0008_free_doctor_doom",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789725361886,
+      "tag": "0009_hard_gabe_jones",
+      "breakpoints": true
     }
   ]
 }

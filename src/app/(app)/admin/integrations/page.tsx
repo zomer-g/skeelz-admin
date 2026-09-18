@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Badge, buttonClass, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
 import { webhookConfigured } from "@/lib/api/outbound";
-import { inboundTokens } from "@/lib/api/tokens";
+import { legacyKeys } from "@/lib/api/keys";
 import { pageAuth } from "@/lib/auth/guard";
 import { getDb } from "@/lib/db/client";
 import { gtmVersions, smoovCampaigns, smoovCampaignStats, syncState, webhookDeliveries } from "@/lib/db/schema";
@@ -13,7 +13,7 @@ import { AdminTabs } from "../AdminTabs";
 import { removeSmoovCampaign } from "./actions";
 import { AddCampaignForm, TestButton } from "./IntegrationTools";
 
-export const metadata: Metadata = { title: "חיבורים" };
+export const metadata: Metadata = { title: "מקורות נתונים" };
 
 const fmt = (n: number | null | undefined) => (n == null ? "—" : new Intl.NumberFormat("he-IL").format(n));
 const pct = (part: number | null, whole: number | null) => (part == null || !whole ? "—" : `${Math.round((part / whole) * 100)}%`);
@@ -48,7 +48,7 @@ export default async function IntegrationsPage() {
 
   return (
     <>
-      <PageHeader title="ניהול · חיבורים" subtitle="חיבורים למערכות חיצוניות" />
+      <PageHeader title="ניהול · מקורות נתונים" subtitle="Salesforce, Google ו-SMOOV, ו-webhooks יוצאים" />
       <AdminTabs />
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
@@ -139,7 +139,11 @@ export default async function IntegrationsPage() {
       <Card title="API ו-webhooks" className="mt-8">
         <div className="flex flex-col gap-4">
           <p className="text-sm text-muted">
-            API נכנס לקריאת משרות ומדדים, ו-webhooks יוצאים על הגשות, משרות, תקלות סנכרון וסיכום יומי. הגדרות, מגבלות ודוגמאות ב
+            API נכנס לקריאת משרות ומדדים, ו-webhooks יוצאים על הגשות, משרות, תקלות סנכרון וסיכום יומי. מפתחות ל-API הנכנס מנפיקים ב
+            <Link href="/admin/api" className="font-medium text-accent-dark underline underline-offset-4">
+              API ומפתחות
+            </Link>
+            . הגדרות, מגבלות ודוגמאות ב
             <Link href="/api-docs" className="font-medium text-accent-dark underline underline-offset-4">
               תיעוד ה-API
             </Link>
@@ -147,7 +151,7 @@ export default async function IntegrationsPage() {
           </p>
           <ul className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
             <li className="flex items-center gap-2">
-              API נכנס: {inboundTokens().length ? <Badge tone="success">פעיל</Badge> : <Badge>כבוי</Badge>}
+              טוקנים ותיקים מ-env: <span className="font-medium tabular-nums">{fmt(legacyKeys().length)}</span>
             </li>
             <li className="flex items-center gap-2">
               Webhooks: {webhookConfigured() ? <Badge tone="success">פעיל</Badge> : <Badge>כבוי</Badge>}
@@ -160,7 +164,7 @@ export default async function IntegrationsPage() {
             </li>
           </ul>
           <ul className="flex flex-wrap gap-2" dir="ltr">
-            {["API_TOKEN", "API_TOKEN_PREVIOUS", "WEBHOOK_URL", "WEBHOOK_TOKEN"].map((v) => (
+            {["WEBHOOK_URL", "WEBHOOK_TOKEN"].map((v) => (
               <li key={v} className="rounded-full bg-white px-3 py-1 font-mono text-xs text-ink ring-1 ring-line">
                 {v}
               </li>

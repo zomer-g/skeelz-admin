@@ -1,10 +1,23 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import type { ReactNode } from "react";
 import { ContactLink } from "@/components/PublicDoc";
 import { Badge, Card, PageHeader, Table } from "@/components/ui";
 import { webhookConfigured } from "@/lib/api/outbound";
-import { API_LIMITS, MIN_TOKEN_LENGTH, WEBHOOK_EVENTS, WEBHOOK_LIMITS } from "@/lib/api/spec";
-import { inboundTokens } from "@/lib/api/tokens";
+import { legacyKeys } from "@/lib/api/keys";
+import {
+  API_ERRORS,
+  API_LIMITS,
+  API_SCOPES,
+  APP,
+  ENDPOINTS,
+  KEY_PREFIX,
+  LEGACY_KEYS,
+  MIN_TOKEN_LENGTH,
+  WEBHOOK_EVENTS,
+  WEBHOOK_LIMITS,
+  type EndpointAuth,
+} from "@/lib/api/spec";
 import { pageAuth } from "@/lib/auth/guard";
 
 export const metadata: Metadata = { title: "תיעוד API" };
@@ -32,9 +45,33 @@ function H3({ children }: { children: ReactNode }) {
 
 const td = "px-3 py-2 align-top";
 
+const curl = (path: string) => [`curl -H "Authorization: Bearer <KEY>" \\`, `  "https://<כתובת המערכת>${path}"`];
+
+const PING_EXAMPLE = [
+  ...curl("/api/v1/ping"),
+  "",
+  "{",
+  `  "app": "${APP}",`,
+  '  "version": "110313e",',
+  '  "time": "2026-09-18T09:30:00.000Z",',
+  '  "key": { "name": "site → admin", "scopes": ["site-feed:read"] }',
+  "}",
+].join("\n");
+
+const SITE_FEED_EXAMPLE = [
+  ...curl("/api/v1/site/jobs"),
+  "",
+  "{",
+  '  "data": [',
+  '    { "id": "0123456789abcdef01234567", "case_id": "500000000000001AAA", "title": "…", "company": "…",',
+  '      "city": "תל אביב", "job_scope": ["משרה מלאה"], "skill_ids": ["12"], "hot": false, "sponsored": true, … }',
+  "  ],",
+  '  "total": 85, "generated_at": "2026-09-18T09:30:00.000Z"',
+  "}",
+].join("\n");
+
 const JOBS_EXAMPLE = [
-  'curl -H "Authorization: Bearer $API_TOKEN" \\',
-  '  "https://<כתובת המערכת>/api/v1/jobs?status=active&scope=paid&limit=2"',
+  ...curl("/api/v1/jobs?status=active&scope=paid&limit=2"),
   "",
   "{",
   '  "data": [',
@@ -57,7 +94,7 @@ const JOBS_EXAMPLE = [
 ].join("\n");
 
 const JOB_EXAMPLE = [
-  "GET /api/v1/jobs/0123456789abcdef01234567",
+  ...curl("/api/v1/jobs/0123456789abcdef01234567"),
   "",
   "{",
   '  "data": {',
@@ -70,7 +107,7 @@ const JOB_EXAMPLE = [
 ].join("\n");
 
 const METRICS_EXAMPLE = [
-  "GET /api/v1/metrics?from=2026-08-01&to=2026-08-31&scope=paid&basis=application",
+  ...curl("/api/v1/metrics?from=2026-08-01&to=2026-08-31&scope=paid&basis=application"),
   "",
   "{",
   '  "range": { "from": "2026-08-01", "to": "2026-08-31", "scope": "paid", "basis": "application" },',
@@ -84,6 +121,27 @@ const METRICS_EXAMPLE = [
   '  "data_freshness": { "salesforce_synced_at": "2026-09-14T15:40:00.000Z" }',
   "}",
 ].join("\n");
+
+const OPENAPI_EXAMPLE = [
+  'curl "https://<כתובת המערכת>/api/v1/openapi.json"',
+  "",
+  `{ "openapi": "3.1.0", "info": { "title": "SKEELZ Connect — ${APP}", … }, "paths": { … } }`,
+].join("\n");
+
+const EXAMPLES: Record<string, string> = {
+  "/api/v1/ping": PING_EXAMPLE,
+  "/api/v1/openapi.json": OPENAPI_EXAMPLE,
+  "/api/v1/jobs": JOBS_EXAMPLE,
+  "/api/v1/jobs/{id}": JOB_EXAMPLE,
+  "/api/v1/site/jobs": SITE_FEED_EXAMPLE,
+  "/api/v1/metrics": METRICS_EXAMPLE,
+};
+
+function AuthLabel({ auth }: { auth: EndpointAuth }) {
+  if (auth === "public") return <>בלי מפתח</>;
+  if (auth === "any") return <>כל מפתח תקף</>;
+  return <C>{auth}</C>;
+}
 
 const WEBHOOK_EXAMPLE = [
   "POST <WEBHOOK_URL>",
@@ -126,130 +184,138 @@ export default async function ApiDocsPage() {
   const auth = await pageAuth("viewer", "/api-docs");
   if (!auth.ok) return auth.render;
 
-  const inboundOn = inboundTokens().length > 0;
+  const legacyOn = legacyKeys().length;
   const outboundOn = webhookConfigured();
   const retries = WEBHOOK_LIMITS.retryDelaysMin.map((m) => (m < 60 ? `${m} דק׳` : `${m / 60} שע׳`)).join(", ");
 
   return (
     <>
-      <PageHeader title="תיעוד API" subtitle="API נכנס לקריאת משרות ומדדים, ו-webhooks יוצאים על אירועים. בשני הכיוונים האימות בטוקן משותף." />
+      <PageHeader title="תיעוד API" subtitle="SKEELZ Connect: API נכנס לקריאת משרות ומדדים במפתחות עם הרשאות, ו-webhooks יוצאים על אירועים." />
 
       <div className="flex flex-col gap-6">
-        <Card title="מצב והגדרה">
+        <Card title="מפתחות והרשאות">
           <div className="flex flex-col gap-4">
             <ul className="flex flex-wrap gap-x-8 gap-y-2">
               <li className="flex items-center gap-2">
-                API נכנס: {inboundOn ? <Badge tone="success">פעיל</Badge> : <Badge>כבוי</Badge>}
+                טוקנים ותיקים מ-env: <span className="font-medium tabular-nums">{legacyOn}</span>
               </li>
               <li className="flex items-center gap-2">
                 Webhooks יוצאים: {outboundOn ? <Badge tone="success">פעיל</Badge> : <Badge>כבוי</Badge>}
               </li>
             </ul>
             <p>
-              אדמין מפעיל כל כיוון בהגדרת משתני סביבה סודיים ב-xhostd (<C>set_env(secret=true)</C>). כל טוקן חייב להיות באורך {MIN_TOKEN_LENGTH} תווים
-              לפחות, ואפשר ליצור אחד עם <C>openssl rand -hex 32</C>. טוקן קצר יותר, או שדה ריק, משאיר את הכיוון כבוי.
+              כל קריאה ל-API הנכנס צריכה מפתח. אדמין מנפיק מפתחות ב
+              <Link href="/admin/api" className="font-medium text-accent-dark underline underline-offset-4">
+                ניהול · API ומפתחות
+              </Link>
+              . מפתח נראה כך: <C>{`${KEY_PREFIX}<43 תווים>`}</C>. הוא מוצג פעם אחת ביצירה, ונשמר אצלנו רק כ-hash. לכל מפתח יש הרשאות (scopes), וכל נתיב
+              דורש הרשאה אחת. מפתח שבוטל או שפג תוקפו נדחה מיד.
             </p>
-            <Table head={["משתנה", "תפקיד"]}>
+            <Table head={["הרשאה", "מה היא פותחת", "נתיבים"]} caption="הרשאות">
+              {API_SCOPES.map((sc) => (
+                <tr key={sc.scope}>
+                  <td className={td}>
+                    <C>{sc.scope}</C>
+                  </td>
+                  <td className={td}>{sc.label}</td>
+                  <td className={td}>
+                    <ul className="flex flex-col gap-1">
+                      {ENDPOINTS.filter((e) => e.auth === sc.scope).map((e) => (
+                        <li key={e.path}>
+                          <C>{`${e.method} ${e.path}`}</C>
+                        </li>
+                      ))}
+                    </ul>
+                  </td>
+                </tr>
+              ))}
+            </Table>
+            <p>
+              טוקנים משותפים שהוגדרו לפני המפתחות כמשתני סביבה סודיים ב-xhostd (<C>set_env(secret=true)</C>, לפחות {MIN_TOKEN_LENGTH} תווים) ממשיכים
+              לעבוד כמפתחות עם הרשאות קבועות. אותו מסך מציג אותם, אבל מבטלים אותם רק במחיקת המשתנה.
+            </p>
+            <Table head={["משתנה", "הרשאות", "תפקיד"]} caption="משתני סביבה">
+              {LEGACY_KEYS.map((k) => (
+                <tr key={k.env}>
+                  <td className={td}>
+                    <C>{k.env}</C>
+                  </td>
+                  <td className={td}>
+                    <C>{k.scopes.join(" ")}</C>
+                  </td>
+                  <td className={td}>{k.note}</td>
+                </tr>
+              ))}
               <tr>
-                <td className={td}><C>API_TOKEN</C></td>
-                <td className={td}>הטוקן המשותף של ה-API הנכנס.</td>
-              </tr>
-              <tr>
-                <td className={td}><C>API_TOKEN_PREVIOUS</C></td>
-                <td className={td}>לא חובה. בזמן החלפת טוקן גם הישן ממשיך לעבוד, עד שמוחקים את המשתנה.</td>
-              </tr>
-              <tr>
-                <td className={td}><C>WEBHOOK_URL</C></td>
+                <td className={td}>
+                  <C>WEBHOOK_URL</C>
+                </td>
+                <td className={td}>—</td>
                 <td className={td}>הכתובת שאליה נשלחים האירועים. חייבת להיות https ולכתובת ציבורית, בלי שם משתמש וסיסמה בתוכה.</td>
               </tr>
               <tr>
-                <td className={td}><C>WEBHOOK_TOKEN</C></td>
+                <td className={td}>
+                  <C>WEBHOOK_TOKEN</C>
+                </td>
+                <td className={td}>—</td>
                 <td className={td}>הטוקן המשותף שחותם על כל אירוע. הוא אף פעם לא נשלח בעצמו.</td>
               </tr>
             </Table>
             <p className="text-sm text-muted">
-              ה-webhooks נשלחים מתהליך הסנכרון (<C>SYNC_WORKER=true</C>). שאלות על ה-API: <ContactLink />.
+              ה-webhooks נשלחים מתהליך הסנכרון (<C>SYNC_WORKER=true</C>). הפניות מהמערכת הזו אל ה-CRM ואל האתר מוגדרות ב
+              <Link href="/admin/connections" className="font-medium text-accent-dark underline underline-offset-4">
+                ניהול · חיבורים
+              </Link>
+              . שאלות על ה-API: <ContactLink />.
             </p>
           </div>
         </Card>
 
-        <Card title="API נכנס: קריאת משרות ומדדים">
+        <Card title="API נכנס">
           <div className="flex flex-col gap-4">
             <p>
-              כל הבקשות הן <C>GET</C> לכתובת <C>https://&lt;כתובת המערכת&gt;/api/v1</C>, והטוקן נשלח בכותרת <C>Authorization: Bearer &lt;API_TOKEN&gt;</C>.
-              טוקן בכתובת (למשל <C>?token=</C>) נדחה, כי כתובות נשמרות בלוגים. התשובות ב-JSON. ה-API מחזיר משרות ונתונים מצטברים בלבד: שמות מועמדים,
-              פרטי קשר וקבצים לא יוצאים דרכו.
+              כל הבקשות הן <C>GET</C> לכתובת <C>https://&lt;כתובת המערכת&gt;/api/v1</C>, והמפתח נשלח בכותרת <C>Authorization: Bearer &lt;KEY&gt;</C>.
+              מפתח בכתובת (למשל <C>?token=</C>) נדחה, כי כתובות נשמרות בלוגים. התשובות ב-JSON. ה-API מחזיר משרות, סטטוסים, מזהים ונתונים מצטברים
+              בלבד: שמות מועמדים, פרטי קשר וקבצים לא יוצאים דרכו. תיאור מכונה של כל הנתיבים ב-<C>/api/v1/openapi.json</C> (OpenAPI 3.1, בלי מפתח).
             </p>
-
-            <H3>GET /api/v1/jobs</H3>
-            <p>רשימת משרות, מהחדשה לישנה.</p>
-            <Table head={["פרמטר", "ערכים", "ברירת מחדל"]}>
-              <tr>
-                <td className={td}><C>status</C></td>
-                <td className={td}><C>active</C> (באוויר באתר) או <C>all</C></td>
-                <td className={td}><C>active</C></td>
-              </tr>
-              <tr>
-                <td className={td}><C>scope</C></td>
-                <td className={td}><C>paid</C> (משרות בתשלום) או <C>all</C></td>
-                <td className={td}><C>paid</C></td>
-              </tr>
-              <tr>
-                <td className={td}><C>updated_since</C></td>
-                <td className={td}>תאריך ושעה ב-ISO 8601: רק משרות שהשתנו מאז</td>
-                <td className={td}>—</td>
-              </tr>
-              <tr>
-                <td className={td}><C>limit</C></td>
-                <td className={td}>1–{API_LIMITS.maxPageSize}</td>
-                <td className={td}>{API_LIMITS.defaultPageSize}</td>
-              </tr>
-              <tr>
-                <td className={td}><C>page</C></td>
-                <td className={td}>1–{API_LIMITS.maxPage}</td>
-                <td className={td}>1</td>
-              </tr>
+            <Table head={["נתיב", "הרשאה", "מה"]} caption="נתיבים">
+              {ENDPOINTS.map((e) => (
+                <tr key={e.path}>
+                  <td className={td}>
+                    <C>{`${e.method} ${e.path}`}</C>
+                  </td>
+                  <td className={td}>
+                    <AuthLabel auth={e.auth} />
+                  </td>
+                  <td className={td}>{e.summary}</td>
+                </tr>
+              ))}
             </Table>
-            <Code>{JOBS_EXAMPLE}</Code>
 
-            <H3>GET /api/v1/jobs/&#123;id&#125;</H3>
-            <p>
-              משרה אחת לפי מזהה Salesforce או לפי המזהה בכתובת המשרה באתר (24 תווים). מוחזרים גם ספירת ההגשות לפי סטטוס, והחשיפה באתר ב-30 הימים
-              האחרונים.
-            </p>
-            <Code>{JOB_EXAMPLE}</Code>
-
-            <H3>GET /api/v1/site/jobs</H3>
-            <p>
-              הפיד של האתר החדש (skeelz-site): כל המשרות הפעילות באתר, עם מה שדף משרה ציבורי מציג (כותרת, חברה, תיאור, עיר, היקף, כישורים, &quot;משרה
-              חמה&quot; ובתשלום). בלי פרטי קשר של מעסיקים ובלי הגשות. נפתח רק בטוקן נפרד, <C>SITE_FEED_TOKEN</C>, ולא ב-<C>API_TOKEN</C>, עם מכסה
-              שעתית משלו. התשובה נשמרת במטמון לשתי דקות.
-            </p>
-
-            <H3>GET /api/v1/metrics</H3>
-            <p>המדדים של לשונית המועמדים בדשבורד, וסיכום התנועה באתר, לטווח ימים (שעון ישראל).</p>
-            <Table head={["פרמטר", "ערכים", "ברירת מחדל"]}>
-              <tr>
-                <td className={td}><C>from</C>, <C>to</C></td>
-                <td className={td}>
-                  <C>YYYY-MM-DD</C>, כולל שני הקצוות, עד {API_LIMITS.maxRangeDays} ימים
-                </td>
-                <td className={td}>30 הימים האחרונים</td>
-              </tr>
-              <tr>
-                <td className={td}><C>scope</C></td>
-                <td className={td}><C>paid</C> או <C>all</C></td>
-                <td className={td}><C>paid</C></td>
-              </tr>
-              <tr>
-                <td className={td}><C>basis</C></td>
-                <td className={td}>
-                  <C>application</C> (ההגשות שנוצרו בטווח ומה קרה איתן) או <C>event</C> (כל מה שקרה בטווח)
-                </td>
-                <td className={td}><C>application</C></td>
-              </tr>
-            </Table>
-            <Code>{METRICS_EXAMPLE}</Code>
+            {ENDPOINTS.map((e) => (
+              <section key={e.path} className="flex flex-col gap-3">
+                <H3>
+                  <span dir="ltr">{`${e.method} ${e.path}`}</span>
+                </H3>
+                <p>
+                  {e.description} הרשאה: <AuthLabel auth={e.auth} />.
+                </p>
+                {e.params.length ? (
+                  <Table head={["פרמטר", "ערכים", "ברירת מחדל"]} caption={`פרמטרים של ${e.path}`}>
+                    {e.params.map((prm) => (
+                      <tr key={prm.name}>
+                        <td className={td}>
+                          <C>{prm.name}</C>
+                        </td>
+                        <td className={td}>{prm.description}</td>
+                        <td className={td}>{prm.defaultLabel ? <C>{prm.defaultLabel}</C> : "—"}</td>
+                      </tr>
+                    ))}
+                  </Table>
+                ) : null}
+                {EXAMPLES[e.path] ? <Code>{EXAMPLES[e.path]!}</Code> : null}
+              </section>
+            ))}
           </div>
         </Card>
 
@@ -297,13 +363,13 @@ export default async function ApiDocsPage() {
 
         <Card title="מגבלות ואבטחה">
           <ul className="list-disc space-y-1 ps-6">
-            <li>התקשורת ב-HTTPS בלבד, והטוקנים נשמרים רק כמשתני סביבה סודיים בשרת. ההשוואה שלהם נעשית בזמן קבוע.</li>
+            <li>התקשורת ב-HTTPS בלבד. מפתחות נשמרים רק כ-hash (SHA-256), וטוקנים ותיקים רק כמשתני סביבה סודיים בשרת. ההשוואה נעשית בזמן קבוע.</li>
             <li>
-              עד {API_LIMITS.perIpPerMinute} בקשות בדקה מכל כתובת IP, ועד {fmt(API_LIMITS.perTokenPerHour)} בקשות בשעה לטוקן. ל-<C>/metrics</C>, שהוא
+              עד {API_LIMITS.perIpPerMinute} בקשות בדקה מכל כתובת IP, ועד {fmt(API_LIMITS.perTokenPerHour)} בקשות בשעה לכל מפתח. ל-<C>/metrics</C>, שהוא
               חישוב כבד, יש תקרה משותפת של {API_LIMITS.metricsPerMinute} בקשות בדקה.
             </li>
             <li>
-              אחרי {API_LIMITS.authFailures} ניסיונות עם טוקן שגוי תוך {API_LIMITS.authFailureWindowMin} דקות, הכתובת נחסמת ל-
+              אחרי {API_LIMITS.authFailures} ניסיונות עם מפתח שגוי תוך {API_LIMITS.authFailureWindowMin} דקות, הכתובת נחסמת ל-
               {API_LIMITS.lockoutMin} דקות.
             </li>
             <li>
@@ -311,7 +377,7 @@ export default async function ApiDocsPage() {
               <C>Retry-After</C>.
             </li>
             <li>ה-API לקריאה בלבד: אין בו שום פעולה שמשנה נתונים, והוא לא נגיש מדפדפן באתר אחר (אין CORS).</li>
-            <li>ניסיונות כושלים, חסימות, שימוש ב-API ו-webhooks שנכשלו נרשמים ביומן הפעילות.</li>
+            <li>יצירה וביטול של מפתחות, ניסיונות כושלים, חסימות, השימוש הראשון בכל שעה של כל מפתח ו-webhooks שנכשלו נרשמים ביומן הפעילות.</li>
             <li>ה-webhook נשלח רק לכתובת https ציבורית: כתובת פרטית או פנימית נדחית, והפניות לא נעקבות.</li>
             <li>המגבלות נספרות בזיכרון השרת, ולכן מתאפסות בכל פריסה או הפעלה מחדש.</li>
           </ul>
@@ -321,22 +387,14 @@ export default async function ApiDocsPage() {
           <p className="mb-4">
             שגיאה חוזרת כ-<C>{'{ "error": { "code": "…", "message": "…" } }'}</C>.
           </p>
-          <Table head={["סטטוס", "קוד", "משמעות"]}>
-            {[
-              ["400", "invalid_parameter · invalid_id · range_too_long · token_in_url", "פרמטר לא תקין, או טוקן שנשלח בכתובת"],
-              ["401", "unauthorized", "חסר טוקן, או שהטוקן שגוי"],
-              ["404", "not_found", "המשרה לא נמצאה"],
-              ["405", "—", "שיטה שאינה GET"],
-              ["429", "rate_limited · locked_out", "חריגה מהמגבלות, או חסימה אחרי ניסיונות כושלים"],
-              ["500", "internal_error", "תקלה בשרת"],
-              ["503", "api_disabled", "ה-API כבוי: API_TOKEN לא הוגדר"],
-            ].map(([status, code, meaning]) => (
-              <tr key={status}>
-                <td className={`${td} tabular-nums`}>{status}</td>
+          <Table head={["סטטוס", "קוד", "משמעות"]} caption="קודי שגיאה">
+            {API_ERRORS.map((e) => (
+              <tr key={e.status}>
+                <td className={`${td} tabular-nums`}>{e.status}</td>
                 <td className={td}>
-                  <C>{code}</C>
+                  <C>{e.codes.join(" · ")}</C>
                 </td>
-                <td className={td}>{meaning}</td>
+                <td className={td}>{e.meaning}</td>
               </tr>
             ))}
           </Table>

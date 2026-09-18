@@ -477,6 +477,48 @@ export const webhookDeliveries = pgTable(
   ],
 );
 
+/* --------------------------------------------------------- SKEELZ Connect */
+
+/**
+ * Keys other systems use to call /api/v1 (docs/connect-api.md), issued at /admin/api.
+ * Only the sha256 of a key is stored; `prefix` is the first characters after `sk_admin_`, for lists.
+ */
+export const apiKeys = pgTable(
+  "api_keys",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    prefix: text("prefix").notNull(),
+    hash: text("hash").notNull(),
+    scopes: text("scopes").array().notNull(),
+    createdBy: text("created_by").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    expiresAt: ts("expires_at"),
+    lastUsedAt: ts("last_used_at"),
+    lastUsedIp: text("last_used_ip"),
+    revokedAt: ts("revoked_at"),
+  },
+  (t) => [uniqueIndex("api_keys_hash_idx").on(t.hash)],
+);
+
+/** How this app calls the other SKEELZ apps: one row per peer, its key encrypted (src/lib/connect/crypto.ts). */
+export const connections = pgTable(
+  "connections",
+  {
+    peer: text("peer").primaryKey(),
+    baseUrl: text("base_url").notNull(),
+    keyCiphertext: text("key_ciphertext").notNull(),
+    keyLast4: text("key_last4").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    updatedBy: text("updated_by").notNull(),
+    updatedAt: ts("updated_at").notNull().defaultNow(),
+    lastCheckAt: ts("last_check_at"),
+    lastCheckOk: boolean("last_check_ok"),
+    lastCheckDetail: text("last_check_detail"),
+  },
+  (t) => [check("connections_peer_check", sql`${t.peer} in ('admin', 'crm', 'site')`)],
+);
+
 /* ------------------------------------------------------------------ texts */
 
 /** Admin-edited copy for pages such as the accessibility statement; src/lib/texts/registry.ts lists the texts. */

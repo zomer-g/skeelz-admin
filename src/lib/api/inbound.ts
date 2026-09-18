@@ -1,12 +1,12 @@
 import { writeAudit } from "@/lib/audit";
+import { touchKey, verifyKey, type ApiKeyIdentity } from "./keys";
 import { firstInWindow, hit, secondsLeft } from "./rate-limit";
-import { API_LIMITS } from "./spec";
-import { inboundTokens, matchesToken } from "./tokens";
+import { API_LIMITS, endpointFor, type EndpointAuth } from "./spec";
 
 /**
- * The gate every /api/v1 route goes through. These routes are for other systems,
- * not people: the shared API_TOKEN stands in for the xhostd sign-in, and
- * `withApiToken` stands in for `requireUser`.
+ * The gate every keyed /api/v1 route goes through. These routes are for other systems,
+ * not people: an API key (lib/api/keys.ts) stands in for the xhostd sign-in, and
+ * `withApiKey` stands in for `requireUser`.
  */
 
 const ACTOR = "api:inbound";
@@ -31,36 +31,27 @@ export const apiError = (status: number, code: string, message: string, headers:
  * The address the proxy saw. xhostd's edge appends the real client to X-Forwarded-For,
  * so the last entry is the one a caller cannot forge; anything earlier is theirs to write.
  */
-function clientIp(req: Request): string {
+export function clientIp(req: Request): string {
   const forwarded = req.headers.get("x-forwarded-for")?.split(",").map((s) => s.trim()).filter(Boolean);
   return forwarded?.at(-1) || req.headers.get("x-real-ip") || "unknown";
 }
 
-type Handler<C> = (req: Request, ctx: C) => Promise<Response>;
+type Handler<C> = (req: Request, ctx: C, key: ApiKeyIdentity) => Promise<Response>;
 
 /**
- * In order: the API is switched on, the address is not locked out, the token arrives in
- * the Authorization header (never the URL) and matches, and the rate limits allow it.
+ * In order: the address is not locked out, the key arrives in the Authorization header
+ * (never the URL), it is a live key, it holds the route's scope, and the rate limits
+ * (per address and per key) allow it.
+ *
+ * `path` is the endpoint as written in spec.ts, and `auth` must match what spec.ts says,
+ * so the docs, openapi.json and the code cannot drift apart.
  */
-export function withApiToken<C>(
-  route: string,
-  handler: Handler<C>,
-  {
-    heavy = false,
-    tokens: tokenSource = inboundTokens,
-    bucket = "token",
-  }: {
-    heavy?: boolean;
-    /** Which shared tokens open this route; a consumer with its own token gets its own. */
-    tokens?: () => string[];
-    /** The per-token hourly budget, kept apart per consumer. */
-    bucket?: string;
-  } = {},
-): Handler<C> {
-  return async (req, ctx) => {
-    const tokens = tokenSource();
-    if (!tokens.length) return apiError(503, "api_disabled", "The API is not enabled on this server.");
+export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public">, handler: Handler<C>): (req: Request, ctx: C) => Promise<Response> {
+  const endpoint = endpointFor(path);
+  if (endpoint.auth !== auth) throw new Error(`${path}: spec.ts says ${endpoint.auth}, the route says ${auth}`);
+  const route = `${endpoint.method} ${path}`;
 
+  return async (req, ctx) => {
     const ip = clientIp(req);
     const lockKey = `lock:${ip}`;
     const locked = secondsLeft(lockKey);
@@ -68,23 +59,34 @@ export function withApiToken<C>(
 
     const params = new URL(req.url).searchParams;
     if (["token", "api_key", "access_token", "key"].some((k) => params.has(k))) {
-      return apiError(400, "token_in_url", "Send the token in the Authorization header, never in the URL.");
+      return apiError(400, "token_in_url", "Send the key in the Authorization header, never in the URL.");
     }
 
     const bearer = /^Bearer\s+(\S+)\s*$/i.exec(req.headers.get("authorization") ?? "");
-    if (!bearer || !matchesToken(bearer[1]!, tokens)) {
+    const key = bearer ? await verifyKey(bearer[1]!) : null;
+    if (!key) {
       const failures = hit(`fail:${ip}`, API_LIMITS.authFailures, API_LIMITS.authFailureWindowMin * MIN);
       if (!failures.ok) hit(lockKey, 1, API_LIMITS.lockoutMin * MIN);
       if (firstInWindow(`denied:${ip}`, 10 * MIN)) {
-        await writeAudit(ACTOR, "api.denied", route, { ip, reason: bearer ? "wrong_token" : "missing_token", lockedOut: !failures.ok });
+        await writeAudit(ACTOR, "api.denied", route, { ip, reason: bearer ? "wrong_key" : "missing_key", lockedOut: !failures.ok });
       }
-      return apiError(401, "unauthorized", "A valid token is required: Authorization: Bearer <token>.", { "WWW-Authenticate": 'Bearer realm="skeelz"' });
+      return apiError(401, "unauthorized", "A valid key is required: Authorization: Bearer <key>.", { "WWW-Authenticate": 'Bearer realm="skeelz"' });
     }
+
+    if (auth !== "any" && !key.scopes.includes(auth)) {
+      if (firstInWindow(`scope:${key.id}:${route}`, 10 * MIN)) {
+        await writeAudit(ACTOR, "api.denied", route, { ip, reason: "insufficient_scope", key: key.name, keyId: key.id, required: auth });
+      }
+      return apiError(403, "insufficient_scope", `This key lacks the ${auth} scope.`, {
+        "WWW-Authenticate": `Bearer realm="skeelz", error="insufficient_scope", scope="${auth}"`,
+      });
+    }
+    touchKey(key, ip);
 
     const limits = [
       hit(`ip:${ip}`, API_LIMITS.perIpPerMinute, MIN),
-      hit(bucket, API_LIMITS.perTokenPerHour, 60 * MIN),
-      ...(heavy ? [hit("heavy", API_LIMITS.metricsPerMinute, MIN)] : []),
+      hit(`key:${key.id}`, API_LIMITS.perTokenPerHour, 60 * MIN),
+      ...(endpoint.heavy ? [hit("heavy", API_LIMITS.metricsPerMinute, MIN)] : []),
     ];
     const tightest = limits.reduce((a, b) => (b.remaining < a.remaining ? b : a));
     const rateHeaders = {
@@ -94,16 +96,16 @@ export function withApiToken<C>(
     };
     const blocked = limits.find((l) => !l.ok);
     if (blocked) {
-      if (firstInWindow(`limited:${ip}`, 10 * MIN)) await writeAudit(ACTOR, "api.rate_limited", route, { ip });
+      if (firstInWindow(`limited:${key.id}`, 10 * MIN)) await writeAudit(ACTOR, "api.rate_limited", route, { ip, key: key.name, keyId: key.id });
       const retry = Math.max(1, Math.ceil((blocked.resetAt - Date.now()) / 1000));
       return apiError(429, "rate_limited", "Rate limit exceeded.", { ...rateHeaders, "Retry-After": String(retry) });
     }
 
-    // The log shows that the API is in use and from where, without a row per request.
-    if (firstInWindow(`used:${route}:${ip}`, 60 * MIN)) void writeAudit(ACTOR, "api.used", route, { ip });
+    // The log shows which key uses the API and from where, without a row per request.
+    if (firstInWindow(`used:${key.id}`, 60 * MIN)) void writeAudit(ACTOR, "api.used", route, { ip, key: key.name, keyId: key.id });
 
     try {
-      const res = await handler(req, ctx);
+      const res = await handler(req, ctx, key);
       for (const [name, value] of Object.entries(rateHeaders)) res.headers.set(name, value);
       return res;
     } catch (err) {

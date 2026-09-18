@@ -3,27 +3,14 @@ import { MIN_TOKEN_LENGTH } from "./spec";
 
 /**
  * Shared tokens come only from the environment (xhostd `set_env(secret=true)`),
- * are never logged, and are compared in constant time.
+ * are never logged, and are compared in constant time. The inbound API's env tokens
+ * are legacy keys now (lib/api/keys.ts, LEGACY_KEYS in spec.ts).
  */
 
 /** A configured shared token, or null when it is unset or too short to be safe. */
 export function sharedToken(name: string): string | null {
   const value = process.env[name]?.trim();
   return value && value.length >= MIN_TOKEN_LENGTH ? value : null;
-}
-
-/** Tokens the inbound API accepts: the current one and, during a rotation, the previous one. */
-export function inboundTokens(): string[] {
-  const current = sharedToken("API_TOKEN");
-  if (!current) return [];
-  const previous = sharedToken("API_TOKEN_PREVIOUS");
-  return previous ? [current, previous] : [current];
-}
-
-/** The public site's own token for its job feed (/api/v1/site/jobs); API_TOKEN does not open that route. */
-export function siteFeedTokens(): string[] {
-  const token = sharedToken("SITE_FEED_TOKEN");
-  return token ? [token] : [];
 }
 
 const digest = (value: string) => createHash("sha256").update(value).digest();

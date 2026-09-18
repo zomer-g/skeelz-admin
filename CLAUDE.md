@@ -16,19 +16,25 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 - **Auth:** identity = xhostd SSO cookie `__Host-xhost_id`, verified in `src/lib/auth/xhost.ts`. Access =
   `ADMIN_EMAILS` / active `users` row / open invite (`src/lib/auth/session.ts`). Every page calls
   `pageAuth(minRole, path)`; every server action / route handler calls `requireUser(minRole)` (`/api/v1` routes use
-  `withApiToken` instead). Never rely on the layout.
+  `withApiKey` instead). Never rely on the layout.
   The only pages without it hold no data: `/accessibility` and `/privacy` (public by law, framed by `PublicDoc`) and `not-found.tsx`.
 - **Security headers:** CSP and friends in `next.config.ts`. The browser loads nothing cross-origin (fonts self-hosted,
   GA/SMOOV/SF server-side only) — keep it that way or extend the CSP. The candidate file route sends its own sandboxing
   CSP and is rate-limited (60 opens/hour per user, counted from the audit log).
-- **External API** (contract and limits in `src/lib/api/spec.ts`, docs page `/api-docs` for signed-in users): inbound
-  `GET /api/v1/{jobs,jobs/:id,metrics}` behind the shared `API_TOKEN` (+ `API_TOKEN_PREVIOUS` while rotating) through
-  `withApiToken` — constant-time compare, header only, in-memory rate limits and lockout. Outbound webhooks
+- **External API = SKEELZ Connect** (`docs/connect-api.md`, shared with the crm and site apps; contract, scopes and limits in
+  `src/lib/api/spec.ts`, which also generates `/api/v1/openapi.json` (public) and the docs page `/api-docs`). Inbound
+  `GET /api/v1/{ping,jobs,jobs/:id,metrics,site/jobs}` through `withApiKey(path, scope, handler)`: Bearer header only,
+  keys `sk_admin_…` issued at `/admin/api` (table `api_keys`, sha256 only, shown once, revocable), scopes `jobs:read`
+  `metrics:read` `site-feed:read`, 403 `insufficient_scope`. Env tokens stay as legacy keys: `API_TOKEN` (+ `_PREVIOUS`) =
+  jobs+metrics, `SITE_FEED_TOKEN` = site feed only. In-memory rate limits per key, lockout per address. Outbound to the
+  other apps only via `peerFetch` (`src/lib/connect/client.ts`); connections set at `/admin/connections`, peer keys
+  AES-256-GCM encrypted under `CONNECT_SECRET_KEY` and never sent to the browser. Outbound webhooks
   (`src/lib/api/outbound.ts`) are detected and delivered by the sync worker: `webhook_case_state` remembers what was
-  reported, `webhook_deliveries` queues events with retries, each POST is HMAC-signed with `WEBHOOK_TOKEN`. Both
+  reported, `webhook_deliveries` queues events with retries, each POST is HMAC-signed with `WEBHOOK_TOKEN`. All
   directions carry jobs, statuses, ids and aggregates only — never candidate names, contact details or files
-  (`src/lib/api/data.ts`). A new endpoint or event must keep that and be added to `spec.ts` and the docs page.
-- **Roles:** viewer < editor (dashboard config) < admin (users, integrations, sync). Admins can "view as" a lower
+  (`src/lib/api/data.ts`). A new endpoint, scope or event must keep that and be added to `spec.ts` (the docs page and
+  openapi.json follow).
+- **Roles:** viewer < editor (dashboard config) < admin (users, integrations, API keys, connections, sync). Admins can "view as" a lower
   role (cookie `skeelz_view_as`, honoured only when `realRole` is admin); `user.role` is the effective role that every
   check uses — only the preview switch itself checks `realRole`.
 - **Salesforce is read-only in phase 1.** The SF client must expose no write methods. Candidates/employer
