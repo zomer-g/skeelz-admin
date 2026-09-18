@@ -20,6 +20,12 @@ export function inboundTokens(): string[] {
   return previous ? [current, previous] : [current];
 }
 
+/** The public site's own token for its job feed (/api/v1/site/jobs); API_TOKEN does not open that route. */
+export function siteFeedTokens(): string[] {
+  const token = sharedToken("SITE_FEED_TOKEN");
+  return token ? [token] : [];
+}
+
 const digest = (value: string) => createHash("sha256").update(value).digest();
 
 /** Compares fixed-length digests and checks every token, so timing reveals neither length nor which one matched. */

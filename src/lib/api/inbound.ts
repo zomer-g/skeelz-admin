@@ -42,9 +42,23 @@ type Handler<C> = (req: Request, ctx: C) => Promise<Response>;
  * In order: the API is switched on, the address is not locked out, the token arrives in
  * the Authorization header (never the URL) and matches, and the rate limits allow it.
  */
-export function withApiToken<C>(route: string, handler: Handler<C>, { heavy = false }: { heavy?: boolean } = {}): Handler<C> {
+export function withApiToken<C>(
+  route: string,
+  handler: Handler<C>,
+  {
+    heavy = false,
+    tokens: tokenSource = inboundTokens,
+    bucket = "token",
+  }: {
+    heavy?: boolean;
+    /** Which shared tokens open this route; a consumer with its own token gets its own. */
+    tokens?: () => string[];
+    /** The per-token hourly budget, kept apart per consumer. */
+    bucket?: string;
+  } = {},
+): Handler<C> {
   return async (req, ctx) => {
-    const tokens = inboundTokens();
+    const tokens = tokenSource();
     if (!tokens.length) return apiError(503, "api_disabled", "The API is not enabled on this server.");
 
     const ip = clientIp(req);
@@ -69,7 +83,7 @@ export function withApiToken<C>(route: string, handler: Handler<C>, { heavy = fa
 
     const limits = [
       hit(`ip:${ip}`, API_LIMITS.perIpPerMinute, MIN),
-      hit("token", API_LIMITS.perTokenPerHour, 60 * MIN),
+      hit(bucket, API_LIMITS.perTokenPerHour, 60 * MIN),
       ...(heavy ? [hit("heavy", API_LIMITS.metricsPerMinute, MIN)] : []),
     ];
     const tightest = limits.reduce((a, b) => (b.remaining < a.remaining ? b : a));
