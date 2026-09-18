@@ -370,7 +370,7 @@ export default async function ApiDocsPage() {
             </li>
             <li>
               אחרי {API_LIMITS.authFailures} ניסיונות עם מפתח שגוי תוך {API_LIMITS.authFailureWindowMin} דקות, הכתובת נחסמת ל-
-              {API_LIMITS.lockoutMin} דקות.
+              {API_LIMITS.lockoutMin} דקות. חסימה כזו לא חלה על בקשה עם מפתח תקף.
             </li>
             <li>
               כל תשובה כוללת <C>X-RateLimit-Limit</C>, <C>X-RateLimit-Remaining</C> ו-<C>X-RateLimit-Reset</C>. בחריגה חוזרת תשובה 429 עם{" "}

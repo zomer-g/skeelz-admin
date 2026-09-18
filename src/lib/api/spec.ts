@@ -94,6 +94,8 @@ export const KEY_EXPIRY_DAYS = [30, 90, 365] as const;
 export const CONNECT_LIMITS = {
   /** Outbound calls to a peer app give up after this. */
   peerTimeoutMs: 5000,
+  /** A peer's answer larger than this is refused; a call may raise it (the site's job feed: 10 MB). */
+  peerMaxBytes: 5 * 1024 * 1024,
   /** last_used_at is written at most this often per key. */
   lastUsedEveryMin: 1,
   /** The unauthenticated openapi.json, per address. */

@@ -18,6 +18,7 @@ import {
 import { ga4Configured, gaDate, jobKeyFromPath, runReport } from "@/lib/google/ga4";
 import { getLiveVersion, gtmConfigured, sendsJobId } from "@/lib/google/gtm";
 import { smoov, smoovConfigured } from "@/lib/smoov/client";
+import { logError, safeErrorMessage } from "@/lib/log";
 
 /**
  * Google Analytics, Tag Manager and SMOOV into Postgres. Separate from the
@@ -246,7 +247,7 @@ async function syncSmoov(): Promise<{ rows: number; note: string }> {
         .onConflictDoUpdate({ target: smoovCampaignStats.campaignId, set: { ...values, fetchedAt: new Date() } });
     } catch (err) {
       failed.push(campaign.id);
-      console.error(`[marketing] SMOOV campaign ${campaign.id}: ${(err as Error).message}`);
+      logError(`marketing SMOOV campaign ${campaign.id}`, err);
     }
   }
   await saveState("SMOOV", { rowCount: lists.length });
@@ -280,8 +281,8 @@ export async function runMarketingSync(trigger: string): Promise<MarketingResult
       await db.update(syncRuns).set({ finishedAt: new Date(), upserted: rows, deleted: 0, error: note || null }).where(eq(syncRuns.id, row!.id));
       results.push({ source, rows, note, ms: Date.now() - started });
     } catch (err) {
-      const error = (err as Error).message;
-      console.error(`[marketing] ${source} failed: ${error}`);
+      const error = safeErrorMessage(err);
+      logError(`marketing ${source}`, err);
       await saveState(source, { lastError: error.slice(0, 2000) });
       await db.update(syncRuns).set({ finishedAt: new Date(), upserted: 0, deleted: 0, error }).where(eq(syncRuns.id, row!.id));
       results.push({ source, rows: 0, error, ms: Date.now() - started });

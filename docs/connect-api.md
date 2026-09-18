@@ -99,6 +99,28 @@ Every app implements the same five parts. Copy this file into each repo as `docs
 - **Admin "view as" a lower role** (like the admin app): nice to have, only if cheap.
 - The site stays invisible to anyone without a role, as before.
 
+
+## Amendments (security review)
+
+The same in all three apps.
+
+- **C1 SSRF.** A peer `base_url` is https only, and its host may not be an IP literal, `localhost`, a name ending
+  `.localhost` `.local` `.internal` `.lan`, or a single label; no credentials, path, query or fragment. Only in
+  development, `http://localhost:<port>` and `http://127.0.0.1:<port>` are also allowed. `peerFetch` checks again before
+  every request and resolves the host: any loopback, private, link-local, CGNAT, unspecified, ULA, multicast or
+  IPv4-mapped address of those is refused. Codes `invalid_base_url` / `blocked_address`. Still `redirect: "error"` and 5s.
+- **C2.** Saving a connection with a different origin requires the key again ("כתובת השתנתה — יש להזין את המפתח מחדש").
+- **C3.** Ciphertext format `v2:`: AES-256-GCM with a 12-byte IV, a 16-byte tag (`authTagLength: 16`), and the peer name
+  as AAD. `v1` is invalid: re-enter the key.
+- **C4.** Any query parameter whose value starts with `sk_` also gets 400 `token_in_url`.
+- **C5.** The key is checked before the lockout: a valid key is never refused because its address is locked out. Only a
+  missing or invalid key counts toward, or is refused by, the lockout. The address `unknown` is never locked out or
+  limited per address; only per-key limits apply to it.
+- **C6.** `peerFetch` refuses answers over 5 MB (by `Content-Length`, and by counting the streamed bytes), before parsing
+  JSON. The site's job feed may use 10 MB.
+- **C7.** Errors are logged as `where` + the pg SQLSTATE / our typed error's code / the error's class name, through one
+  helper (`logError`). Never a database error's message (it holds SQL and values), request bodies or form data.
+
 ---
 
 ## In this app (admin)
@@ -123,6 +145,8 @@ How the admin app implements the parts above. Where the spec left a choice open,
   - Existing endpoints keep their error codes (`invalid_parameter`, `invalid_id`, `range_too_long`) and `/api/v1/jobs` keeps
     `page` paging; `cursor` paging is for new list endpoints.
   - `openapi.json` needs no key but is limited to 30 requests a minute per address.
+  - C1: the resolve-time address check lives in `src/lib/net/public-address.ts`, shared with the outbound webhooks.
+    C7: `src/lib/log.ts` (`logError`, and `safeErrorMessage` for errors that are stored, such as `sync_state.last_error`).
   - `version` is `XHOST_SHA` (7 characters), else `git rev-parse --short HEAD`, else `dev`.
   - "בדיקת חיבור" also fails when the peer answers with a different `app` than expected (a wrong URL).
   - Key expiry is chosen at creation: none, 30, 90 or 365 days.

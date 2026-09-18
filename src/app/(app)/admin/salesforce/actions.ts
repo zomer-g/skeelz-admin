@@ -8,15 +8,15 @@ import { sfSchemaReports } from "@/lib/db/schema";
 import { salesforceConfigured } from "@/lib/sf/client";
 import { testConnection, type ConnectionResult } from "@/lib/sf/diagnostics";
 import { buildSchemaReport, reportToMarkdown } from "@/lib/sf/schema-report";
+import { logError, safeErrorMessage } from "@/lib/log";
 
 export type ConnectionState = ({ ok: true } & ConnectionResult) | { ok: false; message: string } | null;
 export type ReportState = { ok: boolean; message: string } | null;
 
 const NOT_CONFIGURED = "חסרים משתני סביבה ב-xhostd: SF_LOGIN_URL, SF_CLIENT_ID, SF_CLIENT_SECRET (אחרי הגדרה נדרשת פריסה מחדש)";
 
-function describeError(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
+/** Salesforce's own message helps; a database error's message would carry values, so it becomes its code. */
+const describeError = safeErrorMessage;
 
 export async function testSalesforceConnection(_prev: ConnectionState, _form: FormData): Promise<ConnectionState> {
   const admin = await requireUser("admin");
@@ -30,7 +30,7 @@ export async function testSalesforceConnection(_prev: ConnectionState, _form: Fo
     return { ok: true, ...result };
   } catch (err) {
     const message = describeError(err);
-    console.error("[salesforce] connection test failed:", message);
+    logError("salesforce connection test", err);
     await writeAudit(admin.email, "salesforce.connection_test", null, { ok: false, message });
     return { ok: false, message };
   }
@@ -60,7 +60,7 @@ export async function generateSchemaReport(_prev: ReportState, _form: FormData):
     return { ok: true, message: "הדו״ח הופק ונשמר" };
   } catch (err) {
     const message = describeError(err);
-    console.error("[sf-schema-report] FAILED:", message);
+    logError("sf-schema-report", err);
     await writeAudit(admin.email, "salesforce.schema_report", null, { ok: false, message });
     return { ok: false, message };
   }

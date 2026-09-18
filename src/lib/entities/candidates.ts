@@ -3,6 +3,7 @@ import { RECORD_TYPES } from "@/lib/metrics/candidates";
 import { CANDIDATE_ACCOUNT_PATTERN } from "@/lib/metrics/marketing";
 import { salesforceConfigured, sf } from "@/lib/sf/client";
 import { asDate, containsPattern, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
+import { logError } from "@/lib/log";
 
 /**
  * Candidates: Contacts in the candidate Accounts, and any Contact that applied.
@@ -221,7 +222,7 @@ export async function loadCandidateFiles(contactId: string): Promise<{ files: Ca
     }
     return { files: [...byDocument.values()].sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)), error: null };
   } catch (err) {
-    console.error("[candidates] listing files failed", (err as Error).message);
+    logError("candidates files", err);
     return { files: [], error: "לא ניתן לטעון את הקבצים מ-Salesforce כרגע" };
   }
 }

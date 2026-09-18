@@ -1,6 +1,7 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "./schema";
+import { logError } from "@/lib/log";
 
 export type Db = NodePgDatabase<typeof schema>;
 
@@ -13,7 +14,7 @@ export function getPool(): Pool {
     const url = process.env.DATABASE_URL;
     if (!url) throw new Error("DATABASE_URL is not set");
     g.__skeelzPool = new Pool({ connectionString: url, max: 5, idleTimeoutMillis: 30_000 });
-    g.__skeelzPool.on("error", (err) => console.error("[db] idle client error:", err.message));
+    g.__skeelzPool.on("error", (err) => logError("db idle client", err));
   }
   return g.__skeelzPool;
 }

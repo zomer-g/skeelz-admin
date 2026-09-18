@@ -2,6 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { siteTexts, siteTextVersions } from "@/lib/db/schema";
 import { findText } from "./registry";
+import { logError } from "@/lib/log";
 
 export interface StoredText {
   body: string;
@@ -21,7 +22,7 @@ export async function loadText(key: string): Promise<StoredText> {
     const [row] = await getDb().select().from(siteTexts).where(eq(siteTexts.key, key)).limit(1);
     if (row) return { body: row.body, updatedAt: row.updatedAt, updatedBy: row.updatedBy };
   } catch (err) {
-    console.error(`[texts] showing the built-in "${key}" text:`, (err as Error).message);
+    logError(`texts ${key} (built-in text shown)`, err);
   }
   return { body: def.defaultBody, updatedAt: null, updatedBy: null };
 }

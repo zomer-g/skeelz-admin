@@ -24,7 +24,12 @@ export async function saveConnection(_prev: ConnectionState, form: FormData): Pr
   if (!isPeer(peer)) return { ok: false, lines: ["מערכת לא מוכרת"] };
   const baseUrl = normalizeBaseUrl(String(form.get("base_url") ?? ""));
   if (!baseUrl) {
-    return { ok: false, lines: ["הכתובת חייבת להיות https://… בלי נתיב, פרמטרים, שם משתמש או סיסמה (למשל https://skeelz-crm-zomerg.xhostd.app)"] };
+    return {
+      ok: false,
+      lines: [
+        "כתובת לא מורשית (invalid_base_url): צריך כתובת https ציבורית עם שם דומיין מלא, בלי כתובת IP, localhost או שם פנימי, ובלי נתיב, פרמטרים, שם משתמש או סיסמה. למשל https://skeelz-crm-zomerg.xhostd.app",
+      ],
+    };
   }
   const key = String(form.get("key") ?? "").trim();
   const enabled = form.get("enabled") === "on";
@@ -32,10 +37,18 @@ export async function saveConnection(_prev: ConnectionState, form: FormData): Pr
   if (key && !connectSecretConfigured()) return { ok: false, lines: ["CONNECT_SECRET_KEY לא מוגדר בשרת, ולכן אי אפשר לשמור מפתח"] };
 
   const db = getDb();
-  const [existing] = await db.select({ peer: connections.peer }).from(connections).where(eq(connections.peer, peer)).limit(1);
+  const [existing] = await db
+    .select({ peer: connections.peer, baseUrl: connections.baseUrl })
+    .from(connections)
+    .where(eq(connections.peer, peer))
+    .limit(1);
   if (!existing && !key) return { ok: false, lines: ["בחיבור חדש צריך להדביק את המפתח שהמערכת השנייה הנפיקה לנו"] };
+  // A key is never carried over to a new origin: that would hand it to whoever runs the new address.
+  if (existing && !key && normalizeBaseUrl(existing.baseUrl) !== baseUrl) {
+    return { ok: false, lines: ["כתובת השתנתה — יש להזין את המפתח מחדש"] };
+  }
 
-  const keyFields = key ? { keyCiphertext: encryptSecret(key), keyLast4: key.slice(-4) } : {};
+  const keyFields = key ? { keyCiphertext: encryptSecret(key, peer), keyLast4: key.slice(-4) } : {};
   const common = { baseUrl, enabled, updatedBy: admin.email, updatedAt: new Date() };
   if (existing) await db.update(connections).set({ ...common, ...keyFields }).where(eq(connections.peer, peer));
   else await db.insert(connections).values({ peer, ...common, keyCiphertext: keyFields.keyCiphertext!, keyLast4: keyFields.keyLast4! });

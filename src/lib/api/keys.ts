@@ -5,6 +5,7 @@ import { apiKeys } from "@/lib/db/schema";
 import { firstInWindow } from "./rate-limit";
 import { CONNECT_LIMITS, KEY_PREFIX, KEY_RANDOM_BYTES, KEY_SHOWN_CHARS, LEGACY_KEYS, type ApiScope } from "./spec";
 import { matchesToken, sharedToken } from "./tokens";
+import { logError } from "@/lib/log";
 
 /**
  * API keys (docs/connect-api.md §1). A key is `sk_admin_` + 43 base64url characters,
@@ -63,5 +64,5 @@ export function touchKey(key: ApiKeyIdentity, ip: string): void {
     .update(apiKeys)
     .set({ lastUsedAt: new Date(), lastUsedIp: ip })
     .where(eq(apiKeys.id, key.id))
-    .catch((err: Error) => console.error("[api] last_used update failed:", err.message));
+    .catch((err: unknown) => logError("api last_used", err));
 }

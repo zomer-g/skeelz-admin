@@ -18,6 +18,7 @@ import { ga4Configured } from "@/lib/google/ga4";
 import { marketingConfigured, runMarketingSync } from "@/lib/integrations/marketing-sync";
 import { salesforceConfigured } from "@/lib/sf/client";
 import { runSync, type SyncMode } from "@/lib/sf/sync";
+import { safeErrorMessage } from "@/lib/log";
 
 type JobMode = SyncMode | "marketing";
 
@@ -34,7 +35,7 @@ async function safely(label: string, work: () => Promise<unknown>): Promise<void
   try {
     await work();
   } catch (err) {
-    log(`${label} failed: ${(err as Error).message}`);
+    log(`${label} failed: ${safeErrorMessage(err)}`);
   }
 }
 

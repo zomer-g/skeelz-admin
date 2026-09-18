@@ -2,6 +2,7 @@ import { writeAudit } from "@/lib/audit";
 import { touchKey, verifyKey, type ApiKeyIdentity } from "./keys";
 import { firstInWindow, hit, secondsLeft } from "./rate-limit";
 import { API_LIMITS, endpointFor, type EndpointAuth } from "./spec";
+import { logError } from "@/lib/log";
 
 /**
  * The gate every keyed /api/v1 route goes through. These routes are for other systems,
@@ -39,9 +40,12 @@ export function clientIp(req: Request): string {
 type Handler<C> = (req: Request, ctx: C, key: ApiKeyIdentity) => Promise<Response>;
 
 /**
- * In order: the address is not locked out, the key arrives in the Authorization header
- * (never the URL), it is a live key, it holds the route's scope, and the rate limits
- * (per address and per key) allow it.
+ * In order: no key in the URL, then the Authorization header's key. A missing or invalid
+ * key counts toward the address's lockout (and is refused outright while it is locked out);
+ * a valid key is never refused for its address's lockout. Then the key must hold the
+ * route's scope, and the rate limits (per address and per key) must allow it. An address
+ * the proxy didn't report ("unknown") is never locked out or limited per address: all
+ * such callers would share one bucket, so only the per-key limits apply to them.
  *
  * `path` is the endpoint as written in spec.ts, and `auth` must match what spec.ts says,
  * so the docs, openapi.json and the code cannot drift apart.
@@ -53,22 +57,27 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
 
   return async (req, ctx) => {
     const ip = clientIp(req);
-    const lockKey = `lock:${ip}`;
-    const locked = secondsLeft(lockKey);
-    if (locked) return apiError(429, "locked_out", "Too many failed authentication attempts.", { "Retry-After": String(locked) });
+    const knownIp = ip !== "unknown";
 
     const params = new URL(req.url).searchParams;
-    if (["token", "api_key", "access_token", "key"].some((k) => params.has(k))) {
+    if (["token", "api_key", "access_token", "key"].some((k) => params.has(k)) || [...params.values()].some((v) => v.startsWith("sk_"))) {
       return apiError(400, "token_in_url", "Send the key in the Authorization header, never in the URL.");
     }
 
     const bearer = /^Bearer\s+(\S+)\s*$/i.exec(req.headers.get("authorization") ?? "");
     const key = bearer ? await verifyKey(bearer[1]!) : null;
     if (!key) {
-      const failures = hit(`fail:${ip}`, API_LIMITS.authFailures, API_LIMITS.authFailureWindowMin * MIN);
-      if (!failures.ok) hit(lockKey, 1, API_LIMITS.lockoutMin * MIN);
+      const lockKey = `lock:${ip}`;
+      const locked = knownIp ? secondsLeft(lockKey) : 0;
+      if (locked) return apiError(429, "locked_out", "Too many failed authentication attempts.", { "Retry-After": String(locked) });
+      let lockedOut = false;
+      if (knownIp) {
+        const failures = hit(`fail:${ip}`, API_LIMITS.authFailures, API_LIMITS.authFailureWindowMin * MIN);
+        if (!failures.ok) hit(lockKey, 1, API_LIMITS.lockoutMin * MIN);
+        lockedOut = !failures.ok;
+      }
       if (firstInWindow(`denied:${ip}`, 10 * MIN)) {
-        await writeAudit(ACTOR, "api.denied", route, { ip, reason: bearer ? "wrong_key" : "missing_key", lockedOut: !failures.ok });
+        await writeAudit(ACTOR, "api.denied", route, { ip, reason: bearer ? "wrong_key" : "missing_key", lockedOut });
       }
       return apiError(401, "unauthorized", "A valid key is required: Authorization: Bearer <key>.", { "WWW-Authenticate": 'Bearer realm="skeelz"' });
     }
@@ -84,7 +93,7 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
     touchKey(key, ip);
 
     const limits = [
-      hit(`ip:${ip}`, API_LIMITS.perIpPerMinute, MIN),
+      ...(knownIp ? [hit(`ip:${ip}`, API_LIMITS.perIpPerMinute, MIN)] : []),
       hit(`key:${key.id}`, API_LIMITS.perTokenPerHour, 60 * MIN),
       ...(endpoint.heavy ? [hit("heavy", API_LIMITS.metricsPerMinute, MIN)] : []),
     ];
@@ -109,9 +118,8 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
       for (const [name, value] of Object.entries(rateHeaders)) res.headers.set(name, value);
       return res;
     } catch (err) {
-      // Drizzle's message is the SQL; the database's own error is the cause.
-      const cause = (err as Error).cause;
-      console.error(`[api] ${route} failed:`, cause instanceof Error ? cause.message : (err as Error).message);
+      // Never the message: a database error's message holds the SQL and its values.
+      logError(`api ${route}`, err);
       return apiError(500, "internal_error", "Something went wrong.", rateHeaders);
     }
   };

@@ -13,6 +13,8 @@ import { applicationPaidSql } from "@/lib/metrics/paid";
 import { dailySummary, jobJson } from "./data";
 import { WEBHOOK_LIMITS, type WebhookEventType } from "./spec";
 import { sharedToken, signPayload } from "./tokens";
+import { safeErrorMessage } from "@/lib/log";
+import { isBlockedAddress } from "@/lib/net/public-address";
 
 /**
  * Outgoing webhooks. After each Salesforce pass the sync worker compares the mirror
@@ -233,7 +235,7 @@ async function deliverOne(config: { url: URL; token: string }, delivery: typeof 
     await res.body?.cancel();
     if (res.status < 200 || res.status >= 300) error = `HTTP ${res.status}`;
   } catch (err) {
-    error = ((err as Error).message || "request failed").slice(0, 300);
+    error = (safeErrorMessage(err) || "request failed").slice(0, 300);
   }
 
   const attempts = delivery.attempts + 1;
@@ -259,15 +261,6 @@ async function assertPublicHost(url: URL): Promise<void> {
   if (process.env.NODE_ENV === "development") return;
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = isIP(host) ? [host] : (await lookup(host, { all: true })).map((a) => a.address);
-  if (!addresses.length || addresses.some(isPrivateAddress)) throw new Error("webhook host is not a public address");
+  if (!addresses.length || addresses.some(isBlockedAddress)) throw new Error("webhook host is not a public address");
 }
 
-function isPrivateAddress(ip: string): boolean {
-  if (isIP(ip) === 4) {
-    const [a = 0, b = 0] = ip.split(".").map(Number);
-    return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
-  }
-  const v = ip.toLowerCase();
-  if (v.startsWith("::ffff:")) return isPrivateAddress(v.slice(7));
-  return v === "::" || v === "::1" || v.startsWith("fc") || v.startsWith("fd") || v.startsWith("fe80");
-}

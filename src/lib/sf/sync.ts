@@ -4,6 +4,7 @@ import { syncRuns, syncState } from "@/lib/db/schema";
 import { sf, SalesforceError } from "./client";
 import { SYNC_OBJECTS, toDate, type SfRecord, type SyncObjectDef } from "./sync-objects";
 import type { SfDescribe } from "./types";
+import { logError, safeErrorMessage } from "@/lib/log";
 
 /**
  * Mirrors Salesforce into Postgres, read-only on the Salesforce side.
@@ -173,8 +174,8 @@ async function syncObject(def: SyncObjectDef, mode: SyncMode, trigger: string): 
     await saveState(def.name, { cursor, lastSuccessAt: new Date(), lastError: null, rowCount: n });
     return finish({ upserted, deleted });
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    console.error(`[sync] ${def.name} ${mode} failed: ${error}`);
+    const error = safeErrorMessage(err);
+    logError(`sync ${def.name} ${mode}`, err);
     await saveState(def.name, { lastError: error.slice(0, 2000) });
     return finish({ upserted: 0, deleted: 0, error });
   }
