@@ -11,7 +11,7 @@ import { containsPattern } from "./search";
  * - "טכני להעלים" (Field16__c) not checked
  * - Subject is not the automatic "The Following Candidate Has Applied To The Following Position"
  * - opened on or after 1.1.2024
- * Sorted by the start of work (Placement_Date__c), earliest first. Read-only:
+ * Sorted by the start of work (Placement_Date__c), newest first. Read-only:
  * the fields are edited in Salesforce. Definitions in docs/entities.md.
  */
 
@@ -100,7 +100,7 @@ export async function loadPayments(f: PaymentFilters): Promise<PaymentRow[]> {
                   OR c.data->>'Project_Status__c' ILIKE ${needle})`
            : sql.raw("")
        }
-     ORDER BY c.data->>'Placement_Date__c' ASC NULLS LAST, c.data->>'CaseNumber'`);
+     ORDER BY c.data->>'Placement_Date__c' DESC NULLS LAST, c.data->>'CaseNumber' DESC`);
 
   return result.rows.map((r) => ({
     id: String(r.id),

@@ -157,7 +157,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         </Table>
         <p className="mt-3 text-xs text-muted">
           השמות (Placement_cambium) בסטטוס &quot;התקבל&quot;, שלא סומנו &quot;טכני להעלים&quot;, שנפתחו מ-{fmtDay(PAYMENTS_SINCE)}, בלי הנושא האוטומטי &quot;{AUTO_SUBJECT}&quot;.
-          ממוינות לפי תאריך תחילת העבודה. העדכון נעשה ב-Salesforce, והנתונים כאן מתעדכנים כל 10 דקות.
+          ממוינות לפי תאריך תחילת העבודה, מהחדש לישן. העדכון נעשה ב-Salesforce, והנתונים כאן מתעדכנים כל 10 דקות.
         </p>
       </Card>
     </>

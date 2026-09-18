@@ -114,7 +114,7 @@ export function ApplicationsTable({ rows, hide = [], empty = "אין הגשות"
   const showJob = !hide.includes("job");
   return (
     <Table
-      head={["הוגשה", ...(showCandidate ? ["מועמד"] : []), ...(showJob ? ["משרה"] : []), "סטטוס", "מטפל"]}
+      head={["הוגשה", ...(showCandidate ? ["מועמד"] : []), ...(showJob ? ["משרה"] : []), "סטטוס", "התקבל", "תחילת עבודה", "מטפל"]}
       empty={rows.length === 0 ? empty : undefined}
     >
       {rows.map((a) => (
@@ -152,9 +152,9 @@ export function ApplicationsTable({ rows, hide = [], empty = "אין הגשות"
               <p className="text-xs text-muted">{a.company ?? "—"}</p>
             </td>
           ) : null}
-          <td className="px-3 py-2">
-            {a.status ?? "—"}
-          </td>
+          <td className="px-3 py-2">{a.status ?? "—"}</td>
+          <td className="whitespace-nowrap px-3 py-2 tabular-nums">{a.acceptedAt ? fmtDate(a.acceptedAt) : "—"}</td>
+          <td className="whitespace-nowrap px-3 py-2 tabular-nums">{a.startDate ? `${Number(a.startDate.slice(8, 10))}.${Number(a.startDate.slice(5, 7))}.${a.startDate.slice(0, 4)}` : "—"}</td>
           <td className="px-3 py-2">{a.ownerName ?? "—"}</td>
         </tr>
       ))}

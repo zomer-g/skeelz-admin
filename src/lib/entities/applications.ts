@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { normStatus, RECORD_TYPES } from "@/lib/metrics/candidates";
+import { normStatus, RECORD_TYPES, STATUS } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { applicationPaidSql } from "@/lib/metrics/paid";
 import { asDate, containsPattern, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
@@ -38,6 +38,10 @@ export interface ApplicationRow {
   jobTitle: string | null;
   company: string | null;
   ownerName: string | null;
+  /** When the status became "התקבל". */
+  acceptedAt: Date | null;
+  /** תאריך תחילת עבודה (`Placement_Date__c`), YYYY-MM-DD. */
+  startDate: string | null;
 }
 
 const NORM_STATUS = sql.raw(`btrim(regexp_replace(replace(a.status, chr(160), ' '), ' +', ' ', 'g'))`);
@@ -61,7 +65,15 @@ const COLUMNS = sql`
   a.parent_id,
   coalesce(nullif(j.data->>'Position_cambium__c', ''), nullif(a.data->>'position_name_for_applied__c', ''), nullif(a.data->>'Position_Name__c', ''), nullif(j.data->>'Subject', '')) AS job_title,
   coalesce(nullif(j.data->>'company_cambium__c', ''), nullif(a.data->>'company_cambium__c', '')) AS company,
-  u.name AS owner_name`;
+  u.name AS owner_name,
+  -- When the status first became "התקבל"; before status history was kept, the Case closes on it.
+  coalesce(
+    (SELECT min(h.created_date) FROM sf_case_history h
+      WHERE h.case_id = a.id AND h.field = 'Status'
+        AND btrim(regexp_replace(replace(h.new_value, chr(160), ' '), ' +', ' ', 'g')) = ${STATUS.accepted}),
+    CASE WHEN ${NORM_STATUS} = ${STATUS.accepted} THEN a.closed_date END
+  ) AS accepted_at,
+  nullif(a.data->>'Placement_Date__c', '') AS start_date`;
 
 function whereOf(f: ApplicationFilters): SQL {
   const parts: SQL[] = [IS_APPLICATION];
@@ -113,6 +125,8 @@ function toRow(r: Record<string, unknown>): ApplicationRow {
     jobTitle: str(r.job_title),
     company: str(r.company),
     ownerName: str(r.owner_name),
+    acceptedAt: asDate(r.accepted_at),
+    startDate: str(r.start_date)?.slice(0, 10) ?? null,
   };
 }
 
