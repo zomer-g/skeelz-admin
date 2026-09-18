@@ -45,6 +45,13 @@
   --color-series-2: #eb6834;
   --color-series-3: #1baf7a;
 
+  /* Where a case stands today (applications funnel and its timeline): hired, still
+     moving, stuck (open but idle), closed without a hire. Every value is also in text. */
+  --color-outcome-hired: #1baf7a;
+  --color-outcome-active: #f5a524;
+  --color-outcome-stuck: #98a2b3;
+  --color-outcome-closed: #f04438;
+
   --radius-card: 20px;
   --radius-modal: 30px;
 

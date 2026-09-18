@@ -15,7 +15,7 @@ interface NavItem {
 }
 
 const ITEMS: NavItem[] = [
-  { href: "/", label: "דשבורד", also: ["/talent", "/jobs", "/employers", "/marketing", "/campaigns"] },
+  { href: "/", label: "דשבורד", also: ["/talent", "/jobs", "/pipeline", "/employers", "/marketing", "/campaigns"] },
   { href: "/applications", label: "רשומות", also: ["/companies", "/candidates", "/positions"] },
 ];
 

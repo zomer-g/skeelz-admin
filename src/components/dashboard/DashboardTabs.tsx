@@ -6,6 +6,7 @@ const TABS = [
   { key: "summary", label: "תקציר מנהלים", href: "/" },
   { key: "candidates", label: "מועמדים", href: "/talent" },
   { key: "jobs", label: "משרות", href: "/jobs" },
+  { key: "pipeline", label: "הגשות", href: "/pipeline" },
   { key: "employers", label: "מעסיקים", href: "/employers" },
   { key: "marketing", label: "שיווק", href: "/marketing" },
   { key: "campaigns", label: "דיוורים", href: "/campaigns" },

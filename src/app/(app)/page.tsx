@@ -175,6 +175,9 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
               אחת יכולה להיפתח כמה פעמים בכניסה אחת. ההגשות ומה שאחריהן מ-Salesforce. לכל אחד משני החלקים קנה מידה משלו, כדי ששלבי ההגשה לא ייבלעו
               מול אלפי הכניסות.
             </p>
+            <Link href={withQuery("/pipeline")} className="mt-3 inline-block text-sm font-medium text-accent-dark underline underline-offset-4">
+              למשפך המלא, עם עוגן ומסננים
+            </Link>
           </Card>
         </Section>
 

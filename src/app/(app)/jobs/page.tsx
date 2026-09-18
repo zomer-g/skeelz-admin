@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ApplicationPipeline, SectionTitle } from "@/components/dashboard/ApplicationPipeline";
+import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
@@ -9,7 +9,7 @@ import { pageAuth } from "@/lib/auth/guard";
 import { EXPLAIN } from "@/lib/dashboard/explain";
 import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtInt, fmtRelative } from "@/lib/format";
-import { computeCandidateMetrics, countNewJobs, loadApplicationFacts, syncFreshness } from "@/lib/metrics/candidates";
+import { countNewJobs, loadApplicationFacts, syncFreshness } from "@/lib/metrics/candidates";
 import { buildJobRows, loadJobGa, loadPositions, matchesSearch, type JobRow } from "@/lib/metrics/jobs";
 import { inScope } from "@/lib/metrics/paid";
 
@@ -35,7 +35,6 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     countNewJobs(params.from, params.to),
     syncFreshness(),
   ]);
-  const pipeline = computeCandidateMetrics(facts.filter(inScope(params.scope)), params.scope === "paid" ? newJobs.paid : newJobs.all, params);
 
   const all = buildJobRows(positions, ga, facts, params.from, params.to);
   const inView = (r: JobRow) => inScope(params.scope)(r.position);
@@ -62,7 +61,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
       <DashboardTabs active="jobs" query={query} />
       <DashboardShell
         preset={params.preset}
-        basis={params.basis}
+        showBasis={false}
         scope={params.scope}
         fromDay={params.fromDay}
         toDay={params.toDay}
@@ -92,7 +91,13 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           <StatCard label="הגשות" value={fmtInt(totals.applications)} info={EXPLAIN.applicationsOfJobs} />
         </div>
 
-        <ApplicationPipeline m={pipeline} basis={params.basis} callsAvailable={freshness.callsAvailable} />
+        <p className="mt-6 rounded-card bg-white px-4 py-3 text-sm ring-1 ring-line">
+          שלבי ההגשה, המשפך מהחשיפה ועד ההשמה והממתינים לתגובת מעסיק נמצאים בלשונית{" "}
+          <Link href={`/pipeline${detailQuery}`} className="font-medium text-accent-dark underline underline-offset-4">
+            הגשות
+          </Link>
+          .
+        </p>
 
         <SectionTitle hint="פתיחות, לחיצות ושלבי ההגשה לכל משרה">כל המשרות</SectionTitle>
         <Card level={3} title={q ? `תוצאות עבור "${q}" · ${fmtInt(matched.length)}` : `משרות עם פעילות בטווח · ${fmtInt(active.length)}`}>

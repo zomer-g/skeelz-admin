@@ -55,6 +55,7 @@ const SCREEN_LABELS: [prefix: string, label: string][] = [
   ["/talent", "דשבורד · מועמדים"],
   ["/jobs/", "דשבורד · משרה"],
   ["/jobs", "דשבורד · משרות"],
+  ["/pipeline", "דשבורד · הגשות"],
   ["/marketing", "דשבורד · שיווק"],
   ["/employers", "דשבורד · מעסיקים"],
   ["/campaigns/", "דשבורד · דיוור"],

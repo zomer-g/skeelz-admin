@@ -42,8 +42,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 - **Employers:** employer lead = Case RecordType `lead_employer`, employer = its `AccountId`, pipeline = `Status` history
   (פנייה ראשונה → … → נחתם חוזה). A job is live on the site when `PStatus__c` = `Active` (Case `Status` is not maintained
   on jobs). Definitions in `docs/employers-tab-metrics.md`, code in `src/lib/metrics/employers.ts`.
-- **Dashboard tabs** (`docs/dashboard-tabs.md`): `/` executive summary · `/talent` candidate pool · `/jobs` jobs + the
-  application pipeline (`ApplicationPipeline`) · `/employers` · `/marketing` · `/campaigns`. A job has two pages: `/jobs/[id]`
+- **Dashboard tabs** (`docs/dashboard-tabs.md`): `/` executive summary · `/talent` candidate pool · `/jobs` jobs ·
+  `/pipeline` applications: the anchored funnel (`src/lib/metrics/funnel.ts`, `docs/applications-tab.md`) + the application
+  pipeline (`ApplicationPipeline`) · `/employers` · `/marketing` · `/campaigns`. A job has two pages: `/jobs/[id]`
   (dashboard analytics) and `/positions/[id]` (the entity card, under מעסיקים) — entity pages link to `/positions`.
 - **Entities** (`/applications`, `/companies`, `/candidates`; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
   GET search forms, 50 per page. A company is jobs grouped by normalized `company_cambium__c` (`src/lib/metrics/company.ts`).

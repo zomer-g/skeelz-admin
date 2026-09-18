@@ -4,7 +4,8 @@
 |---|---|---|
 | תקציר מנהלים | `/` | השורה התחתונה של כל הלשוניות בעמוד אחד |
 | מועמדים | `/talent` | מאגר המועמדים עצמו |
-| משרות | `/jobs` | המשרות, ותהליך ההגשה (16 השאלות, `docs/candidates-tab-metrics.md`) |
+| משרות | `/jobs` | המשרות, עם פתיחות, לחיצות ושלבי ההגשה לכל משרה |
+| הגשות | `/pipeline` | המשפך מהחשיפה ועד ההשמה עם עוגן נייד, בשלות ופוטנציאל (`docs/applications-tab.md`), ותהליך ההגשה (16 השאלות, `docs/candidates-tab-metrics.md`) |
 | מעסיקים | `/employers` | לידים, חוזים ואימות משרות (`docs/employers-tab-metrics.md`) |
 | שיווק | `/marketing` | Google Analytics ו-Salesforce במקביל |
 | דיוורים | `/campaigns` | קמפיינים וקישור למשרות |
