@@ -6,20 +6,14 @@ import { asDate, containsPattern, dayBounds, isSfId, isTrue, num, PAGE_SIZE, pho
 
 /**
  * Applications: Cases of the two application record types — an application
- * made on the site, and the one it becomes when the candidate is hired.
+ * made on the site, and the one it becomes when converted to a placement. The
+ * record type is not shown or filtered here: whether a candidate was hired is
+ * read from the status ("התקבל") alone.
  */
-
-export const APPLICATION_TYPES = [
-  { key: "application", label: "הגשה", recordType: RECORD_TYPES.application },
-  { key: "accepted", label: "השמה", recordType: RECORD_TYPES.accepted },
-] as const;
-
-export type ApplicationType = (typeof APPLICATION_TYPES)[number]["key"];
 
 export interface ApplicationFilters {
   q: string;
   status: string;
-  type: ApplicationType | "";
   paid: "paid" | "unpaid" | "";
   fromDay: string;
   toDay: string;
@@ -32,7 +26,6 @@ export interface ApplicationFilters {
 export interface ApplicationRow {
   id: string;
   caseNumber: string | null;
-  type: ApplicationType;
   status: string | null;
   createdAt: Date;
   closedAt: Date | null;
@@ -88,8 +81,6 @@ function whereOf(f: ApplicationFilters): SQL {
     )`);
   }
   if (f.status) parts.push(sql`${NORM_STATUS} = ${normStatus(f.status)}`);
-  const type = APPLICATION_TYPES.find((t) => t.key === f.type);
-  if (type) parts.push(sql`rt.developer_name = ${type.recordType}`);
   if (f.paid === "paid") parts.push(applicationPaidSql("a", "j"));
   if (f.paid === "unpaid") parts.push(sql`NOT ${applicationPaidSql("a", "j")}`);
   const { from, to } = dayBounds(f.fromDay, f.toDay);
@@ -110,7 +101,6 @@ function toRow(r: Record<string, unknown>): ApplicationRow {
   return {
     id: String(r.id),
     caseNumber: str(r.case_number),
-    type: r.record_type === RECORD_TYPES.accepted ? "accepted" : "application",
     status: normStatus(str(r.status)),
     createdAt: asDate(r.created_date)!,
     closedAt: asDate(r.closed_date),

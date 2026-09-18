@@ -76,7 +76,6 @@ export function FieldList({ items }: { items: [label: string, value: ReactNode][
 const KIND_LABEL: Record<ActivityKind, string> = {
   created: "נוצר",
   status: "סטטוס",
-  type: "סוג",
   owner: "מטפל",
   email: "מייל",
   call: "שיחה",
@@ -154,7 +153,7 @@ export function ApplicationsTable({ rows, hide = [], empty = "אין הגשות"
             </td>
           ) : null}
           <td className="px-3 py-2">
-            {a.status ?? "—"} {a.type === "accepted" ? <Badge tone="success">השמה</Badge> : null}
+            {a.status ?? "—"}
           </td>
           <td className="px-3 py-2">{a.ownerName ?? "—"}</td>
         </tr>

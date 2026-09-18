@@ -33,7 +33,7 @@ export default async function PositionPage({ params }: { params: Promise<{ id: s
   if (!position) notFound();
   const [timeline, applications, activity] = await Promise.all([
     loadCaseTimeline(id),
-    searchApplications({ q: "", status: "", type: "", paid: "", owner: "", fromDay: "", toDay: "", jobId: id }, { pageSize: MAX_APPLICATIONS }),
+    searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", jobId: id }, { pageSize: MAX_APPLICATIONS }),
     loadJobActivity([id]),
   ]);
   const last = activity.get(id) ?? null;

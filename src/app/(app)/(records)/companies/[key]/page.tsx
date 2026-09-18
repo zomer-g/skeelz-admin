@@ -32,7 +32,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
 
   const [activity, applications] = await Promise.all([
     loadJobActivity(jobs.map((j) => j.id)),
-    searchApplications({ q: "", status: "", type: "", paid: "", owner: "", fromDay: "", toDay: "", companyKey: key }, { pageSize: RECENT_APPLICATIONS }),
+    searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", companyKey: key }, { pageSize: RECENT_APPLICATIONS }),
   ]);
   const now = new Date();
 

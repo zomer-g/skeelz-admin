@@ -8,7 +8,7 @@ import { asDate, run, str } from "./search";
  * Email-type tasks are skipped — they copy an email that is already listed.
  */
 
-export type ActivityKind = "created" | "status" | "type" | "owner" | "email" | "call" | "task";
+export type ActivityKind = "created" | "status" | "owner" | "email" | "call" | "task";
 
 export interface ActivityItem {
   at: Date;
@@ -25,7 +25,7 @@ export async function loadCaseTimeline(caseId: string): Promise<ActivityItem[]> 
   const [history, emails, tasks] = await Promise.all([
     run(sql`
       SELECT field, old_value, new_value, created_date FROM sf_case_history
-       WHERE case_id = ${caseId} AND field IN ('created', 'Status', 'RecordType', 'Owner')`),
+       WHERE case_id = ${caseId} AND field IN ('created', 'Status', 'Owner')`),
     run(sql`
       SELECT message_date, incoming, from_address, to_address, subject FROM sf_email_message
        WHERE parent_id = ${caseId} AND NOT is_deleted`),
@@ -44,7 +44,6 @@ export async function loadCaseTimeline(caseId: string): Promise<ActivityItem[]> 
     if (h.field === "created") items.push({ at, kind: "created", title: "התיק נוצר", detail: null });
     else if (h.field === "Status") items.push({ at, kind: "status", title: `סטטוס: ${normStatus(next) ?? "—"}`, detail: prev ? `מ: ${normStatus(prev)}` : null });
     else if (next && LOOKS_LIKE_ID.test(next)) continue;
-    else if (h.field === "RecordType") items.push({ at, kind: "type", title: `סוג התיק: ${next ?? "—"}`, detail: prev ? `מ: ${prev}` : null });
     else if (h.field === "Owner") items.push({ at, kind: "owner", title: `מטפל: ${next ?? "—"}`, detail: prev ? `מ: ${prev}` : null });
   }
   for (const e of emails) {

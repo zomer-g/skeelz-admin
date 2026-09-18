@@ -26,7 +26,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
   if (!candidate) notFound();
   const [{ files, error }, applications] = await Promise.all([
     loadCandidateFiles(id),
-    searchApplications({ q: "", status: "", type: "", paid: "", owner: "", fromDay: "", toDay: "", contactId: id }, { pageSize: MAX_APPLICATIONS }),
+    searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", contactId: id }, { pageSize: MAX_APPLICATIONS }),
   ]);
 
   return (
