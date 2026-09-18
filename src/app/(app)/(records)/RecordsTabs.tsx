@@ -7,12 +7,14 @@ const TABS = [
   { key: "applications", label: "הגשות", href: "/applications" },
   { key: "companies", label: "מעסיקים", href: "/companies" },
   { key: "candidates", label: "מועמדים", href: "/candidates" },
+  { key: "payments", label: "מעקב תשלומים", href: "/payments" },
 ] as const;
 
 /** Which tab a path belongs to: a job card (/positions) lives under its employer. */
 function activeTab(pathname: string): string {
   if (pathname.startsWith("/positions") || pathname.startsWith("/companies")) return "companies";
   if (pathname.startsWith("/candidates")) return "candidates";
+  if (pathname.startsWith("/payments")) return "payments";
   return "applications";
 }
 

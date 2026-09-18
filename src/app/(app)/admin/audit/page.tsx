@@ -52,6 +52,7 @@ const SCREEN_LABELS: [prefix: string, label: string][] = [
   ["/candidates/", "רשומות · מועמד"],
   ["/candidates", "רשומות · מועמדים"],
   ["/positions/", "רשומות · משרה"],
+  ["/payments", "רשומות · מעקב תשלומים"],
   ["/talent", "דשבורד · מועמדים"],
   ["/jobs/", "דשבורד · משרה"],
   ["/jobs", "דשבורד · משרות"],
