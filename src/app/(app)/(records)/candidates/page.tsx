@@ -4,6 +4,7 @@ import { Pager, SearchForm } from "@/components/entities/Search";
 import { Badge, Card, PageHeader, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
+import { emailPath } from "@/lib/entities/emails";
 import { loadCandidateFilterOptions, searchCandidates, type CandidateFilters } from "@/lib/entities/candidates";
 import { choice, dayParam, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
 import { fmtDate, fmtInt } from "@/lib/format";
@@ -68,9 +69,13 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
                 <Link href={`/candidates/${c.id}`} className="font-medium underline-offset-4 hover:underline" dir="auto">
                   {c.name ?? "(ללא שם)"}
                 </Link>
-                <p className="text-xs text-muted" dir="ltr">
-                  {c.email ?? ""}
-                </p>
+                {c.email ? (
+                  <p className="text-xs" dir="ltr">
+                    <Link href={emailPath(c.email)} className="text-muted underline-offset-2 hover:underline">
+                      {c.email}
+                    </Link>
+                  </p>
+                ) : null}
               </td>
               <td className="whitespace-nowrap px-3 py-2 tabular-nums" dir="ltr">
                 {c.phone ?? "—"}

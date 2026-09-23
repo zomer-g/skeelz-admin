@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Badge, formatDateTime, NewTabNote, Table } from "@/components/ui";
 import type { ActivityItem, ActivityKind } from "@/lib/entities/activity";
 import type { ApplicationRow } from "@/lib/entities/applications";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtInt } from "@/lib/format";
 
 /** The coloured header of an entity page, with its direct links. */
 export function EntityHeader({
@@ -28,7 +28,7 @@ export function EntityHeader({
       </p>
       <section className="mb-6 overflow-hidden rounded-card border-2 border-line">
         <header className="bg-accent px-6 py-4 text-white">
-          <h1 className="text-2xl font-bold" dir="auto">
+          <h1 className="text-2xl font-bold [overflow-wrap:anywhere]" dir="auto">
             {title}
           </h1>
           {subtitle ? <div className="text-white">{subtitle}</div> : null}
@@ -54,6 +54,27 @@ export function EntityHeader({
         </div>
       </section>
     </>
+  );
+}
+
+/** Tabs of an entity page, as links (each tab is its own URL), in the dashboard sub-nav's pill language. */
+export function EntityTabs({ label, tabs }: { label: string; tabs: { href: string; label: string; count?: number; active: boolean }[] }) {
+  return (
+    <nav className="mb-4 flex gap-1 overflow-x-auto rounded-card bg-accent/10 p-1.5 [scrollbar-width:thin]" aria-label={label}>
+      {tabs.map((t) => (
+        <Link
+          key={t.href}
+          href={t.href}
+          aria-current={t.active ? "page" : undefined}
+          className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition-colors sm:text-base ${
+            t.active ? "bg-white font-bold text-accent-dark shadow-sm ring-1 ring-accent" : "text-ink hover:bg-white/70"
+          }`}
+        >
+          {t.label}
+          {t.count !== undefined ? <span className="ms-1.5 tabular-nums">({fmtInt(t.count)})</span> : null}
+        </Link>
+      ))}
+    </nav>
   );
 }
 

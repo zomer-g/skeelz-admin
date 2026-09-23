@@ -6,6 +6,7 @@ import { Badge, Card } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { searchApplications } from "@/lib/entities/applications";
 import { fileName, loadCandidate, loadCandidateFiles } from "@/lib/entities/candidates";
+import { emailPath } from "@/lib/entities/emails";
 import { isSfId, sfRecordUrl } from "@/lib/entities/search";
 import { fmtDate, fmtInt } from "@/lib/format";
 
@@ -49,6 +50,7 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
         links={[
           { href: sfRecordUrl(candidate.id), label: "Salesforce", external: true },
           { href: candidate.applications ? `/applications?candidate=${candidate.id}` : null, label: "ההגשות בחיפוש" },
+          { href: candidate.email ? emailPath(candidate.email) : null, label: "כל הפניות לפי המייל" },
         ]}
       />
 

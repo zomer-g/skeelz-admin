@@ -36,7 +36,7 @@ export interface CandidateRow {
   createdAt: Date | null;
 }
 
-const CANDIDATES = sql`
+export const CANDIDATES = sql`
   WITH apps AS (
     SELECT a.contact_id, count(*) AS n, max(a.created_date) AS last_at
       FROM sf_case a JOIN sf_record_type rt ON rt.id = a.record_type_id
