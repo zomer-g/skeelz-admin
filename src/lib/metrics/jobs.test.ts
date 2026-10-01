@@ -73,12 +73,17 @@ describe("filterPositions", () => {
 });
 
 describe("ageInDays", () => {
-  const created = new Date("2026-09-01T10:00:00Z");
-  it("counts to now while open", () => {
-    assert.equal(ageInDays(created, null, new Date("2026-09-03T09:00:00Z")), 1);
+  it("counts calendar days in Israel while open, as Salesforce does", () => {
+    // 22:08 Israel time, read the next afternoon: 1 day, though under 24 hours passed.
+    assert.equal(ageInDays(new Date("2026-09-30T19:08:09Z"), null, new Date("2026-10-01T13:00:00Z")), 1);
+    assert.equal(ageInDays(new Date("2026-09-29T10:39:07Z"), null, new Date("2026-10-01T13:00:00Z")), 2);
+  });
+  it("uses the Israel date, not UTC", () => {
+    // 23:30 UTC on Sep 30 is already Oct 1 in Israel.
+    assert.equal(ageInDays(new Date("2026-09-30T23:30:00Z"), null, new Date("2026-10-01T09:00:00Z")), 0);
   });
   it("counts to the closing date once closed", () => {
-    assert.equal(ageInDays(created, new Date("2026-09-11T10:00:00Z"), new Date("2027-01-01T00:00:00Z")), 10);
+    assert.equal(ageInDays(new Date("2026-09-01T10:00:00Z"), new Date("2026-09-11T10:00:00Z"), new Date("2027-01-01T00:00:00Z")), 10);
   });
   it("is null without a creation date", () => {
     assert.equal(ageInDays(null, null), null);

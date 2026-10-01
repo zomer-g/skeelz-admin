@@ -57,9 +57,15 @@ export function phoneDigits(q: string): string | null {
 /** YYYY-MM-DD from a Salesforce date or datetime text, or null. */
 export const dayOf = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
 
-/** Whole days from `from` to `to`, or to now while `to` is empty (Salesforce's "אורך חיי המקרה"). */
+const ISRAEL_DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Jerusalem", year: "numeric", month: "2-digit", day: "2-digit" });
+const dayNumber = (d: Date) => Date.parse(`${ISRAEL_DAY.format(d)}T00:00:00Z`) / 86_400_000;
+
+/**
+ * Salesforce's "אורך חיי המקרה": calendar days in Israel from creation to closing, or to today while
+ * open (a Case opened last night is 1 day old this morning).
+ */
 export const ageInDays = (from: Date | null, to: Date | null, now = new Date()) =>
-  from ? Math.max(0, Math.floor(((to ?? now).getTime() - from.getTime()) / 86_400_000)) : null;
+  from ? Math.max(0, dayNumber(to ?? now) - dayNumber(from)) : null;
 
 export const isSfId = (v: string) => /^[a-zA-Z0-9]{15,18}$/.test(v);
 
