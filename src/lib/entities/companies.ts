@@ -2,7 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { RECORD_TYPES } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { jobPaidSql } from "@/lib/metrics/paid";
-import { asDate, containsPattern, htmlToText, isSfId, isTrue, num, PAGE_SIZE, run, str } from "./search";
+import { ageInDays, asDate, dayOf, containsPattern, htmlToText, isSfId, isTrue, num, PAGE_SIZE, run, str } from "./search";
 
 /**
  * Employers, as the site knows them: jobs grouped by company name (the Account
@@ -34,6 +34,7 @@ const JOBS = sql`
            coalesce(nullif(p.data->>'Position_cambium__c', ''), nullif(p.data->>'Position_Name__c', ''), nullif(p.data->>'Subject', '')) AS title,
            nullif(p.data->>'PStatus__c', '') AS p_status,
            ${jobPaidSql("p")} AS paid,
+           coalesce(p.data->>'isMarked_cambium__c', 'false') = 'true' AS marked,
            nullif(p.data->>'PLocation_cambium__c', '') AS location,
            nullif(p.data->>'PTime_cambium__c', '') AS job_time,
            nullif(p.data->>'PFullName_cambium__c', '') AS contact_name,
@@ -61,6 +62,8 @@ const COMPANIES = sql`
            count(*) FILTER (WHERE j.p_status = 'Active') AS active_jobs,
            count(*) FILTER (WHERE j.paid) AS paid_jobs,
            count(*) FILTER (WHERE j.paid AND j.p_status = 'Active') AS paid_active_jobs,
+           count(*) FILTER (WHERE j.marked) AS marked_jobs,
+           count(*) FILTER (WHERE j.marked AND j.p_status = 'Active') AS marked_active_jobs,
            coalesce(sum(ja.n), 0) AS applications,
            min(j.created_date) AS first_job_at,
            max(j.created_date) AS last_job_at,
@@ -89,6 +92,9 @@ export interface CompanyRow {
   activeJobs: number;
   paidJobs: number;
   paidActiveJobs: number;
+  /** Jobs with the site's crown / featured mark (`isMarked_cambium__c`). */
+  markedJobs: number;
+  markedActiveJobs: number;
   applications: number;
   firstJobAt: Date | null;
   lastJobAt: Date | null;
@@ -106,6 +112,8 @@ function toCompany(r: Record<string, unknown>): CompanyRow {
     activeJobs: num(r.active_jobs),
     paidJobs: num(r.paid_jobs),
     paidActiveJobs: num(r.paid_active_jobs),
+    markedJobs: num(r.marked_jobs),
+    markedActiveJobs: num(r.marked_active_jobs),
     applications: num(r.applications),
     firstJobAt: asDate(r.first_job_at),
     lastJobAt: asDate(r.last_job_at),
@@ -153,6 +161,7 @@ export interface CompanyJob {
   title: string | null;
   status: string | null;
   paid: boolean;
+  marked: boolean;
   location: string | null;
   time: string | null;
   selfApply: boolean;
@@ -181,6 +190,7 @@ export async function loadCompany(key: string): Promise<{ company: CompanyRow; j
       title: str(r.title),
       status: str(r.p_status),
       paid: isTrue(r.paid),
+      marked: isTrue(r.marked),
       location: str(r.location),
       time: jobTimeLabel(str(r.job_time)),
       selfApply: isTrue(r.self_apply),
@@ -196,43 +206,106 @@ export async function loadCompany(key: string): Promise<{ company: CompanyRow; j
 export interface JobDetails {
   companyName: string | null;
   companyKey: string | null;
+  /** The Case's Account (Account Name in Salesforce). */
+  accountName: string | null;
   status: string | null;
   location: string | null;
+  city: string | null;
+  district: string | null;
   time: string | null;
+  companySize: string | null;
   contactName: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
+  /** The Case's own Contact (Contact Name / Email / Phone), apart from the contact the site filled in. */
+  caseContactName: string | null;
+  caseContactEmail: string | null;
+  caseContactPhone: string | null;
+  ownerName: string | null;
   comments: string | null;
   description: string | null;
   selfApply: boolean;
+  /** The site's crown / featured mark (`isMarked_cambium__c`). */
+  marked: boolean;
+  /** `isSponserd_cambium__c` and `Field18__c` (משרה בתשלום): either makes the job paid (lib/metrics/paid.ts). */
+  sponsored: boolean;
+  paidFlag: boolean;
+  /** בדיקות */
+  tests: boolean;
+  /** משרה של זהר */
+  zohar: boolean;
+  /** פולו-אפ, YYYY-MM-DD */
+  followUp: string | null;
+  /** קישור חדש למשרה (`Field47__c`), or the site address from the job key. */
+  siteLink: string | null;
+  siteCreatedAt: Date | null;
   siteUpdatedAt: Date | null;
+  createdAt: Date | null;
+  closedAt: Date | null;
+  /** אורך חיי המקרה. Computed here: Salesforce's formula field is only as fresh as the record's last change. */
+  ageDays: number | null;
 }
 
-/** The job's own fields, as the site filled them. */
+/** The job's own fields, as the site and Salesforce filled them. */
 export async function loadJobDetails(id: string): Promise<JobDetails | null> {
   if (!isSfId(id)) return null;
   const [r] = await run(sql`
-    SELECT ${sql.raw(COMPANY_NAME)} AS company_name, ${companyKeySql(COMPANY_NAME)} AS company_key,
+    SELECT ${sql.raw(COMPANY_NAME)} AS company_name, ${companyKeySql(COMPANY_NAME)} AS company_key, acc.name AS account_name,
            p.data->>'PStatus__c' AS p_status, p.data->>'PLocation_cambium__c' AS location, p.data->>'PTime_cambium__c' AS job_time,
+           p.data->>'city_index__c' AS city, p.data->>'district_index__c' AS district, p.data->>'company_size__c' AS company_size,
            p.data->>'PFullName_cambium__c' AS contact_name, lower(p.data->>'PEmail_cambium__c') AS contact_email,
-           p.data->>'PPhone_cambium__c' AS contact_phone, p.data->>'PComments_cambium__c' AS comments,
-           p.data->>'PDescription_cambium__c' AS description, p.data->>'isSelfApply_cambium__c' AS self_apply,
-           p.data->>'PModifiedDate_cambium__c' AS site_updated
-      FROM sf_case p LEFT JOIN sf_account acc ON acc.id = p.account_id
+           p.data->>'PPhone_cambium__c' AS contact_phone,
+           ct.name AS case_contact_name, coalesce(nullif(lower(p.data->>'ContactEmail'), ''), ct.email) AS case_contact_email,
+           coalesce(nullif(p.data->>'ContactPhone', ''), nullif(p.data->>'ContactMobile', ''), nullif(ct.data->>'MobilePhone', ''), nullif(ct.data->>'Phone', '')) AS case_contact_phone,
+           u.name AS owner_name,
+           p.data->>'PComments_cambium__c' AS comments, p.data->>'PDescription_cambium__c' AS description,
+           p.data->>'isSelfApply_cambium__c' AS self_apply, p.data->>'isMarked_cambium__c' AS marked,
+           p.data->>'isSponserd_cambium__c' AS sponsored, p.data->>'Field18__c' AS paid_flag,
+           p.data->>'tests__c' AS tests, p.data->>'zohar_position__c' AS zohar, p.data->>'follow_up__c' AS follow_up,
+           p.data->>'Field47__c' AS site_link, p.site_job_key,
+           p.data->>'PCreatedDate_cambium__c' AS site_created, p.data->>'PModifiedDate_cambium__c' AS site_updated,
+           p.created_date, p.closed_date
+      FROM sf_case p
+      LEFT JOIN sf_account acc ON acc.id = p.account_id
+      LEFT JOIN sf_contact ct ON ct.id = p.contact_id
+      LEFT JOIN sf_user u ON u.id = p.owner_id
      WHERE p.id = ${id}`);
   if (!r) return null;
+  const createdAt = asDate(r.created_date);
+  const closedAt = asDate(r.closed_date);
+  const siteKey = str(r.site_job_key);
+  const link = str(r.site_link);
   return {
     companyName: str(r.company_name),
     companyKey: str(r.company_key),
+    accountName: str(r.account_name),
     status: str(r.p_status),
     location: str(r.location),
+    city: str(r.city),
+    district: str(r.district),
     time: jobTimeLabel(str(r.job_time)),
+    companySize: str(r.company_size),
     contactName: str(r.contact_name),
     contactEmail: str(r.contact_email),
     contactPhone: str(r.contact_phone),
+    caseContactName: str(r.case_contact_name),
+    caseContactEmail: str(r.case_contact_email),
+    caseContactPhone: str(r.case_contact_phone),
+    ownerName: str(r.owner_name),
     comments: str(r.comments),
     description: htmlToText(str(r.description)),
     selfApply: isTrue(r.self_apply),
+    marked: isTrue(r.marked),
+    sponsored: isTrue(r.sponsored),
+    paidFlag: isTrue(r.paid_flag),
+    tests: isTrue(r.tests),
+    zohar: isTrue(r.zohar),
+    followUp: dayOf(str(r.follow_up)),
+    siteLink: link && /^https:\/\//.test(link) ? link : siteKey ? `https://jobs.skeelz.co.il/job/${siteKey}` : null,
+    siteCreatedAt: asDate(r.site_created),
     siteUpdatedAt: asDate(r.site_updated),
+    createdAt,
+    closedAt,
+    ageDays: ageInDays(createdAt, closedAt),
   };
 }

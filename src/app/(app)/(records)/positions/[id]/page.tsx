@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ApplicationsTable, EntityHeader, FieldList, Timeline } from "@/components/entities/EntityParts";
+import { JobTexts, jobFieldItems, MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { loadCaseTimeline } from "@/lib/entities/activity";
@@ -57,6 +58,7 @@ export default async function PositionPage({ params }: { params: Promise<{ id: s
         badges={
           <>
             {position.paid ? <Badge tone="brand">משרה בתשלום</Badge> : <Badge>לא בתשלום</Badge>}
+            {position.marked ? <MarkedBadge /> : null}
             {details?.status ? <Badge tone={details.status === "Active" ? "success" : "neutral"}>באתר: {jobStatusLabel(details.status)}</Badge> : null}
             {position.caseNumber ? <span className="tabular-nums text-muted">Case {position.caseNumber}</span> : null}
           </>
@@ -71,37 +73,14 @@ export default async function PositionPage({ params }: { params: Promise<{ id: s
       <Card title="פרטי המשרה">
         <FieldList
           items={[
-            ["מעסיק", companyHref ? <Link href={companyHref} className="underline underline-offset-4">{companyName}</Link> : companyName],
-            ["מיקום", details?.location],
-            ["היקף", details?.time],
-            ["נפתחה", fmtDate(position.createdAt)],
-            ["עודכנה באתר", details?.siteUpdatedAt ? fmtDate(details.siteUpdatedAt) : null],
-            ["הגשה עצמית באתר", details?.selfApply ? "כן" : null],
-            ["איש קשר", details?.contactName],
-            ["מייל איש הקשר", details?.contactEmail ? <a href={`mailto:${details.contactEmail}`} dir="ltr">{details.contactEmail}</a> : null],
-            ["טלפון איש הקשר", details?.contactPhone ? <a href={`tel:${details.contactPhone}`} dir="ltr">{details.contactPhone}</a> : null],
+            ...jobFieldItems(position, details),
             [
               "אימות אחרון",
               last ? `${fmtDate(last.at)} · ${ACTIVITY_LABEL[last.kind]}${last.onApplication ? " בהגשה" : ""}` : "לא נרשם קשר עם המעסיק על המשרה",
             ],
           ]}
         />
-        {details?.comments ? (
-          <div className="mt-4">
-            <p className="text-xs text-muted">הערות פנימיות</p>
-            <p className="whitespace-pre-line" dir="auto">
-              {details.comments}
-            </p>
-          </div>
-        ) : null}
-        {details?.description ? (
-          <details className="mt-4">
-            <summary className="cursor-pointer text-sm font-medium text-accent-dark">תיאור המשרה</summary>
-            <p className="mt-2 whitespace-pre-line text-sm" dir="auto">
-              {details.description}
-            </p>
-          </details>
-        ) : null}
+        <JobTexts details={details} />
       </Card>
 
       <Card title={`הגשות · ${fmtInt(applications.total)}`} tone="accent-light" className="mt-4">

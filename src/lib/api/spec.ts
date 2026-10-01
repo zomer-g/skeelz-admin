@@ -150,6 +150,7 @@ const SCHEMAS: Record<string, Schema> = {
     url: strOrNull,
     paid: bool,
     active: bool,
+    marked: { type: "boolean", description: "The site's crown / featured mark (isMarked_cambium in Salesforce)" },
     manage_status: strOrNull,
     created_at: { type: ["string", "null"], format: "date-time" },
     updated_at: { type: ["string", "null"], format: "date-time" },

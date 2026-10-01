@@ -24,6 +24,7 @@ export function jobJson(p: Position) {
     url: p.siteJobKey ? siteJobUrl(p.siteJobKey) : null,
     paid: p.paid,
     active: p.active,
+    marked: p.marked,
     manage_status: p.manageStatus,
     created_at: p.createdAt?.toISOString() ?? null,
     updated_at: p.updatedAt?.toISOString() ?? null,

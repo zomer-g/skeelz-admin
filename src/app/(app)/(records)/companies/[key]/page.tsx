@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ApplicationsTable, EntityHeader, FieldList } from "@/components/entities/EntityParts";
+import { MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { searchApplications } from "@/lib/entities/applications";
@@ -46,6 +47,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
           <>
             <Badge tone={company.activeJobs ? "accent" : "neutral"}>{fmtInt(company.activeJobs)} משרות פעילות</Badge>
             {company.paidJobs ? <Badge tone="brand">{fmtInt(company.paidJobs)} משרות בתשלום</Badge> : null}
+            {company.markedJobs ? <Badge tone="warning">{fmtInt(company.markedJobs)} משרות בכתר</Badge> : null}
           </>
         }
         links={[{ href: `/applications?company=${encodeURIComponent(key)}`, label: "כל ההגשות למעסיק" }]}
@@ -60,6 +62,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
             ["מיקומי משרות", company.locations.join(" · ")],
             ["משרות", `${fmtInt(company.activeJobs)} פעילות מתוך ${fmtInt(company.jobs)}`],
             ["משרות בתשלום", company.paidJobs ? `${fmtInt(company.paidActiveJobs)} פעילות מתוך ${fmtInt(company.paidJobs)}` : null],
+            ["משרות מסומנות בכתר", company.markedJobs ? `${fmtInt(company.markedActiveJobs)} פעילות מתוך ${fmtInt(company.markedJobs)}` : null],
             ["הגשות", fmtInt(company.applications)],
             ["משרה ראשונה", fmtDate(company.firstJobAt)],
             ["משרה אחרונה", fmtDate(company.lastJobAt)],
@@ -79,7 +82,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
                   <Link href={`/positions/${j.id}`} className="font-medium underline-offset-4 hover:underline">
                     {j.title ?? "(ללא שם)"}
                   </Link>{" "}
-                  {j.paid ? <Badge tone="brand">בתשלום</Badge> : null}
+                  {j.paid ? <Badge tone="brand">בתשלום</Badge> : null} {j.marked ? <MarkedBadge /> : null}
                   <p className="text-xs tabular-nums text-muted">
                     {j.caseNumber}
                     {j.contactName ? ` · ${j.contactName}` : ""}

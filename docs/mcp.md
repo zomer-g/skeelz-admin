@@ -27,6 +27,10 @@ site**. Users find the address and their own connections at `/connectors`; admin
 | editor | + `update_campaign`, `link_campaign_job`, `unlink_campaign_job` (same code as the campaign page, `src/lib/campaigns/edit.ts`) |
 | admin | + `list_users`, `query_audit_log`, `sync_status` (read only) |
 
+`search_jobs` filters combine (AND): `active_only` (default true), `paid_only`, `marked_only` (the site's crown /
+featured mark, `isMarked_cambium__c`), and `total` counts what matches all of them. `get_job` and `get_application`
+return every field of the Salesforce job / application card; `search_companies` counts marked jobs per company.
+
 This mirrors the site: viewers read every dashboard and record screen, editors also edit campaign
 settings, admins also manage. Nothing writes to Salesforce. Candidate files are not served over MCP.
 Admin *write* operations (inviting users, keys, sync) are deliberately not exposed.

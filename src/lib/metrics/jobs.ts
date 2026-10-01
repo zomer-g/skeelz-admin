@@ -33,6 +33,8 @@ export interface Position {
   paid: boolean;
   /** Live on the site: `PStatus__c` is "Active". */
   active: boolean;
+  /** The site's crown / featured mark (`isMarked_cambium__c`). */
+  marked: boolean;
   /** Last change in Salesforce (`SystemModstamp`). */
   updatedAt: Date | null;
 }
@@ -81,6 +83,7 @@ function positionsSql(extra: ReturnType<typeof sql>) {
            c.site_job_key,
            ${jobPaidSql("c")} AS paid,
            coalesce((c.data->>'PStatus__c') = 'Active', false) AS active,
+           coalesce((c.data->>'isMarked_cambium__c') = 'true', false) AS marked,
            c.system_modstamp
       FROM sf_case c
       JOIN sf_record_type rt ON rt.id = c.record_type_id
@@ -100,6 +103,7 @@ function toPosition(r: Row): Position {
     siteJobKey: str(r.site_job_key),
     paid: r.paid === true,
     active: r.active === true,
+    marked: r.marked === true,
     updatedAt: asDate(r.system_modstamp),
   };
 }
@@ -243,6 +247,21 @@ export function matchesSearch(p: Position, q: string): boolean {
   const needle = q.trim().toLowerCase();
   if (!needle) return true;
   return [p.title, p.company, p.caseNumber, p.siteJobKey, p.id].some((v) => v?.toLowerCase().includes(needle));
+}
+
+export interface PositionFilters {
+  q?: string;
+  activeOnly?: boolean;
+  paidOnly?: boolean;
+  markedOnly?: boolean;
+}
+
+/** Jobs matching every filter given (they combine with AND), newest first. */
+export function filterPositions(positions: Position[], f: PositionFilters): Position[] {
+  const q = f.q?.trim() ?? "";
+  return positions
+    .filter((p) => (!f.activeOnly || p.active) && (!f.paidOnly || p.paid) && (!f.markedOnly || p.marked) && (!q || matchesSearch(p, q)))
+    .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
 }
 
 export const siteJobUrl = (key: string) => `https://jobs.skeelz.co.il/job/${key}`;

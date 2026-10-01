@@ -5,6 +5,8 @@ import { BarList } from "@/components/dashboard/BarList";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { LineChart } from "@/components/dashboard/LineChart";
+import { FieldList } from "@/components/entities/EntityParts";
+import { JobTexts, jobFieldItems, MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { jobStatusLabel, loadJobDetails } from "@/lib/entities/companies";
 import { pageAuth } from "@/lib/auth/guard";
@@ -96,6 +98,7 @@ export default async function JobPage({
             </span>
           ) : null}
           {position.paid ? <Badge tone="brand">משרה בתשלום</Badge> : <Badge>לא בתשלום</Badge>}
+          {position.marked ? <MarkedBadge /> : null}
           {details?.status ? <Badge tone={details.status === "Active" ? "success" : "neutral"}>באתר: {jobStatusLabel(details.status)}</Badge> : null}
           {position.status ? <Badge>{position.status}</Badge> : null}
           {position.manageStatus ? <Badge tone="accent">ניהול משרה: {position.manageStatus}</Badge> : null}
@@ -118,6 +121,16 @@ export default async function JobPage({
           </span>
         </div>
       </section>
+
+      <Card title="פרטי המשרה ב-Salesforce" tone="accent-light" className="mb-6">
+        <details>
+          <summary className="cursor-pointer font-medium text-accent-dark">הצגת כל השדות של כרטיס המשרה</summary>
+          <div className="mt-4">
+            <FieldList items={jobFieldItems(position, details)} />
+            <JobTexts details={details} />
+          </div>
+        </details>
+      </Card>
 
       {/* One job is paid or it is not: the scope is only carried along, not offered here. */}
       <DashboardShell preset={range.preset} scope={range.scope} fromDay={range.fromDay} toDay={range.toDay} showBasis={false} showScope={false}>

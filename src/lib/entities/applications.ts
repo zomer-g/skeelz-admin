@@ -2,7 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { normStatus, RECORD_TYPES, STATUS } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { applicationPaidSql } from "@/lib/metrics/paid";
-import { asDate, containsPattern, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
+import { ageInDays, asDate, containsPattern, dayOf, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
 
 /**
  * Applications: Cases of the two application record types — an application
@@ -154,25 +154,79 @@ export async function loadApplicationFilterOptions(): Promise<{ statuses: string
 export interface ApplicationDetail extends ApplicationRow {
   subject: string | null;
   description: string | null;
+  /** חוסר התאמה (`Field21__c`) */
   rejectReasons: string[];
+  /** הגשה מהירה */
   fastApplied: boolean;
+  /** הגשה למשרה בתשלום (`A_Money__c`) as Salesforce has it; `paid` also counts a paid job (lib/metrics/paid.ts). */
+  paidApplicationFlag: boolean;
+  /** משרה של זהר */
+  zohar: boolean;
+  /** פולו-אפ, YYYY-MM-DD */
+  followUp: string | null;
+  /** סטטוס השמה (`interested_satatus__c`) */
+  placementStatus: string | null;
   candidateStatus: string | null;
+  /** תאריך השמה (`Field49__c`); the start date (`Placement_Date__c`) is `startDate`. */
   placementDate: string | null;
+  invoiceDate: string | null;
+  paymentDate: string | null;
+  /** אחוז משכר */
+  salaryPercent: number | null;
+  /** לגביה לפני מע"מ */
+  collectionBeforeVat: number | null;
+  /** עמלה 7.5% (a text field in Salesforce) */
+  commission: string | null;
+  projectStatus: string | null;
+  jobCaseNumber: string | null;
+  recordType: string | null;
+  accountName: string | null;
+  type: string | null;
+  origin: string | null;
+  reason: string | null;
+  priority: string | null;
+  /** Case Source: the email the Case came from, when it did. */
+  sourceId: string | null;
+  /** Web Email (`SuppliedEmail`) */
+  webEmail: string | null;
+  createdByName: string | null;
+  lastModifiedByName: string | null;
+  lastModifiedAt: Date | null;
+  /** אורך חיי המקרה in days, computed (the formula field goes stale in the mirror). */
+  ageDays: number | null;
   siteJobKey: string | null;
 }
+
+const numOrNull = (v: unknown) => {
+  if (v == null || v === "") return null;
+  const n = Number(String(v).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(n) ? n : null;
+};
 
 export async function loadApplication(id: string): Promise<ApplicationDetail | null> {
   if (!isSfId(id)) return null;
   const [r] = await run(sql`
     SELECT ${COLUMNS},
            a.data->>'Subject' AS subject, a.data->>'Description' AS description, a.data->>'Field21__c' AS reject_reasons,
-           a.data->>'fast_applied__c' AS fast_applied, a.data->>'Candidate_Status__c' AS candidate_status,
-           coalesce(a.data->>'Field49__c', a.data->>'Placement_Date__c') AS placement_date,
+           a.data->>'fast_applied__c' AS fast_applied, a.data->>'A_Money__c' AS a_money, a.data->>'zohar_position__c' AS zohar,
+           a.data->>'follow_up__c' AS follow_up, a.data->>'interested_satatus__c' AS placement_status,
+           a.data->>'Candidate_Status__c' AS candidate_status, a.data->>'Field49__c' AS placement_date,
+           a.data->>'Invoice_Date__c' AS invoice_date, a.data->>'Payment_Date__c' AS payment_date,
+           a.data->>'Salary_Percentage__c' AS salary_percent, a.data->>'Collection_Before_VAT__c' AS collection,
+           a.data->>'Commission__c' AS commission, a.data->>'Project_Status__c' AS project_status,
+           j.data->>'CaseNumber' AS job_case_number, rt.name AS record_type_name,
+           (SELECT acc.name FROM sf_account acc WHERE acc.id = a.account_id) AS account_name,
+           a.data->>'Type' AS case_type, a.data->>'Origin' AS origin, a.data->>'Reason' AS reason, a.data->>'Priority' AS priority,
+           a.data->>'SourceId' AS source_id, lower(nullif(a.data->>'SuppliedEmail', '')) AS web_email,
+           (SELECT cu.name FROM sf_user cu WHERE cu.id = a.data->>'CreatedById') AS created_by,
+           (SELECT mu.name FROM sf_user mu WHERE mu.id = a.data->>'LastModifiedById') AS modified_by,
+           a.data->>'LastModifiedDate' AS modified_at,
            coalesce(j.site_job_key, a.site_job_key) AS site_job_key
       ${FROM} WHERE ${IS_APPLICATION} AND a.id = ${id}`);
   if (!r) return null;
+  const row = toRow(r);
   return {
-    ...toRow(r),
+    ...row,
     subject: str(r.subject),
     description: str(r.description),
     rejectReasons: (str(r.reject_reasons) ?? "")
@@ -180,8 +234,31 @@ export async function loadApplication(id: string): Promise<ApplicationDetail | n
       .map((s) => normStatus(s)!)
       .filter(Boolean),
     fastApplied: isTrue(r.fast_applied),
+    paidApplicationFlag: isTrue(r.a_money),
+    zohar: isTrue(r.zohar),
+    followUp: dayOf(str(r.follow_up)),
+    placementStatus: str(r.placement_status),
     candidateStatus: str(r.candidate_status),
-    placementDate: str(r.placement_date),
+    placementDate: dayOf(str(r.placement_date)),
+    invoiceDate: dayOf(str(r.invoice_date)),
+    paymentDate: dayOf(str(r.payment_date)),
+    salaryPercent: numOrNull(r.salary_percent),
+    collectionBeforeVat: numOrNull(r.collection),
+    commission: str(r.commission),
+    projectStatus: str(r.project_status),
+    jobCaseNumber: str(r.job_case_number),
+    recordType: str(r.record_type_name),
+    accountName: str(r.account_name),
+    type: str(r.case_type),
+    origin: str(r.origin),
+    reason: str(r.reason),
+    priority: str(r.priority),
+    sourceId: str(r.source_id),
+    webEmail: str(r.web_email),
+    createdByName: str(r.created_by),
+    lastModifiedByName: str(r.modified_by),
+    lastModifiedAt: asDate(r.modified_at),
+    ageDays: ageInDays(row.createdAt, row.closedAt),
     siteJobKey: str(r.site_job_key),
   };
 }

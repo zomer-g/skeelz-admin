@@ -54,6 +54,13 @@ export function phoneDigits(q: string): string | null {
 }
 
 /** A Salesforce record id: the only shape ever put into a query or a SOQL string. */
+/** YYYY-MM-DD from a Salesforce date or datetime text, or null. */
+export const dayOf = (v: string | null) => (v && /^\d{4}-\d{2}-\d{2}/.test(v) ? v.slice(0, 10) : null);
+
+/** Whole days from `from` to `to`, or to now while `to` is empty (Salesforce's "אורך חיי המקרה"). */
+export const ageInDays = (from: Date | null, to: Date | null, now = new Date()) =>
+  from ? Math.max(0, Math.floor(((to ?? now).getTime() - from.getTime()) / 86_400_000)) : null;
+
 export const isSfId = (v: string) => /^[a-zA-Z0-9]{15,18}$/.test(v);
 
 /** Plain text from the site's rich-text HTML, for display as text (never as HTML). */

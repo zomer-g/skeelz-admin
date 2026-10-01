@@ -9,7 +9,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 
 ## Commands
 - `npm run dev` — local (set `DEV_AUTH_EMAIL` + `DATABASE_URL`; there is no xhostd sign-in on localhost)
-- `npm run typecheck` · `npm run build`
+- `npm run typecheck` · `npm test` (node:test, `src/**/*.test.ts`) · `npm run build`
 - `npm run db:generate` after editing `src/lib/db/schema.ts` (commit `drizzle/`); `npm run db:migrate` applies
 
 ## Rules that matter
@@ -52,10 +52,15 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   site application = RecordType `RecordType2` (הגשות קמביום) with the job's Mongo id in `A_PID_cambium__c`.
   Application → job is the standard `ParentId` (RecordType2, skeelz2, staff_leads, Placement_cambium → Position);
   `Interested` mostly has ParentId → `Client`. `Case__c` is unused. Only ~half of Position Cases have `PID_cambium__c`.
+  The Case sync copies every field the integration user can read into `sf_case.data` (describe-driven, cursor
+  `SystemModstamp`, which any field change bumps), so a new Salesforce field needs no SOQL change or migration — read it
+  from `data` like paid/active. Rows synced before a field became readable lack it until a full sync. Formula fields
+  (e.g. `Field17__c` case age) and Contact-derived fields (`ContactEmail`) go stale in the mirror: compute or join instead.
   Full schema: `npm run sf:describe` writes `docs/sf-schema-report.md` (gitignored — org-specific); connectivity: `npm run sf:check`.
 - **Employers:** employer lead = Case RecordType `lead_employer`, employer = its `AccountId`, pipeline = `Status` history
   (פנייה ראשונה → … → נחתם חוזה). A job is live on the site when `PStatus__c` = `Active` (Case `Status` is not maintained
-  on jobs). Definitions in `docs/employers-tab-metrics.md`, code in `src/lib/metrics/employers.ts`.
+  on jobs). The site's crown / featured mark = `isMarked_cambium__c` (`marked` on `Position`, `filterPositions`;
+  `withCrown_cambium__c` exists but is never set). Definitions in `docs/employers-tab-metrics.md`, code in `src/lib/metrics/employers.ts`.
 - **Dashboard tabs** (`docs/dashboard-tabs.md`): `/` executive summary · `/talent` candidate pool · `/jobs` jobs ·
   `/pipeline` applications: the anchored funnel (`src/lib/metrics/funnel.ts`, `docs/applications-tab.md`) + the application
   pipeline (`ApplicationPipeline`) · `/employers` · `/marketing` · `/campaigns`. A job has two pages: `/jobs/[id]`

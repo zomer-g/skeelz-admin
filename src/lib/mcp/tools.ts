@@ -14,7 +14,7 @@ import { loadCompany, loadJobDetails, searchCompanies } from "@/lib/entities/com
 import { casePath, loadEmailCases, loadEmailContacts, normEmail } from "@/lib/entities/emails";
 import { loadPayments } from "@/lib/entities/payments";
 import { loadCampaignSettings, loadCampaignSummaries, loadLinkedJobIds } from "@/lib/metrics/campaigns";
-import { loadPosition, loadPositions, matchesSearch } from "@/lib/metrics/jobs";
+import { filterPositions, loadPosition, loadPositions } from "@/lib/metrics/jobs";
 import { ArgError, inputSchema, type ArgValue, type Fields } from "./args";
 import type { McpPrincipal } from "./oauth";
 
@@ -139,19 +139,23 @@ const TOOLS: Tool[] = [
   {
     name: "search_jobs",
     title: "Search jobs",
-    description: "Jobs (Salesforce Position cases), newest first. Free text matches the title, company, case number or site job id.",
+    description:
+      "Jobs (Salesforce Position cases), newest first. Free text matches the title, company, case number or site job id. Each job has paid, active and marked: marked is the site's crown / featured mark (isMarked_cambium in Salesforce). The filters combine (AND), and total counts the jobs that match all of them.",
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Free text.", maxLength: 100 },
-      active_only: { type: "boolean", description: "Only jobs live on the site now (default true).", default: true },
+      active_only: { type: "boolean", description: "Only jobs live on the site now, PStatus = Active (default true).", default: true },
       paid_only: { type: "boolean", description: "Only paid jobs (default false).", default: false },
+      marked_only: { type: "boolean", description: "Only jobs with the site's crown / featured mark, isMarked_cambium (default false).", default: false },
       ...pageFields,
     },
     run: async (a, ctx) => {
-      const q = s(a.q);
-      const all = (await loadPositions())
-        .filter((p) => (!a.active_only || p.active) && (!a.paid_only || p.paid) && (!q || matchesSearch(p, q)))
-        .sort((x, y) => (y.createdAt?.getTime() ?? 0) - (x.createdAt?.getTime() ?? 0));
+      const all = filterPositions(await loadPositions(), {
+        q: s(a.q),
+        activeOnly: a.active_only === true,
+        paidOnly: a.paid_only === true,
+        markedOnly: a.marked_only === true,
+      });
       const { page, pageSize } = paging(a);
       return {
         total: all.length,
@@ -163,7 +167,8 @@ const TOOLS: Tool[] = [
   {
     name: "get_job",
     title: "Job details",
-    description: "One job: its fields as the site filled them (company, location, contact, description), and its applications counted by status.",
+    description:
+      "One job with every field of its Salesforce card: title, site status, paid flags (isSponserd_cambium, משרה בתשלום), marked (the site's crown / featured mark, isMarked_cambium), company and Account, company size, scope, city and district, the site contact and the Case contact, owner, tests (בדיקות), zohar (משרה של זהר), follow-up date, self-apply, site created/updated dates, case age in days, link, description and internal comments — and its applications counted by status.",
     minRole: "viewer",
     fields: { id: sfIdField("job") },
     required: ["id"],
@@ -215,7 +220,8 @@ const TOOLS: Tool[] = [
   {
     name: "get_application",
     title: "Application details",
-    description: "One application with its timeline: status and owner changes, emails (metadata only) and logged calls and tasks.",
+    description:
+      "One application with every field of its Salesforce card — candidate and contact details, job and parent case, owner, status, placement status (סטטוס השמה), mismatch reasons (חוסר התאמה), fast apply, paid-application flag, zohar (משרה של זהר), follow-up, record type, Account, type/origin/reason/priority, web email, created/modified by, case age in days, and the placement finance fields (start date, placement date, salary %, collection before VAT, commission, invoice and payment dates, project and candidate status) — with its timeline: status and owner changes, emails (metadata only) and logged calls and tasks.",
     minRole: "viewer",
     fields: { id: sfIdField("application") },
     required: ["id"],
@@ -304,7 +310,8 @@ const TOOLS: Tool[] = [
   {
     name: "search_companies",
     title: "Search companies",
-    description: "Employers: jobs grouped by company name, with job, paid-job and application counts and the main contact.",
+    description:
+      "Employers: jobs grouped by company name, with job, paid-job and marked-job counts (markedJobs / markedActiveJobs: jobs with the site's crown / featured mark, isMarked_cambium), application counts and the main contact.",
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Free text: company or contact name, email or phone.", maxLength: 100 },

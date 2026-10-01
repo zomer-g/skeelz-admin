@@ -16,7 +16,8 @@
     "sf:describe": "node --env-file-if-exists=.env --import tsx scripts/sf-describe.ts",
     "db:local": "pglite-server --db=.pglite --port=5433 --max-connections=10",
     "db:migrate:local": "node --env-file-if-exists=.env.local --import tsx scripts/migrate.ts",
-    "sync:once": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/sync-once.ts"
+    "sync:once": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/sync-once.ts",
+    "test": "node --import tsx --test \"src/**/*.test.ts\""
   },
   "dependencies": {
     "drizzle-orm": "0.45.2",

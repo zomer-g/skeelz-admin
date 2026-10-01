@@ -78,6 +78,11 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
                     <Badge tone="brand">{fmtInt(c.paidActiveJobs)} בתשלום</Badge>
                   </span>
                 ) : null}
+                {c.markedActiveJobs ? (
+                  <span className="ms-2">
+                    <Badge tone="warning">{fmtInt(c.markedActiveJobs)} בכתר</Badge>
+                  </span>
+                ) : null}
               </td>
               <td className="px-3 py-2 tabular-nums">{fmtInt(c.jobs)}</td>
               <td className="px-3 py-2 tabular-nums">{fmtInt(c.applications)}</td>

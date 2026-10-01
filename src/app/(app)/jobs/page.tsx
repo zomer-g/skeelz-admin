@@ -4,6 +4,7 @@ import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
+import { MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { EXPLAIN } from "@/lib/dashboard/explain";
@@ -21,12 +22,13 @@ const MAX_ROWS = 150;
 /** Jobs tab: every job-side figure — the jobs themselves, and the pipeline their applications go through. */
 export default async function JobsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath("/jobs", search));
+  const auth = await pageAuth("viewer", viewPath("/jobs", search, ["range", "scope", "from", "to", "q", "marked"]));
   if (!auth.ok) return auth.render;
 
   const params = parseDashboardParams(search, new Date(), "90d");
   const query = rangeQuery(params);
   const q = typeof search.q === "string" ? search.q.trim() : "";
+  const markedOnly = search.marked === "1";
 
   const [positions, ga, facts, newJobs, freshness] = await Promise.all([
     loadPositions(),
@@ -44,8 +46,10 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const matched = q ? found.filter(inView) : active;
   // A search that finds only unpaid jobs should say so rather than look empty.
   const hiddenMatches = found.length - matched.length;
+  // The crown filter narrows the table only; the figures above stay the whole range.
+  const shown = markedOnly ? matched.filter((r) => r.position.marked) : matched;
   const applicationsOf = (list: JobRow[]) => list.reduce((s, r) => s + r.funnel.applications, 0);
-  const rows = [...matched]
+  const rows = [...shown]
     .sort((a, b) => b.funnel.applications - a.funnel.applications || b.ga.opens - a.ga.opens || (b.position.createdAt?.getTime() ?? 0) - (a.position.createdAt?.getTime() ?? 0))
     .slice(0, MAX_ROWS);
 
@@ -54,6 +58,15 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     { opens: 0, clicks: 0, applications: 0 },
   );
   const detailQuery = query ? `?${query}` : "";
+  const markedHref = (on: boolean) => {
+    const next = new URLSearchParams(query);
+    if (q) next.set("q", q);
+    if (on) next.set("marked", "1");
+    const str = next.toString();
+    return `/jobs${str ? `?${str}` : ""}`;
+  };
+  const pill = (active: boolean) =>
+    `rounded-full px-4 py-1.5 text-sm font-medium ${active ? "bg-ink text-white" : "bg-white text-ink ring-1 ring-line hover:bg-surface"}`;
   const hired = facts.filter((f) => f.acceptedAt && f.acceptedAt >= params.from && f.acceptedAt < params.to);
 
   return (
@@ -100,10 +113,23 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         </p>
 
         <SectionTitle hint="פתיחות, לחיצות ושלבי ההגשה לכל משרה">כל המשרות</SectionTitle>
-        <Card level={3} title={q ? `תוצאות עבור "${q}" · ${fmtInt(matched.length)}` : `משרות עם פעילות בטווח · ${fmtInt(active.length)}`}>
+        <Card
+          level={3}
+          title={
+            (q ? `תוצאות עבור "${q}" · ${fmtInt(shown.length)}` : `משרות עם פעילות בטווח · ${fmtInt(shown.length)}`) + (markedOnly ? " · מסומנות בכתר" : "")
+          }
+        >
+          <nav aria-label="סינון לפי כתר" className="mb-4 flex flex-wrap items-center gap-2">
+            <Link href={markedHref(false)} aria-current={!markedOnly ? "true" : undefined} className={pill(!markedOnly)}>
+              כל המשרות
+            </Link>
+            <Link href={markedHref(true)} aria-current={markedOnly ? "true" : undefined} className={pill(markedOnly)}>
+              מסומנות בכתר בלבד
+            </Link>
+          </nav>
           <Table
             head={["משרה", "נפתחה", "פתיחות", "לחיצות הגשה", "הגשות", "נשלחו", "ראיון", "התקבלו"]}
-            empty={rows.length === 0 ? (q ? "לא נמצאו משרות" : "אין משרות עם פעילות בטווח") : undefined}
+            empty={rows.length === 0 ? (markedOnly ? "אין משרות מסומנות בכתר בתצוגה הזו" : q ? "לא נמצאו משרות" : "אין משרות עם פעילות בטווח") : undefined}
           >
             {rows.map(({ position: p, ga: g, funnel: f }) => (
               <tr key={p.id} className="hover:bg-white">
@@ -111,7 +137,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
                   <Link href={`/jobs/${p.id}${detailQuery}`} className="font-medium text-ink underline-offset-4 hover:underline">
                     {p.title ?? "(ללא שם)"}
                   </Link>{" "}
-                  {p.paid ? <Badge tone="brand">בתשלום</Badge> : null}
+                  {p.paid ? <Badge tone="brand">בתשלום</Badge> : null} {p.marked ? <MarkedBadge /> : null}
                   <p className="text-xs text-muted">
                     {p.company ?? "—"}
                     {p.caseNumber ? ` · ${p.caseNumber}` : ""}
@@ -127,7 +153,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
               </tr>
             ))}
           </Table>
-          {matched.length > MAX_ROWS ? <p className="mt-3 text-xs text-muted">מוצגות {MAX_ROWS} הראשונות. אפשר לצמצם בחיפוש.</p> : null}
+          {shown.length > MAX_ROWS ? <p className="mt-3 text-xs text-muted">מוצגות {MAX_ROWS} הראשונות. אפשר לצמצם בחיפוש.</p> : null}
           {hiddenMatches > 0 ? (
             <p className="mt-3 text-sm text-muted">
               עוד {fmtInt(hiddenMatches)} משרות שלא בתשלום תואמות לחיפוש. הן מוצגות במצב &quot;כל המשרות&quot;.
