@@ -7,6 +7,7 @@ const TABS = [
   { href: "/admin/users", label: "משתמשים והרשאות" },
   { href: "/admin/api", label: "API ומפתחות" },
   { href: "/admin/connections", label: "חיבורים" },
+  { href: "/admin/mcp", label: "חיבורי MCP" },
   { href: "/admin/integrations", label: "מקורות נתונים" },
   { href: "/admin/salesforce", label: "Salesforce" },
   { href: "/admin/sync", label: "סנכרון" },

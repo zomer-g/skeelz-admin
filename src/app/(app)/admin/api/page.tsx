@@ -1,6 +1,7 @@
 import { desc } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { McpConnectInfo } from "@/components/McpConnectInfo";
 import { Badge, buttonClass, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
 import { legacyKeys } from "@/lib/api/keys";
 import { KEY_PREFIX, LEGACY_KEYS } from "@/lib/api/spec";
@@ -105,6 +106,21 @@ export default async function ApiKeysPage() {
               );
             })}
           </Table>
+        </Card>
+
+        <Card title="שרת MCP (Claude וכלי AI)">
+          <p className="mb-4 text-sm text-muted">
+            חיבור MCP לא צריך מפתח מכאן: כל משתמש מתחבר עם חשבון Google שלו ומקבל את ההרשאות שלו במערכת. החיבורים הפעילים וניתוקם ב
+            <Link href="/admin/mcp" className="font-medium text-accent-dark underline underline-offset-4">
+              חיבורי MCP
+            </Link>
+            , והפירוט המלא ב
+            <Link href="/api-docs" className="font-medium text-accent-dark underline underline-offset-4">
+              תיעוד ה-API
+            </Link>
+            .
+          </p>
+          <McpConnectInfo />
         </Card>
 
         <Card title="מפתחות מהגדרות השרת (env)">

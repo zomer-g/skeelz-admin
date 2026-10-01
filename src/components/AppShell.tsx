@@ -83,6 +83,9 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
             <Link href="/api-docs" className="font-medium text-white underline underline-offset-4 focus-visible:outline-white">
               תיעוד API
             </Link>
+            <Link href="/connectors" className="font-medium text-white underline underline-offset-4 focus-visible:outline-white">
+              חיבור ל-Claude
+            </Link>
           </span>
         </div>
       </footer>

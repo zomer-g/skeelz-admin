@@ -550,3 +550,71 @@ export const sfSchemaReports = pgTable("sf_schema_reports", {
   report: jsonb("report").$type<SchemaReport>().notNull(),
   markdown: text("markdown").notNull(),
 });
+
+/* -------------------------------------------------------------------- MCP */
+
+/*
+ * The MCP server (docs/mcp.md): AI clients such as Claude connect at /mcp with OAuth 2.1 + PKCE.
+ * The person signs in with the site's own Google sign-in (xhostd) and approves the connection;
+ * what the connection may do is their site role, read again on every call, and at most the
+ * ceiling (`max_role`) they chose when approving. Only sha256 hashes of codes and tokens are kept.
+ */
+
+/** Clients that registered themselves (RFC 7591). Public clients: PKCE, no secret. */
+export const mcpClients = pgTable("mcp_clients", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  redirectUris: text("redirect_uris").array().notNull(),
+  createdAt: ts("created_at").notNull().defaultNow(),
+  createdIp: text("created_ip"),
+});
+
+/** Authorization codes, single use, ten minutes. */
+export const mcpCodes = pgTable(
+  "mcp_codes",
+  {
+    hash: text("hash").primaryKey(),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => mcpClients.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    redirectUri: text("redirect_uri").notNull(),
+    codeChallenge: text("code_challenge").notNull(),
+    maxRole: text("max_role").$type<Role>().notNull(),
+    expiresAt: ts("expires_at").notNull(),
+  },
+  (t) => [check("mcp_codes_role_check", sql`${t.maxRole} in ('viewer', 'editor', 'admin')`)],
+);
+
+/** One approved connection: a person, a client, a role ceiling, and its current token pair. */
+export const mcpGrants = pgTable(
+  "mcp_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    clientId: text("client_id")
+      .notNull()
+      .references(() => mcpClients.id, { onDelete: "cascade" }),
+    maxRole: text("max_role").$type<Role>().notNull(),
+    accessHash: text("access_hash").notNull(),
+    accessExpiresAt: ts("access_expires_at").notNull(),
+    refreshHash: text("refresh_hash").notNull(),
+    refreshExpiresAt: ts("refresh_expires_at").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    lastUsedAt: ts("last_used_at"),
+    lastUsedIp: text("last_used_ip"),
+    calls: integer("calls").notNull().default(0),
+    revokedAt: ts("revoked_at"),
+    revokedBy: text("revoked_by"),
+  },
+  (t) => [
+    check("mcp_grants_role_check", sql`${t.maxRole} in ('viewer', 'editor', 'admin')`),
+    uniqueIndex("mcp_grants_access_idx").on(t.accessHash),
+    uniqueIndex("mcp_grants_refresh_idx").on(t.refreshHash),
+    index("mcp_grants_user_idx").on(t.userId),
+  ],
+);

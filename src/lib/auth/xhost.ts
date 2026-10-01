@@ -30,7 +30,7 @@ export interface Identity {
  */
 let warnedNoAudiences = false;
 
-function audiences(): string[] {
+export function audiences(): string[] {
   const configured = (process.env.XHOST_AUTH_AUDIENCES ?? "")
     .split(",")
     .map((h) => h.trim().toLowerCase())

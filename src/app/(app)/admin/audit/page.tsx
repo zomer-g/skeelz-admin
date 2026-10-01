@@ -43,7 +43,35 @@ const ACTION_LABELS: Record<string, string> = {
   "api.rate_limited": "חריגה ממגבלת ה-API",
   "connection.updated": "עדכון חיבור למערכת אחרת",
   "connection.checked": "בדיקת חיבור למערכת אחרת",
+  "mcp.call": "MCP · שימוש בכלי",
+  "mcp.authorized": "MCP · חיבור אושר",
+  "mcp.refused": "MCP · חיבור נדחה",
+  "mcp.connected": "MCP · חיבור הופעל",
+  "mcp.initialize": "MCP · לקוח התחבר",
+  "mcp.denied": "MCP · כלי נחסם (אין הרשאה)",
+  "mcp.revoked": "MCP · חיבור נותק",
 };
+
+const isMcp = (action: string) => action.startsWith("mcp.");
+const MCP_ACTION = sql`starts_with(${auditLog.action}, 'mcp.')`;
+
+/** An MCP entry's details in words: the tool's arguments, the app and the role it ran with. */
+function describeMcp(action: string, target: string | null, details: unknown): { what: string; detail: string } {
+  const d = (details ?? {}) as Record<string, unknown>;
+  const parts: string[] = [];
+  if (action === "mcp.call" && d.args && typeof d.args === "object") {
+    const args = Object.entries(d.args as Record<string, unknown>).filter(([, v]) => v !== undefined && v !== null && v !== "");
+    if (args.length) parts.push(args.map(([k, v]) => `${k}=${String(v)}`).join(", "));
+  }
+  if (typeof d.client === "string") parts.push(`אפליקציה: ${d.client}`);
+  if (action !== "mcp.call" && target && !/^[0-9a-f-]{36}$/i.test(target)) parts.push(target);
+  if (typeof d.role === "string") parts.push(`הרשאה: ${ROLE_LABELS[d.role as keyof typeof ROLE_LABELS] ?? d.role}`);
+  if (typeof d.maxRole === "string") parts.push(`תקרה: ${ROLE_LABELS[d.maxRole as keyof typeof ROLE_LABELS] ?? d.maxRole}`);
+  if (typeof d.required === "string") parts.push(`נדרש: ${ROLE_LABELS[d.required as keyof typeof ROLE_LABELS] ?? d.required}`);
+  if (typeof d.ip === "string") parts.push(d.ip);
+  const what = action === "mcp.call" || action === "mcp.denied" ? `${ACTION_LABELS[action]}: ${target ?? ""}` : (ACTION_LABELS[action] ?? action);
+  return { what, detail: parts.join(" · ") };
+}
 
 const SCREEN_LABELS: [prefix: string, label: string][] = [
   ["/admin/users", "ניהול · משתמשים והרשאות"],
@@ -54,6 +82,12 @@ const SCREEN_LABELS: [prefix: string, label: string][] = [
   ["/admin/sync", "ניהול · סנכרון"],
   ["/admin/audit", "ניהול · יומן פעילות"],
   ["/admin/texts", "ניהול · טקסטים"],
+  ["/admin/mcp", "ניהול · חיבורי MCP"],
+  ["/mcp/oauth/authorize", "MCP · מסך אישור חיבור"],
+  ["/connectors", "חיבור ל-Claude"],
+  ["/api-docs", "תיעוד API"],
+  ["/emails/", "רשומות · כתובת מייל"],
+  ["/emails", "רשומות · כתובות מייל"],
   ["/applications/", "רשומות · הגשה"],
   ["/applications", "רשומות · הגשות"],
   ["/companies/", "רשומות · מעסיק"],
@@ -102,7 +136,8 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
 export default async function ActivityPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
   const userFilter = first(search.user)?.toLowerCase() || "";
-  const typeFilter = first(search.type) === "views" ? "views" : first(search.type) === "actions" ? "actions" : "all";
+  const rawType = first(search.type);
+  const typeFilter = rawType === "views" || rawType === "actions" || rawType === "mcp" ? rawType : "all";
 
   const auth = await pageAuth("admin", "/admin/audit");
   if (!auth.ok) return auth.render;
@@ -113,7 +148,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const conditions: SQL[] = [];
   if (userFilter) conditions.push(eq(auditLog.actor, userFilter));
   if (typeFilter === "views") conditions.push(eq(auditLog.action, "page.view"));
-  if (typeFilter === "actions") conditions.push(ne(auditLog.action, "page.view"));
+  if (typeFilter === "actions") conditions.push(and(ne(auditLog.action, "page.view"), sql`NOT ${MCP_ACTION}`)!);
+  if (typeFilter === "mcp") conditions.push(MCP_ACTION);
 
   const [events, perUser, people] = await Promise.all([
     db
@@ -127,7 +163,8 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
         actor: auditLog.actor,
         lastAt: sql<Date>`max(${auditLog.at})`,
         views: sql<number>`count(*) FILTER (WHERE ${auditLog.action} = 'page.view')::int`,
-        actions: sql<number>`count(*) FILTER (WHERE ${auditLog.action} <> 'page.view')::int`,
+        actions: sql<number>`count(*) FILTER (WHERE ${auditLog.action} <> 'page.view' AND NOT ${MCP_ACTION})::int`,
+        mcp: sql<number>`count(*) FILTER (WHERE ${auditLog.action} = 'mcp.call')::int`,
       })
       .from(auditLog)
       .where(gte(auditLog.at, since))
@@ -152,12 +189,12 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeader title="ניהול · יומן פעילות" subtitle="מי נכנס, באילו מסכים צפה ואילו פעולות ביצע" />
+      <PageHeader title="ניהול · יומן פעילות" subtitle="מי נכנס, באילו מסכים צפה, אילו פעולות ביצע ומה נשאל דרך MCP" />
       <AdminTabs />
 
       <div className="flex flex-col gap-8">
         <Card title="לפי משתמש · 30 הימים האחרונים">
-          <Table head={["משתמש", "תפקיד", "פעילות אחרונה", "צפיות במסכים", "פעולות", ""]} empty={perUser.length === 0 ? "אין פעילות" : undefined}>
+          <Table head={["משתמש", "תפקיד", "פעילות אחרונה", "צפיות במסכים", "פעולות", "קריאות MCP", ""]} empty={perUser.length === 0 ? "אין פעילות" : undefined}>
             {perUser.map((u) => {
               const person = personByEmail.get(u.actor);
               return (
@@ -172,6 +209,16 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                   <td className="px-3 py-2">{formatDateTime(new Date(u.lastAt))}</td>
                   <td className="px-3 py-2 tabular-nums">{u.views}</td>
                   <td className="px-3 py-2 tabular-nums">{u.actions}</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {u.mcp ? (
+                      <Link href={filterHref({ user: u.actor, type: "mcp" })} className="font-medium text-accent-dark underline underline-offset-4">
+                        {u.mcp}
+                        <span className="sr-only"> קריאות MCP של {person?.name ?? u.actor}</span>
+                      </Link>
+                    ) : (
+                      0
+                    )}
+                  </td>
                   <td className="px-3 py-2 text-end">
                     <Link href={filterHref({ user: u.actor })} className="text-sm font-medium text-accent-dark underline underline-offset-4">
                       היומן שלו<span className="sr-only"> · {person?.name ?? u.actor}</span>
@@ -194,6 +241,9 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             <Link href={filterHref({ type: "actions" })} aria-current={typeFilter === "actions" ? "true" : undefined} className={pill(typeFilter === "actions")}>
               פעולות
             </Link>
+            <Link href={filterHref({ type: "mcp" })} aria-current={typeFilter === "mcp" ? "true" : undefined} className={pill(typeFilter === "mcp")}>
+              MCP
+            </Link>
             {userFilter ? (
               <Link href={filterHref({ user: "" })} className="ms-2 text-sm font-medium text-accent-dark underline underline-offset-4">
                 הצגת כל המשתמשים
@@ -206,6 +256,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
             {events.map((e) => {
               const isView = e.action === "page.view";
               const view = isView ? describeScreen(e.target) : null;
+              const mcp = isMcp(e.action) ? describeMcp(e.action, e.target, e.details) : null;
               return (
                 <tr key={e.id}>
                   <td className="whitespace-nowrap px-3 py-2">{formatDateTime(e.at)}</td>
@@ -214,11 +265,15 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                       {personByEmail.get(e.actor)?.name ?? e.actor}
                     </Link>
                   </td>
-                  <td className="px-3 py-2">{isView ? <Badge>צפייה</Badge> : <Badge tone="accent">פעולה</Badge>}</td>
-                  <td className="px-3 py-2">{isView ? view!.screen : (ACTION_LABELS[e.action] ?? e.action)}</td>
+                  <td className="px-3 py-2">
+                    {isView ? <Badge>צפייה</Badge> : mcp ? <Badge tone="brand">MCP</Badge> : <Badge tone="accent">פעולה</Badge>}
+                  </td>
+                  <td className="px-3 py-2">{isView ? view!.screen : mcp ? mcp.what : (ACTION_LABELS[e.action] ?? e.action)}</td>
                   <td className="px-3 py-2 text-xs text-muted">
                     {isView ? (
                       view!.detail
+                    ) : mcp ? (
+                      <span dir="auto">{mcp.detail}</span>
                     ) : (
                       <span dir="ltr">
                         {e.target ?? ""}

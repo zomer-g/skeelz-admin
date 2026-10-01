@@ -18,7 +18,11 @@ import {
   WEBHOOK_LIMITS,
   type EndpointAuth,
 } from "@/lib/api/spec";
+import { McpConnectInfo } from "@/components/McpConnectInfo";
 import { pageAuth } from "@/lib/auth/guard";
+import { ROLE_LABELS } from "@/lib/auth/roles";
+import { MCP_LIMITS } from "@/lib/mcp/config";
+import { TOOL_CATALOGUE } from "@/lib/mcp/tools";
 
 export const metadata: Metadata = { title: "תיעוד API" };
 export const dynamic = "force-dynamic";
@@ -44,6 +48,15 @@ function H3({ children }: { children: ReactNode }) {
 }
 
 const td = "px-3 py-2 align-top";
+
+const MCP_PATHS: [path: string, what: string][] = [
+  ["POST /mcp", "שרת ה-MCP (Streamable HTTP, תשובות JSON). בלי טוקן: 401 עם הפניה לתחילת ההתחברות"],
+  ["/.well-known/oauth-protected-resource/mcp", "תיאור המשאב (RFC 9728)"],
+  ["/.well-known/oauth-authorization-server", "תיאור שרת ההרשאות (RFC 8414)"],
+  ["POST /mcp/oauth/register", "רישום לקוח (RFC 7591)"],
+  ["/mcp/oauth/authorize", "מסך ההתחברות והאישור"],
+  ["POST /mcp/oauth/token", "החלפת קוד בטוקנים, ורענון"],
+];
 
 const curl = (path: string) => [`curl -H "Authorization: Bearer <KEY>" \\`, `  "https://<כתובת המערכת>${path}"`];
 
@@ -190,7 +203,7 @@ export default async function ApiDocsPage() {
 
   return (
     <>
-      <PageHeader title="תיעוד API" subtitle="SKEELZ Connect: API נכנס לקריאת משרות ומדדים במפתחות עם הרשאות, ו-webhooks יוצאים על אירועים." />
+      <PageHeader title="תיעוד API" subtitle="SKEELZ Connect: API נכנס לקריאת משרות ומדדים במפתחות עם הרשאות, webhooks יוצאים על אירועים, ושרת MCP לחיבור Claude וכלי AI." />
 
       <div className="flex flex-col gap-6">
         <Card title="מפתחות והרשאות">
@@ -268,6 +281,78 @@ export default async function ApiDocsPage() {
               </Link>
               . שאלות על ה-API: <ContactLink />.
             </p>
+          </div>
+        </Card>
+
+        <Card title="MCP: חיבור ל-Claude ולכלי AI">
+          <div className="flex flex-col gap-4">
+            <p>
+              מלבד ה-API, המערכת היא גם שרת MCP: Claude, ChatGPT, Claude Code ו-Cursor יכולים לשאול שאלות על הנתונים ישירות. בניגוד ל-API, חיבור MCP
+              אינו משתמש במפתח של מערכת אלא פועל בשם אדם אחד: הוא מתחבר עם חשבון Google שלו, והחיבור מקבל את ההרשאות שלו במערכת בלבד. החיבורים
+              שלך ב
+              <Link href="/connectors" className="font-medium text-accent-dark underline underline-offset-4">
+                חיבור ל-Claude
+              </Link>
+              ; כל החיבורים (לאדמין) ב
+              <Link href="/admin/mcp" className="font-medium text-accent-dark underline underline-offset-4">
+                ניהול · חיבורי MCP
+              </Link>
+              .
+            </p>
+            <McpConnectInfo />
+
+            <H3>הרשאות</H3>
+            <p>
+              ההרשאה של חיבור היא הנמוכה מבין ההרשאה של האדם במערכת לבין התקרה שבחר במסך האישור. היא נקראת מחדש בכל קריאה: שינוי תפקיד או חסימה ב
+              <Link href="/admin/users" className="font-medium text-accent-dark underline underline-offset-4">
+                משתמשים והרשאות
+              </Link>{" "}
+              חלים על החיבור מיד. הלקוח רואה רק את הכלים שההרשאה מתירה, וכל קריאה נבדקת שוב בשרת. כלים לצופה מחזירים גם פרטי מועמדים, כמו המסכים
+              באתר; אין גישה לקבצים, לכתיבה ל-Salesforce או לפעולות ניהול.
+            </p>
+            <Table head={["כלי", "מה", "הרשאה נדרשת"]} caption="כלי ה-MCP">
+              {TOOL_CATALOGUE.map((t) => (
+                <tr key={t.name}>
+                  <td className={td}>
+                    <C>{t.name}</C>
+                  </td>
+                  <td className={td} dir="auto">
+                    {t.title}
+                    {t.writes ? <span className="ms-2 text-xs text-muted">(עריכה)</span> : null}
+                  </td>
+                  <td className={td}>{ROLE_LABELS[t.minRole]}</td>
+                </tr>
+              ))}
+            </Table>
+
+            <H3>פרטים טכניים</H3>
+            <Table head={["נתיב", "מה"]} caption="נתיבי MCP ו-OAuth">
+              {MCP_PATHS.map(([path, what]) => (
+                <tr key={path}>
+                  <td className={td}>
+                    <C>{path}</C>
+                  </td>
+                  <td className={td}>{what}</td>
+                </tr>
+              ))}
+            </Table>
+            <ul className="list-disc space-y-1 ps-6">
+              <li>
+                OAuth 2.1 עם PKCE ‏(S256) ורישום לקוח דינמי. טוקן גישה תקף {MCP_LIMITS.accessTtlMin} דקות, וטוקן רענון {MCP_LIMITS.refreshTtlDays} יום
+                ומתחלף בכל שימוש. נשמר אצלנו רק ה-hash שלהם.
+              </li>
+              <li>
+                עד {MCP_LIMITS.callsPerMinute} קריאות בדקה לכל חיבור, ועד {MCP_LIMITS.heavyPerMinute} בדקה לכל אדם לכלים הכבדים (<C>dashboard_summary</C>,{" "}
+                <C>list_campaigns</C>).
+              </li>
+              <li>
+                כל קריאה לכלי נרשמת ב
+                <Link href="/admin/audit?type=mcp" className="font-medium text-accent-dark underline underline-offset-4">
+                  יומן הפעילות
+                </Link>{" "}
+                עם הפרמטרים שלה, וכך גם אישור, דחייה, ניתוק וניסיון לכלי שאינו בהרשאה.
+              </li>
+            </ul>
           </div>
         </Card>
 

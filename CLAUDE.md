@@ -34,6 +34,14 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   directions carry jobs, statuses, ids and aggregates only — never candidate names, contact details or files
   (`src/lib/api/data.ts`). A new endpoint, scope or event must keep that and be added to `spec.ts` (the docs page and
   openapi.json follow).
+- **MCP server** (`docs/mcp.md`, code in `src/lib/mcp/`): AI clients connect at `/mcp` with OAuth 2.1 + PKCE (DCR at
+  `/mcp/oauth/register`, metadata under `/.well-known/`, issuer = the origin). Sign-in is the site's own xhostd Google
+  sign-in on the consent page `/mcp/oauth/authorize` (`pageAuth`), where the person picks a role ceiling ≤ their role.
+  `/mcp` routes use `verifyAccessToken` instead of `requireUser`: effective role = min(site role read from `users` on every
+  call, ceiling). Every tool in `src/lib/mcp/tools.ts` declares the `minRole` its screen/action uses; `tools/list` and
+  `tools/call` both filter by it. Tokens are opaque, sha256-stored in `mcp_grants`; users disconnect at `/connectors`,
+  admins at `/admin/mcp`. Every call is audited (`mcp.call`). Never expose Salesforce writes, candidate files or admin
+  write operations over MCP.
 - **Roles:** viewer < editor (dashboard config) < admin (users, integrations, API keys, connections, sync). Admins can "view as" a lower
   role (cookie `skeelz_view_as`, honoured only when `realRole` is admin); `user.role` is the effective role that every
   check uses — only the preview switch itself checks `realRole`.

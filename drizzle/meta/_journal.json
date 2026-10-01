@@ -71,6 +71,13 @@
       "when": 1789725361886,
       "tag": "0009_hard_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790848506160,
+      "tag": "0010_odd_starhawk",
+      "breakpoints": true
     }
   ]
 }
