@@ -23,13 +23,20 @@ site**. Users find the address and their own connections at `/connectors`; admin
 
 | Role | Tools |
 |---|---|
-| viewer | `whoami`, `dashboard_summary`, `list_campaigns`, `search_jobs`, `get_job`, `search_applications`, `get_application`, `search_candidates`, `get_candidate`, `lookup_email`, `search_companies`, `get_company`, `search_payments` |
+| viewer | `whoami`, `dashboard_summary`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `get_application`, `search_candidates`, `get_candidate`, `lookup_email`, `search_companies`, `get_company`, `search_payments` |
 | editor | + `update_campaign`, `link_campaign_job`, `unlink_campaign_job` (same code as the campaign page, `src/lib/campaigns/edit.ts`) |
 | admin | + `list_users`, `query_audit_log`, `sync_status` (read only) |
 
 `search_jobs` filters combine (AND): `active_only` (default true), `paid_only`, `marked_only` (the site's crown /
 featured mark, `isMarked_cambium__c`), and `total` counts what matches all of them. `get_job` and `get_application`
 return every field of the Salesforce job / application card; `search_companies` counts marked jobs per company.
+
+Google Analytics: every figure the sync keeps (six GA4 reports, daily, `src/lib/integrations/marketing-sync.ts`) is
+reachable. `ga_report` groups and sums any of them (pages, events, channels, campaigns, campaign_events,
+campaign_landing_pages) by any of their dimensions and by date / week / month, with filters; its column names come only
+from the whitelists in `src/lib/mcp/ga.ts` and every value is a query parameter. `marketing_summary` is the marketing
+tab, `get_campaign` the campaign page, and `get_job` carries the job's GA (totals, every event, opens per day). GA keeps
+users per day, so summed users are not unique users over a range. GTM container snapshots are not exposed.
 
 This mirrors the site: viewers read every dashboard and record screen, editors also edit campaign
 settings, admins also manage. Nothing writes to Salesforce. Candidate files are not served over MCP.

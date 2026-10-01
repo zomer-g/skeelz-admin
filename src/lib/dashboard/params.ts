@@ -35,7 +35,7 @@ export interface DashboardParams {
 }
 
 /** Applications in Salesforce start in February 2025. */
-const ALL_FROM_DAY = "2025-02-01";
+export const ALL_FROM_DAY = "2025-02-01";
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function israelDay(date = new Date()): string {

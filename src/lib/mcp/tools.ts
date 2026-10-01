@@ -1,10 +1,10 @@
 import { and, desc, eq, gt, isNull, sql, type SQL } from "drizzle-orm";
-import { applicationCounts, jobJson, metricsSummary } from "@/lib/api/data";
+import { applicationCounts, cachedApplicationFacts, jobJson, metricsSummary } from "@/lib/api/data";
 import { API_LIMITS } from "@/lib/api/spec";
 import { hasRole, ROLE_LABELS, type Role } from "@/lib/auth/roles";
 import { envAdmins } from "@/lib/auth/session";
 import { linkCampaignJob, MAX_LABEL, saveCampaignSettings, unlinkCampaignJob } from "@/lib/campaigns/edit";
-import { addDays, israelDay } from "@/lib/dashboard/params";
+import { addDays, ALL_FROM_DAY, eachDay, israelDay, parseDashboardParams } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { accessRequests, auditLog, invites, syncRuns, syncState, users } from "@/lib/db/schema";
 import { loadCaseTimeline } from "@/lib/entities/activity";
@@ -13,9 +13,29 @@ import { loadCandidate, searchCandidates } from "@/lib/entities/candidates";
 import { loadCompany, loadJobDetails, searchCompanies } from "@/lib/entities/companies";
 import { casePath, loadEmailCases, loadEmailContacts, normEmail } from "@/lib/entities/emails";
 import { loadPayments } from "@/lib/entities/payments";
-import { loadCampaignSettings, loadCampaignSummaries, loadLinkedJobIds } from "@/lib/metrics/campaigns";
-import { filterPositions, loadPosition, loadPositions } from "@/lib/metrics/jobs";
+import {
+  IMPACT_DAYS,
+  loadCampaignDailySessions,
+  loadCampaignLandingPages,
+  loadCampaignSettings,
+  loadCampaignSummaries,
+  loadJobImpacts,
+  loadLinkedJobIds,
+  loadSmoovStats,
+} from "@/lib/metrics/campaigns";
+import {
+  filterPositions,
+  loadJobDailyOpens,
+  loadJobEvents,
+  loadJobGa,
+  loadPosition,
+  loadPositions,
+  loadPositionsByIds,
+  loadPositionsByJobKeys,
+} from "@/lib/metrics/jobs";
+import { CHANNEL_LABELS, loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
 import { ArgError, inputSchema, type ArgValue, type Fields } from "./args";
+import { GA_FILTER_DIMS, GA_REPORT_NAMES, GA_REPORTS, runGaReport } from "./ga";
 import type { McpPrincipal } from "./oauth";
 
 /**
@@ -134,6 +154,109 @@ const TOOLS: Tool[] = [
       return { range: { from: fromDay, to: toDay }, campaigns: rows.map((c) => ({ ...c, url: link(ctx, `/campaigns/${encodeURIComponent(c.key)}`) })) };
     },
   },
+  {
+    name: "get_campaign",
+    title: "Campaign details",
+    description:
+      "One UTM campaign over its whole life, as its campaign page shows it: sessions, new and engaged users, job opens, apply clicks and confirmations, send day, sessions per day, landing pages (with the job each one is), SMOOV send statistics, and for each linked job the opens and applications in the 7 days before and after the send.",
+    minRole: "viewer",
+    heavy: true,
+    fields: { key: { type: "string", description: "The UTM campaign name, from list_campaigns.", maxLength: 500 } },
+    required: ["key"],
+    run: async (a, ctx) => {
+      const key = s(a.key);
+      const today = israelDay();
+      const [summary] = await loadCampaignSummaries(ALL_FROM_DAY, today, key);
+      if (!summary) throw new NotFound("no campaign with this key has sessions");
+      const chartFrom = addDays(summary.sendDay, -21) < summary.firstDay ? addDays(summary.sendDay, -21) : addDays(summary.firstDay, -3);
+      const chartTo = addDays(summary.lastDay, 7) > today ? today : addDays(summary.lastDay, 7);
+      const [daily, landing, linkedIds, facts, smoov] = await Promise.all([
+        loadCampaignDailySessions(key, chartFrom, chartTo),
+        loadCampaignLandingPages(key),
+        loadLinkedJobIds(key),
+        cachedApplicationFacts(),
+        summary.smoovCampaignId ? loadSmoovStats(summary.smoovCampaignId) : Promise.resolve(null),
+      ]);
+      const [linkedJobs, landingJobs] = await Promise.all([
+        loadPositionsByIds(linkedIds),
+        loadPositionsByJobKeys(landing.map((l) => l.siteJobKey).filter((k): k is string => Boolean(k))),
+      ]);
+      const impacts = await loadJobImpacts(key, summary.sendDay, linkedJobs, facts);
+      const jobByKey = new Map(landingJobs.map((p) => [p.siteJobKey, p]));
+      return {
+        ...summary,
+        impact_window_days: IMPACT_DAYS,
+        daily_sessions: eachDay(chartFrom, chartTo).map((day) => ({ day, sessions: daily.get(day) ?? 0 })),
+        landing_pages: landing.map((l) => {
+          const job = l.siteJobKey ? jobByKey.get(l.siteJobKey) : undefined;
+          return { ...l, job: job ? { id: job.id, title: job.title, company: job.company, admin_url: link(ctx, `/positions/${job.id}`) } : null };
+        }),
+        smoov,
+        linked_jobs: impacts.map((i) => ({ ...i, position: jobJson(i.position) })),
+        url: link(ctx, `/campaigns/${encodeURIComponent(key)}`),
+      };
+    },
+  },
+  {
+    name: "marketing_summary",
+    title: "Marketing (site traffic)",
+    description:
+      "The marketing tab for a date range (default: the last 30 days): sessions, new users, engaged sessions, page views, sessions per day, traffic by channel and by source / medium, every site event with its count (job opens, apply clicks and confirmations, sign-up steps, logins, searches and filters), top pages, job pages, applications per day next to GA apply confirmations, and candidate accounts. scope narrows the job-linked figures only; site-wide traffic has no job.",
+    minRole: "viewer",
+    heavy: true,
+    fields: { from: dayField("First day"), to: dayField("Last day (default: today)"), scope: scopeField },
+    run: async (a) => {
+      const { fromDay, toDay } = dayRange(a, 30);
+      const m = await loadMarketingMetrics(parseDashboardParams({ range: "custom", from: fromDay, to: toDay, scope: s(a.scope) || "paid" }));
+      const series = (map: Map<string, number>) => [...map.entries()].sort(([x], [y]) => x.localeCompare(y)).map(([day, value]) => ({ day, value }));
+      return {
+        range: { from: fromDay, to: toDay, scope: s(a.scope) || "paid" },
+        ...m,
+        channels: m.channels.map((c) => ({ ...c, label: CHANNEL_LABELS[c.channel] ?? c.channel })),
+        events: Object.fromEntries([...m.events.entries()].sort(([, x], [, y]) => y - x)),
+        dailySessions: series(m.dailySessions),
+        dailyApplications: series(m.dailyApplications),
+        dailyApplyConfirmations: series(m.dailyApplyConfirmations),
+        event_names: SITE_EVENTS,
+      };
+    },
+  },
+  {
+    name: "ga_report",
+    title: "Google Analytics report",
+    description: `Any Google Analytics figure the platform keeps (GA4, synced daily from February 2025), grouped and summed as you choose. Reports: ${GA_REPORT_NAMES.map((r) => `${r} (${GA_REPORTS[r]!.about}; dimensions: ${Object.keys(GA_REPORTS[r]!.dims).join(", ")}; metrics: ${Object.keys(GA_REPORTS[r]!.metrics).join(", ")})`).join("; ")}. Every report can also be grouped by date, week or month. Users are summed per day and dimension, so they are not unique users over a range. Known site events: ${Object.values(SITE_EVENTS).join(", ")}. A job's site_job_key is in search_jobs / get_job. Returns the matching totals and the grouped rows.`,
+    minRole: "viewer",
+    fields: {
+      report:{ type: "string", enum: GA_REPORT_NAMES, description: "Which report." },
+      from: dayField("First day (default: 30 days ago)"),
+      to: dayField("Last day (default: today)"),
+      group_by: {
+        type: "string",
+        maxLength: 100,
+        pattern: /^[a-z_]+(,[a-z_]+)*$/,
+        description: "Comma-separated dimensions to group by, e.g. \"channel_group\" or \"date,event_name\". Empty: totals only.",
+      },
+      order_by: { type: "string", maxLength: 40, description: "A metric or a grouped dimension (default: the first metric, or time when grouped by time)." },
+      limit: { type: "integer", description: "Rows (default 100).", minimum: 1, maximum: 500, default: 100 },
+      ...Object.fromEntries(
+        GA_FILTER_DIMS.map((d) => [d, { type: "string" as const, maxLength: 300, description: `Filter on ${d}${["page_path", "landing_page"].includes(d) ? " (contains)" : " (exact)"}; only for reports that have it.` }]),
+      ),
+    },
+    required: ["report"],
+    run: async (a) => {
+      const { fromDay, toDay } = dayRange(a, 30);
+      const filters = Object.fromEntries(GA_FILTER_DIMS.flatMap((d) => (s(a[d]) ? [[d, s(a[d])]] : [])));
+      return runGaReport({
+        report: s(a.report),
+        fromDay,
+        toDay,
+        groupBy: s(a.group_by) ? s(a.group_by).split(",") : [],
+        filters,
+        orderBy: s(a.order_by) || undefined,
+        limit: n(a.limit, 100),
+      });
+    },
+  },
 
   /* ---------------------------------------------------------------- jobs */
   {
@@ -168,15 +291,30 @@ const TOOLS: Tool[] = [
     name: "get_job",
     title: "Job details",
     description:
-      "One job with every field of its Salesforce card: title, site status, paid flags (isSponserd_cambium, משרה בתשלום), marked (the site's crown / featured mark, isMarked_cambium), company and Account, company size, scope, city and district, the site contact and the Case contact, owner, tests (בדיקות), zohar (משרה של זהר), follow-up date, self-apply, site created/updated dates, case age in days, link, description and internal comments — and its applications counted by status.",
+      "One job with every field of its Salesforce card: title, site status, paid flags (isSponserd_cambium, משרה בתשלום), marked (the site's crown / featured mark, isMarked_cambium), company and Account, company size, scope, city and district, the site contact and the Case contact, owner, tests (בדיקות), zohar (משרה של זהר), follow-up date, self-apply, site created/updated dates, case age in days, link, description and internal comments — its applications counted by status, and its Google Analytics: page views, job opens, apply clicks and confirmations, every event on the job's page, and job opens per day (default range: from the job's creation to today).",
     minRole: "viewer",
-    fields: { id: sfIdField("job") },
+    fields: { id: sfIdField("job"), from: dayField("GA from (default: the day the job was created)"), to: dayField("GA to (default: today)") },
     required: ["id"],
     run: async (a, ctx) => {
       const id = s(a.id);
       const [position, details, applications] = await Promise.all([loadPosition(id), loadJobDetails(id), applicationCounts(id)]);
       if (!position) throw new NotFound("no job with this id");
-      return { ...jobJson(position), details, applications, admin_url: link(ctx, `/positions/${id}`), analytics_url: link(ctx, `/jobs/${id}`) };
+      const key = position.siteJobKey;
+      const toDay = s(a.to) || israelDay();
+      const fromDay = s(a.from) || (position.createdAt ? israelDay(position.createdAt) : ALL_FROM_DAY);
+      if (fromDay > toDay) throw new ArgError("from must not be after to");
+      const [gaMap, events, daily] = key
+        ? await Promise.all([loadJobGa(fromDay, toDay, key), loadJobEvents(key, fromDay, toDay), loadJobDailyOpens(key, fromDay, toDay)])
+        : [new Map(), [], new Map<string, number>()];
+      const ga = key
+        ? {
+            range: { from: fromDay, to: toDay },
+            totals: gaMap.get(key) ?? { pageViews: 0, opens: 0, applyClicks: 0, applyYes: 0 },
+            events,
+            daily_job_opens: [...daily.entries()].sort(([x], [y]) => x.localeCompare(y)).map(([day, opens]) => ({ day, opens })),
+          }
+        : { note: "This job has no site job key, so Google Analytics cannot tell its traffic apart." };
+      return { ...jobJson(position), details, applications, ga, admin_url: link(ctx, `/positions/${id}`), analytics_url: link(ctx, `/jobs/${id}`) };
     },
   },
 
