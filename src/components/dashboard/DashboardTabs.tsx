@@ -9,6 +9,7 @@ const TABS = [
   { key: "pipeline", label: "הגשות", href: "/pipeline" },
   { key: "employers", label: "מעסיקים", href: "/employers" },
   { key: "marketing", label: "שיווק", href: "/marketing" },
+  { key: "analytics", label: "Google Analytics", href: "/analytics" },
   { key: "campaigns", label: "דיוורים", href: "/campaigns" },
 ] as const;
 

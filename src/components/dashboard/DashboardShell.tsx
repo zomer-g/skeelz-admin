@@ -27,6 +27,7 @@ export function DashboardShell({
   showBasis = true,
   showScope = true,
   search,
+  keep,
   children,
 }: {
   preset: PresetKey;
@@ -38,6 +39,8 @@ export function DashboardShell({
   showBasis?: boolean;
   showScope?: boolean;
   search?: { value: string; placeholder: string };
+  /** Other URL parameters of the page (its own filters), kept when the range or scope changes. */
+  keep?: Record<string, string>;
   children: ReactNode;
 }) {
   const router = useRouter();
@@ -48,7 +51,7 @@ export function DashboardShell({
 
   function go(next: { range?: PresetKey; basis?: Basis; scope?: Scope; q?: string }) {
     const range = next.range ?? preset;
-    const params = new URLSearchParams({ range });
+    const params = new URLSearchParams({ ...keep, range });
     if (showBasis) params.set("basis", next.basis ?? basis ?? "application");
     const nextScope = next.scope ?? scope;
     if (nextScope !== DEFAULT_SCOPE) params.set("scope", nextScope);

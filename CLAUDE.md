@@ -63,7 +63,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `withCrown_cambium__c` exists but is never set). Definitions in `docs/employers-tab-metrics.md`, code in `src/lib/metrics/employers.ts`.
 - **Dashboard tabs** (`docs/dashboard-tabs.md`): `/` executive summary · `/talent` candidate pool · `/jobs` jobs ·
   `/pipeline` applications: the anchored funnel (`src/lib/metrics/funnel.ts`, `docs/applications-tab.md`) + the application
-  pipeline (`ApplicationPipeline`) · `/employers` · `/marketing` · `/campaigns`. A job has two pages: `/jobs/[id]`
+  pipeline (`ApplicationPipeline`), campaigns from send to apply (`CampaignFunnel`, SMOOV + GA) and a side-by-side period
+  comparison (`?cmp=1&cfrom=&cto=`, `CompareFunnels`) · `/employers` · `/marketing` · `/analytics` Google Analytics (every
+  mirrored GA report through `src/lib/metrics/ga-report.ts`, shared with the MCP `ga_report`) · `/campaigns`. A job has two pages: `/jobs/[id]`
   (dashboard analytics) and `/positions/[id]` (the entity card, under מעסיקים) — entity pages link to `/positions`.
 - **Entities** (`/applications`, `/companies`, `/candidates`, `/emails`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
   GET search forms, 50 per page. A company is jobs grouped by normalized `company_cambium__c` (`src/lib/metrics/company.ts`).
@@ -71,6 +73,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `/api/candidates/[id]/files/[documentId]`, which checks the file is linked to that candidate and writes an audit entry.
   `/emails` treats one address as one person: every Contact with that email, and every Case on them plus Contact-less
   Cases whose `SuppliedEmail` is it (`src/lib/entities/emails.ts`).
+  The record pages' timeline (`loadFullCaseTimeline`) adds, live from Salesforce and never mirrored, the case's Chatter
+  posts, case comments and email texts; the mirror keeps email metadata only. Task/Event descriptions come from the mirror.
   Anything interpolated into SOQL must pass `isSfId` first.
 - **Paid scope:** every figure built on jobs or applications honours `?scope=` (default `paid`, or `all`). Paid job =
   `isSponserd_cambium__c` or `Field18__c`; paid application = `A_Money__c` or a paid job (the site never sets

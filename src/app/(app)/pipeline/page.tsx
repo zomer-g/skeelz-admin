@@ -8,7 +8,10 @@ import { RangeTimeline } from "@/components/dashboard/RangeTimeline";
 import { Badge, Card, smallFieldClass, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { EXPLAIN } from "@/lib/dashboard/explain";
-import { formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
+import { CampaignFunnel } from "@/components/dashboard/CampaignFunnel";
+import { CompareFunnels } from "@/components/dashboard/CompareFunnels";
+import { addDays, formatDay, israelDay, israelMidnight, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
+import { loadCampaignFunnel } from "@/lib/metrics/campaign-funnel";
 import { fmtDecimal, fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
 import { computeCandidateMetrics, loadApplicationFacts, syncFreshness } from "@/lib/metrics/candidates";
 import {
@@ -43,7 +46,9 @@ const TIMELINE_FROM = "2025-01-01";
 const MAX_GROUPS = 30;
 const MAX_OPEN = 50;
 const PATH = "/pipeline";
-const PARAM_KEYS = ["range", "from", "to", "scope", "anchor", "by", "basis", ...FILTER_KEYS];
+const PARAM_KEYS = ["range", "from", "to", "scope", "anchor", "by", "basis", "cmp", "cfrom", "cto", "camp", ...FILTER_KEYS];
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
 type Search = Record<string, string | string[] | undefined>;
 
@@ -73,13 +78,22 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   const dimension = parseDimension(typeof search.by === "string" ? search.by : undefined);
   const now = new Date();
 
-  const [facts, attrs, positions, ga, freshness] = await Promise.all([
+  const [facts, attrs, positions, ga, freshness, campaigns] = await Promise.all([
     loadApplicationFacts(),
     loadFunnelAttrs(),
     loadPositions(),
     loadFunnelGa(),
     syncFreshness(),
+    loadCampaignFunnel(params.fromDay, params.toDay),
   ]);
+  const selectedCampaign = typeof search.camp === "string" && campaigns.some((c) => c.key === search.camp) ? search.camp : "";
+
+  // Comparison: period B defaults to the same length right before the selected range.
+  const comparing = search.cmp === "1";
+  const span = daysBetween(params.fromDay, params.toDay);
+  let cmpTo = typeof search.cto === "string" && DAY_RE.test(search.cto) ? search.cto : addDays(params.fromDay, -1);
+  let cmpFrom = typeof search.cfrom === "string" && DAY_RE.test(search.cfrom) ? search.cfrom : addDays(cmpTo, -span);
+  if (cmpFrom > cmpTo) [cmpFrom, cmpTo] = [cmpTo, cmpFrom];
   const hasGa = Boolean(ga.syncedAt) || ga.events.length > 0;
   let anchor = parseAnchor(typeof search.anchor === "string" ? search.anchor : undefined);
   if (!hasGa && STAGES.find((s) => s.key === anchor)?.source === "ga") anchor = DEFAULT_ANCHOR;
@@ -103,6 +117,23 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
     timelineFromDay: TIMELINE_FROM,
     now,
   });
+  const compareFunnel = comparing
+    ? computeFunnel({
+        apps,
+        jobs,
+        ga,
+        scope: params.scope,
+        filters,
+        anchor,
+        dimension,
+        from: israelMidnight(cmpFrom),
+        to: israelMidnight(addDays(cmpTo, 1)),
+        fromDay: cmpFrom,
+        toDay: cmpTo,
+        timelineFromDay: TIMELINE_FROM,
+        now,
+      }).funnel
+    : null;
 
   // Every link on the page keeps the current slice and changes one thing.
   const current = new URLSearchParams(
@@ -179,7 +210,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
         />
 
         <form method="get" action={PATH} className="flex flex-col gap-3" aria-label="מסננים">
-          {["range", "from", "to", "anchor", "by", "basis"].map((k) =>
+          {["range", "from", "to", "anchor", "by", "basis", "cmp", "cfrom", "cto", "camp"].map((k) =>
             current.get(k) ? <input key={k} type="hidden" name={k} value={current.get(k)!} /> : null,
           )}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -280,6 +311,17 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
       </p>
 
       <SectionTitle hint={`העוגן: ${anchorStage.label} · אפשר להזיז אותו בכל שורה במשפך`}>מהחשיפה ועד ההשמה</SectionTitle>
+      <p className="mb-4">
+        <Link
+          href={comparing ? hrefWith({ cmp: null, cfrom: null, cto: null }) : `${hrefWith({ cmp: "1" })}#compare`}
+          scroll={false}
+          aria-pressed={comparing}
+          className={`inline-flex items-center gap-2 rounded-full px-5 py-2 text-sm font-medium ${comparing ? "bg-ink text-white" : "bg-white text-ink ring-1 ring-line hover:bg-surface"}`}
+        >
+          <span aria-hidden>⇄</span>
+          {comparing ? "סגירת ההשוואה" : "השוואה לתקופה אחרת"}
+        </Link>
+      </p>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard
           label={`העוגן: ${anchorStage.label}`}
@@ -376,6 +418,56 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
           </Card>
         </div>
       </div>
+
+      {compareFunnel ? (
+        <section id="compare" aria-label="השוואה בין תקופות" className="scroll-mt-4">
+          <SectionTitle hint="אותו עוגן ואותם מסננים, בשתי תקופות זו לצד זו">השוואה בין תקופות</SectionTitle>
+          <form method="get" action={`${PATH}#compare`} className="mb-4 flex flex-wrap items-end gap-3 rounded-card bg-surface p-4 ring-1 ring-line" aria-label="תקופה ב׳ להשוואה">
+            {PARAM_KEYS.filter((k) => k !== "cfrom" && k !== "cto").map((k) =>
+              current.get(k) ? <input key={k} type="hidden" name={k} value={current.get(k)!} /> : null,
+            )}
+            <p className="w-full text-sm">
+              תקופה א׳ (הטווח שנבחר למעלה):{" "}
+              <span className="font-medium">
+                {formatDay(params.fromDay)} – {formatDay(params.toDay)}
+              </span>
+            </p>
+            <Field label="תקופה ב׳ · מתאריך">
+              <input type="date" name="cfrom" defaultValue={cmpFrom} required className={smallFieldClass} />
+            </Field>
+            <Field label="עד תאריך">
+              <input type="date" name="cto" defaultValue={cmpTo} required className={smallFieldClass} />
+            </Field>
+            <button type="submit" className="rounded-full bg-brand px-5 py-2 text-sm font-medium text-white hover:bg-brand-hover">
+              השוואה
+            </button>
+            <Link
+              href={`${hrefWith({ cfrom: addDays(params.fromDay, -365), cto: addDays(params.toDay, -365) })}#compare`}
+              scroll={false}
+              className="text-sm font-medium text-accent-dark underline underline-offset-4"
+            >
+              אותה תקופה אשתקד
+            </Link>
+            <Link href={`${hrefWith({ cfrom: null, cto: null })}#compare`} scroll={false} className="text-sm font-medium text-accent-dark underline underline-offset-4">
+              התקופה הקודמת
+            </Link>
+          </form>
+          <CompareFunnels
+            a={{ fromDay: params.fromDay, toDay: params.toDay, funnel }}
+            b={{ fromDay: cmpFrom, toDay: cmpTo, funnel: compareFunnel }}
+            anchorHrefs={anchorHrefs}
+          />
+        </section>
+      ) : null}
+
+      <SectionTitle hint="דיוורים וקמפיינים עם כניסות לאתר בטווח: כמה קיבלו, פתחו והקליקו, ומה עשו באתר">מהדיוור ועד ההגשה</SectionTitle>
+      <CampaignFunnel
+        rows={campaigns}
+        selected={selectedCampaign}
+        hrefFor={(key) => hrefWith({ camp: key })}
+        fromDay={params.fromDay}
+        toDay={params.toDay}
+      />
 
       <SectionTitle hint={`אותם מקרים מהעוגן, לפי ${dim.label}`}>איפה המשפך דולף</SectionTitle>
       <nav className="mb-4 flex flex-wrap gap-2" aria-label="פילוח לפי">

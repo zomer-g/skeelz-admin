@@ -2,7 +2,8 @@ import { eq, sql, type SQL } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { syncState } from "@/lib/db/schema";
 import { containsPattern } from "@/lib/entities/search";
-import { ArgError } from "./args";
+import { paidJobKeysSql } from "@/lib/metrics/paid";
+import { ArgError } from "@/lib/mcp/args";
 
 /**
  * Every Google Analytics figure the platform keeps, queryable from the MCP (ga_report). The sync
@@ -74,8 +75,13 @@ const TIME_GRAINS: Record<string, string> = {
 /** Every dimension any report has, for the tool's filter arguments. */
 export const GA_FILTER_DIMS = [...new Set(Object.values(GA_REPORTS).flatMap((r) => Object.keys(r.dims)))];
 
+/** Narrow the reports that carry a job key: "jobs" = job pages only, "paid" = pages of paid jobs only. */
+export const JOB_SCOPES = ["jobs", "paid"] as const;
+export type JobScope = (typeof JOB_SCOPES)[number];
+
 export interface GaQuery {
   report: string;
+  jobScope?: JobScope;
   fromDay: string;
   toDay: string;
   groupBy: string[];
@@ -103,6 +109,10 @@ export async function runGaReport(q: GaQuery) {
     const col = def.dims[name];
     if (!col) throw new ArgError(`${q.report} has no ${name} to filter on; its dimensions: ${Object.keys(def.dims).join(", ")}`);
     where.push(def.contains?.includes(name) ? sql`${sql.raw(col)} ILIKE ${containsPattern(value)}` : sql`${sql.raw(col)} = ${value}`);
+  }
+  if (q.jobScope) {
+    if (!def.dims.site_job_key) throw new ArgError(`${q.report} has no job key; job_scope works on: ${Object.entries(GA_REPORTS).filter(([, d]) => d.dims.site_job_key).map(([k]) => k).join(", ")}`);
+    where.push(q.jobScope === "paid" ? sql`site_job_key IN (${paidJobKeysSql})` : sql`site_job_key IS NOT NULL AND site_job_key <> ''`);
   }
   const whereSql = sql.join(where, sql` AND `);
   const metricSql = sql.raw(Object.entries(def.metrics).map(([m, agg]) => `coalesce(${agg}, 0)::bigint AS ${m}`).join(", "));
@@ -135,6 +145,7 @@ export async function runGaReport(q: GaQuery) {
     range: { from: q.fromDay, to: q.toDay },
     group_by: q.groupBy,
     filters: q.filters,
+    job_scope: q.jobScope ?? null,
     totals: numbers(totals ?? {}),
     groups_total: Number(count?.n ?? 0),
     rows: rows.map(numbers),

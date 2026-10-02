@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { ArgError } from "./args";
-import { GA_REPORTS, runGaReport, type GaQuery } from "./ga";
+import { ArgError } from "@/lib/mcp/args";
+import { GA_REPORTS, runGaReport, type GaQuery } from "./ga-report";
 
 // Each case is refused while the query is being built, before any database call.
 const base: GaQuery = { report: "channels", fromDay: "2026-09-01", toDay: "2026-09-30", groupBy: [], filters: {}, limit: 10 };

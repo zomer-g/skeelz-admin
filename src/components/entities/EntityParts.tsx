@@ -101,30 +101,63 @@ const KIND_LABEL: Record<ActivityKind, string> = {
   email: "מייל",
   call: "שיחה",
   task: "משימה",
+  meeting: "פגישה",
+  note: "הערה",
+  comment: "הערה",
+};
+
+const KIND_TONE: Partial<Record<ActivityKind, "accent" | "brand" | "warning" | "success">> = {
+  call: "accent",
+  email: "accent",
+  meeting: "accent",
+  status: "brand",
+  note: "warning",
+  comment: "warning",
 };
 
 export function Timeline({ items, empty = "לא נרשמה פעילות" }: { items: ActivityItem[]; empty?: string }) {
   if (!items.length) return <p className="text-muted">{empty}</p>;
   return (
     <ol className="flex flex-col divide-y divide-line">
-      {items.map((item, i) => (
-        <li key={`${item.at.getTime()}-${i}`} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2">
-          <span className="w-36 shrink-0 text-xs tabular-nums text-muted">{formatDateTime(item.at)}</span>
-          <Badge tone={item.kind === "call" || item.kind === "email" ? "accent" : item.kind === "status" ? "brand" : "neutral"}>
-            {item.kind === "email" ? (item.incoming ? "מייל נכנס" : "מייל יוצא") : KIND_LABEL[item.kind]}
-          </Badge>
-          <span className="min-w-0 flex-1">
-            <span className="font-medium" dir="auto">
-              {item.title}
-            </span>
-            {item.detail ? (
-              <span className="ms-2 text-xs text-muted" dir="auto">
-                {item.detail}
+      {items.map((item, i) => {
+        // Notes are short and are the point of the entry: shown in full. Emails and call notes open on demand.
+        const inline = item.kind === "note" || item.kind === "comment";
+        return (
+          <li key={`${item.at.getTime()}-${i}`} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2">
+            <span className="w-36 shrink-0 text-xs tabular-nums text-muted">{formatDateTime(item.at)}</span>
+            <Badge tone={KIND_TONE[item.kind] ?? "neutral"}>
+              {item.kind === "email" ? (item.incoming ? "מייל נכנס" : "מייל יוצא") : KIND_LABEL[item.kind]}
+            </Badge>
+            <span className="min-w-0 flex-1">
+              <span className="font-medium" dir="auto">
+                {item.title}
               </span>
-            ) : null}
-          </span>
-        </li>
-      ))}
+              {item.detail ? (
+                <span className="ms-2 break-all text-xs text-muted" dir="auto">
+                  {item.detail}
+                </span>
+              ) : null}
+              {item.by ? <span className="ms-2 text-xs text-muted">· {item.by}</span> : null}
+              {item.body && inline ? (
+                <span className="mt-1 block whitespace-pre-line break-words rounded-xl bg-white p-3 text-sm ring-1 ring-line" dir="auto">
+                  {item.body}
+                </span>
+              ) : null}
+              {item.body && !inline ? (
+                <details className="mt-1">
+                  <summary className="cursor-pointer text-sm font-medium text-accent-dark">
+                    {item.kind === "email" ? "תוכן המייל" : "פירוט"}
+                    <span className="sr-only"> · {item.title}</span>
+                  </summary>
+                  <div className="mt-2 max-h-[32rem] overflow-y-auto whitespace-pre-line break-words rounded-xl bg-white p-3 text-sm ring-1 ring-line" dir="auto">
+                    {item.body}
+                  </div>
+                </details>
+              ) : null}
+            </span>
+          </li>
+        );
+      })}
     </ol>
   );
 }

@@ -35,7 +35,7 @@ import {
 } from "@/lib/metrics/jobs";
 import { CHANNEL_LABELS, loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
 import { ArgError, inputSchema, type ArgValue, type Fields } from "./args";
-import { GA_FILTER_DIMS, GA_REPORT_NAMES, GA_REPORTS, runGaReport } from "./ga";
+import { GA_FILTER_DIMS, GA_REPORT_NAMES, GA_REPORTS, JOB_SCOPES, runGaReport, type JobScope } from "@/lib/metrics/ga-report";
 import type { McpPrincipal } from "./oauth";
 
 /**
@@ -238,6 +238,11 @@ const TOOLS: Tool[] = [
       },
       order_by: { type: "string", maxLength: 40, description: "A metric or a grouped dimension (default: the first metric, or time when grouped by time)." },
       limit: { type: "integer", description: "Rows (default 100).", minimum: 1, maximum: 500, default: 100 },
+      job_scope: {
+        type: "string",
+        enum: JOB_SCOPES,
+        description: "pages, events and campaign_landing_pages only: jobs = job pages only (with a site_job_key), paid = pages of paid jobs only. Empty: the whole site.",
+      },
       ...Object.fromEntries(
         GA_FILTER_DIMS.map((d) => [d, { type: "string" as const, maxLength: 300, description: `Filter on ${d}${["page_path", "landing_page"].includes(d) ? " (contains)" : " (exact)"}; only for reports that have it.` }]),
       ),
@@ -254,6 +259,7 @@ const TOOLS: Tool[] = [
         filters,
         orderBy: s(a.order_by) || undefined,
         limit: n(a.limit, 100),
+        jobScope: (s(a.job_scope) as JobScope) || undefined,
       });
     },
   },

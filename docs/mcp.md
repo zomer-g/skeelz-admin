@@ -34,7 +34,7 @@ return every field of the Salesforce job / application card; `search_companies` 
 Google Analytics: every figure the sync keeps (six GA4 reports, daily, `src/lib/integrations/marketing-sync.ts`) is
 reachable. `ga_report` groups and sums any of them (pages, events, channels, campaigns, campaign_events,
 campaign_landing_pages) by any of their dimensions and by date / week / month, with filters; its column names come only
-from the whitelists in `src/lib/mcp/ga.ts` and every value is a query parameter. `marketing_summary` is the marketing
+from the whitelists in `src/lib/metrics/ga-report.ts` and every value is a query parameter. `marketing_summary` is the marketing
 tab, `get_campaign` the campaign page, and `get_job` carries the job's GA (totals, every event, opens per day). GA keeps
 users per day, so summed users are not unique users over a range. GTM container snapshots are not exposed.
 

@@ -64,4 +64,14 @@ export const EXPLAIN = {
   applyConfirmations: `אישורי הגשה באתר (Job_application_yes). פער מול Salesforce נובע בדרך כלל מחסימת מדידה בדפדפן.`,
   signUps: `סיום השלב השני בהרשמה לאתר (sign_up_second_phase_complete).`,
   mailings: `קמפיינים מתגיות UTM בערוץ SMS, מייל או WhatsApp (או שקושרו ל-SMOOV), עם 20 כניסות ומעלה בטווח.`,
+
+  // Google Analytics tab
+  gaSessions: `כניסות לאתר (sessions) בטווח, לפי מסנני הערוץ, המקור והמדיום.`,
+  gaUsers: `משתמשים פעילים, בסכום של כל יום בנפרד: מי שנכנס בשני ימים נספר פעמיים. Google Analytics לא מאפשר לחבר משתמשים ייחודיים על פני טווח מתוך נתונים יומיים.`,
+  gaNewUsers: `משתמשים שביקרו באתר בפעם הראשונה, לפי Google Analytics.`,
+  gaEngaged: `כניסות שנמשכו מעל 10 שניות, כללו המרה או שתי צפיות ומעלה. האחוז: מתוך כל הכניסות.`,
+  gaPageViews: `צפיות בדפים (screen_page_views), לפי מסנני הדף ורמת המשרות.`,
+  gaJobOpens: `פתיחות של דף משרה (open_job_page), לפי מסנני הדף ורמת המשרות.`,
+  gaApplyClicks: `לחיצות על "הגש מועמדות" (Job_application_click_1).`,
+  gaApplyYes: `אישורי הגשה באתר (Job_application_yes).`,
 } as const;

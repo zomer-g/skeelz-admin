@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { EntityHeader, FieldList, Timeline } from "@/components/entities/EntityParts";
 import { Badge, Card, formatDateTime } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
-import { loadCaseTimeline } from "@/lib/entities/activity";
+import { loadFullCaseTimeline } from "@/lib/entities/activity";
 import { loadApplication } from "@/lib/entities/applications";
 import { loadJobDetails } from "@/lib/entities/companies";
 import { isSfId, sfRecordUrl } from "@/lib/entities/search";
@@ -25,7 +25,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
 
   const app = await loadApplication(id);
   if (!app) notFound();
-  const [timeline, job] = await Promise.all([loadCaseTimeline(id), app.jobId ? loadJobDetails(app.jobId) : Promise.resolve(null)]);
+  const [{ items: timeline, live }, job] = await Promise.all([loadFullCaseTimeline(id), app.jobId ? loadJobDetails(app.jobId) : Promise.resolve(null)]);
 
   return (
     <>
@@ -158,7 +158,10 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
 
       <Card title="ציר זמן" className="mt-4">
         <Timeline items={timeline} />
-        <p className="mt-3 text-xs text-muted">שינויי סטטוס ומטפל מהיסטוריית Salesforce (מ-13.3.2025), מיילים ושיחות שנרשמו על ההגשה.</p>
+        <p className="mt-3 text-xs text-muted">
+          שינויי סטטוס ומטפל מהיסטוריית Salesforce (מ-13.3.2025), מיילים, שיחות, משימות ופגישות שנרשמו על ההגשה, והערות. ההערות ותוכן המיילים נקראים
+          ישירות מ-Salesforce בכל כניסה לדף, ולא נשמרים במערכת.{live === "failed" ? " התוכן המלא (הערות ותוכן המיילים) לא נטען כרגע מ-Salesforce; אפשר לרענן את הדף." : ""}
+        </p>
       </Card>
     </>
   );

@@ -5,7 +5,7 @@ import { ApplicationsTable, EntityHeader, FieldList, Timeline } from "@/componen
 import { JobTexts, jobFieldItems, MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
-import { loadCaseTimeline } from "@/lib/entities/activity";
+import { loadFullCaseTimeline } from "@/lib/entities/activity";
 import { searchApplications } from "@/lib/entities/applications";
 import { jobStatusLabel, loadJobDetails } from "@/lib/entities/companies";
 import { isSfId, sfRecordUrl } from "@/lib/entities/search";
@@ -32,8 +32,8 @@ export default async function PositionPage({ params }: { params: Promise<{ id: s
 
   const [position, details] = await Promise.all([loadPosition(id), loadJobDetails(id)]);
   if (!position) notFound();
-  const [timeline, applications, activity] = await Promise.all([
-    loadCaseTimeline(id),
+  const [{ items: timeline, live }, applications, activity] = await Promise.all([
+    loadFullCaseTimeline(id),
     searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", jobId: id }, { pageSize: MAX_APPLICATIONS }),
     loadJobActivity([id]),
   ]);
@@ -96,7 +96,10 @@ export default async function PositionPage({ params }: { params: Promise<{ id: s
 
       <Card title="פעילות על המשרה" className="mt-4">
         <Timeline items={timeline} empty="לא נרשמה פעילות על המשרה עצמה" />
-        <p className="mt-3 text-xs text-muted">שיחות, מיילים ומשימות שנרשמו על ה-Case של המשרה. קשר מול המעסיק בתוך ההגשות מופיע בדף כל הגשה.</p>
+        <p className="mt-3 text-xs text-muted">
+          שיחות, מיילים, משימות, פגישות והערות שנרשמו על ה-Case של המשרה; ההערות ותוכן המיילים נקראים ישירות מ-Salesforce. קשר מול המעסיק בתוך ההגשות
+          מופיע בדף כל הגשה.{live === "failed" ? " התוכן המלא (הערות ותוכן המיילים) לא נטען כרגע מ-Salesforce; אפשר לרענן את הדף." : ""}
+        </p>
       </Card>
     </>
   );
