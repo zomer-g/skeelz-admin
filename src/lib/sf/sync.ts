@@ -1,5 +1,5 @@
 import { eq, getTableColumns, inArray, sql } from "drizzle-orm";
-import { getDb, getPool } from "@/lib/db/client";
+import { connectDirect, getDb } from "@/lib/db/client";
 import { syncRuns, syncState } from "@/lib/db/schema";
 import { sf, SalesforceError } from "./client";
 import { SYNC_OBJECTS, toDate, type SfRecord, type SyncObjectDef } from "./sync-objects";
@@ -191,7 +191,9 @@ export interface SyncSummary {
 /** Runs every object in order. A second concurrent run returns `locked: true` and does nothing. */
 export async function runSync(mode: SyncMode, trigger: string): Promise<SyncSummary> {
   const started = Date.now();
-  const client = await getPool().connect();
+  // The lock is session-scoped and the sync spans many transactions, so it needs a connection
+  // of its own to the server, not a pooled one. The sync's queries still use the pool.
+  const client = await connectDirect();
   try {
     const { rows } = await client.query<{ ok: boolean }>("SELECT pg_try_advisory_lock($1) AS ok", [ADVISORY_LOCK_KEY]);
     if (!rows[0]?.ok) return { locked: true, mode, results: [], ms: 0 };
@@ -214,6 +216,6 @@ export async function runSync(mode: SyncMode, trigger: string): Promise<SyncSumm
       await client.query("SELECT pg_advisory_unlock($1)", [ADVISORY_LOCK_KEY]);
     }
   } finally {
-    client.release();
+    await client.end();
   }
 }
