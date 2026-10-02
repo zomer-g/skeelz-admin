@@ -1,5 +1,5 @@
 import { drizzle, type NodePgDatabase } from "drizzle-orm/node-postgres";
-import { Pool } from "pg";
+import { Client, Pool } from "pg";
 import * as schema from "./schema";
 import { logError } from "@/lib/log";
 
@@ -22,4 +22,19 @@ export function getPool(): Pool {
 export function getDb(): Db {
   g.__skeelzDb ??= drizzle(getPool(), { schema });
   return g.__skeelzDb;
+}
+
+/**
+ * One connection to the Postgres server itself, for session state such as an advisory lock.
+ * DATABASE_URL can go through a transaction-mode pooler, which may run each query on a
+ * different server connection. DATABASE_URL_DIRECT never does; it is unset in local dev.
+ * The caller ends the client.
+ */
+export async function connectDirect(): Promise<Client> {
+  const url = process.env.DATABASE_URL_DIRECT || process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL is not set");
+  const client = new Client({ connectionString: url });
+  client.on("error", (err) => logError("db direct client", err));
+  await client.connect();
+  return client;
 }
