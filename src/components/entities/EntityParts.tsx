@@ -168,7 +168,16 @@ export function ApplicationsTable({ rows, hide = [], empty = "אין הגשות"
   const showJob = !hide.includes("job");
   return (
     <Table
-      head={["הוגשה", ...(showCandidate ? ["מועמד"] : []), ...(showJob ? ["משרה"] : []), "סטטוס", "התקבל", "תחילת עבודה", "מטפל"]}
+      head={[
+        "הוגשה",
+        "סוג הגשה",
+        ...(showCandidate ? ["מועמד", 'קו"ח במאגר'] : []),
+        ...(showJob ? ["משרה"] : []),
+        "סטטוס",
+        "התקבל",
+        "תחילת עבודה",
+        "מטפל",
+      ]}
       empty={rows.length === 0 ? empty : undefined}
     >
       {rows.map((a) => (
@@ -178,6 +187,9 @@ export function ApplicationsTable({ rows, hide = [], empty = "אין הגשות"
               {fmtDate(a.createdAt)}
             </Link>
             <p className="text-xs tabular-nums text-muted">{a.caseNumber}</p>
+          </td>
+          <td className="whitespace-nowrap px-3 py-2">
+            {a.fastApplied ? <Badge tone="accent">מהירה</Badge> : <span className="text-muted">רגילה</span>}
           </td>
           {showCandidate ? (
             <td className="px-3 py-2">
@@ -191,6 +203,17 @@ export function ApplicationsTable({ rows, hide = [], empty = "אין הגשות"
               <p className="text-xs text-muted" dir="ltr">
                 {a.candidateEmail ?? ""}
               </p>
+            </td>
+          ) : null}
+          {showCandidate ? (
+            <td className="whitespace-nowrap px-3 py-2">
+              {a.candidateHasCv == null ? (
+                <span className="text-muted">—</span>
+              ) : a.candidateHasCv ? (
+                <Badge tone="success">יש</Badge>
+              ) : (
+                <span className="text-muted">אין</span>
+              )}
             </td>
           ) : null}
           {showJob ? (

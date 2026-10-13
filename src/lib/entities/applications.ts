@@ -18,6 +18,10 @@ export interface ApplicationFilters {
   fromDay: string;
   toDay: string;
   owner: string;
+  /** הגשה מהירה (`fast_applied__c`): only quick applications, or only the rest. */
+  fast?: "fast" | "regular" | "";
+  /** The candidate's קו"ח flag (`CV__c` on the Contact). */
+  cv?: "yes" | "no" | "";
   jobId?: string;
   contactId?: string;
   companyKey?: string;
@@ -38,6 +42,10 @@ export interface ApplicationRow {
   jobTitle: string | null;
   company: string | null;
   ownerName: string | null;
+  /** הגשה מהירה: the site's one-click apply (`fast_applied__c` on the application). */
+  fastApplied: boolean;
+  /** The candidate's `CV__c` checkbox; null when the application has no Contact. */
+  candidateHasCv: boolean | null;
   /** When the status became "התקבל". */
   acceptedAt: Date | null;
   /** תאריך תחילת עבודה (`Placement_Date__c`), YYYY-MM-DD. */
@@ -45,6 +53,10 @@ export interface ApplicationRow {
 }
 
 const NORM_STATUS = sql.raw(`btrim(regexp_replace(replace(a.status, chr(160), ' '), ' +', ' ', 'g'))`);
+
+/** הגשה מהירה on the application, and the candidate's קו"ח checkbox — both unset means false. */
+const FAST_APPLIED = sql`coalesce(a.data->>'fast_applied__c', 'false') = 'true'`;
+const HAS_CV = sql`coalesce(ct.data->>'CV__c', 'false') = 'true'`;
 
 const FROM = sql`
   FROM sf_case a
@@ -66,6 +78,9 @@ const COLUMNS = sql`
   coalesce(nullif(j.data->>'Position_cambium__c', ''), nullif(a.data->>'position_name_for_applied__c', ''), nullif(a.data->>'Position_Name__c', ''), nullif(j.data->>'Subject', '')) AS job_title,
   coalesce(nullif(j.data->>'company_cambium__c', ''), nullif(a.data->>'company_cambium__c', '')) AS company,
   u.name AS owner_name,
+  ${FAST_APPLIED} AS fast_applied,
+  -- The candidate's own קו"ח checkbox; unknown (null) when the application has no Contact.
+  CASE WHEN a.contact_id IS NULL THEN NULL ELSE ${HAS_CV} END AS candidate_has_cv,
   -- When the status first became "התקבל"; before status history was kept, the Case closes on it.
   coalesce(
     (SELECT min(h.created_date) FROM sf_case_history h
@@ -95,6 +110,10 @@ function whereOf(f: ApplicationFilters): SQL {
   if (f.status) parts.push(sql`${NORM_STATUS} = ${normStatus(f.status)}`);
   if (f.paid === "paid") parts.push(applicationPaidSql("a", "j"));
   if (f.paid === "unpaid") parts.push(sql`NOT ${applicationPaidSql("a", "j")}`);
+  if (f.fast === "fast") parts.push(FAST_APPLIED);
+  if (f.fast === "regular") parts.push(sql`NOT ${FAST_APPLIED}`);
+  if (f.cv === "yes") parts.push(HAS_CV);
+  if (f.cv === "no") parts.push(sql`NOT ${HAS_CV}`);
   const { from, to } = dayBounds(f.fromDay, f.toDay);
   if (from) parts.push(sql`a.created_date >= ${from}`);
   if (to) parts.push(sql`a.created_date < ${to}`);
@@ -125,6 +144,8 @@ function toRow(r: Record<string, unknown>): ApplicationRow {
     jobTitle: str(r.job_title),
     company: str(r.company),
     ownerName: str(r.owner_name),
+    fastApplied: isTrue(r.fast_applied),
+    candidateHasCv: r.candidate_has_cv == null ? null : isTrue(r.candidate_has_cv),
     acceptedAt: asDate(r.accepted_at),
     startDate: str(r.start_date)?.slice(0, 10) ?? null,
   };
@@ -156,8 +177,6 @@ export interface ApplicationDetail extends ApplicationRow {
   description: string | null;
   /** חוסר התאמה (`Field21__c`) */
   rejectReasons: string[];
-  /** הגשה מהירה */
-  fastApplied: boolean;
   /** הגשה למשרה בתשלום (`A_Money__c`) as Salesforce has it; `paid` also counts a paid job (lib/metrics/paid.ts). */
   paidApplicationFlag: boolean;
   /** משרה של זהר */
@@ -208,7 +227,7 @@ export async function loadApplication(id: string): Promise<ApplicationDetail | n
   const [r] = await run(sql`
     SELECT ${COLUMNS},
            a.data->>'Subject' AS subject, a.data->>'Description' AS description, a.data->>'Field21__c' AS reject_reasons,
-           a.data->>'fast_applied__c' AS fast_applied, a.data->>'A_Money__c' AS a_money, a.data->>'zohar_position__c' AS zohar,
+           a.data->>'A_Money__c' AS a_money, a.data->>'zohar_position__c' AS zohar,
            a.data->>'follow_up__c' AS follow_up, a.data->>'interested_satatus__c' AS placement_status,
            a.data->>'Candidate_Status__c' AS candidate_status, a.data->>'Field49__c' AS placement_date,
            a.data->>'Invoice_Date__c' AS invoice_date, a.data->>'Payment_Date__c' AS payment_date,
@@ -233,7 +252,6 @@ export async function loadApplication(id: string): Promise<ApplicationDetail | n
       .split(";")
       .map((s) => normStatus(s)!)
       .filter(Boolean),
-    fastApplied: isTrue(r.fast_applied),
     paidApplicationFlag: isTrue(r.a_money),
     zohar: isTrue(r.zohar),
     followUp: dayOf(str(r.follow_up)),

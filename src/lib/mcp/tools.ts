@@ -328,12 +328,15 @@ const TOOLS: Tool[] = [
   {
     name: "search_applications",
     title: "Search applications",
-    description: "Applications to jobs, newest first, with the candidate, job, company, status and owner. Free text matches candidate name, email, phone or case number.",
+    description:
+      "Applications to jobs, newest first, with the candidate, job, company, status, owner, whether it was a הגשה מהירה (quick apply) and whether the candidate's קו\"ח checkbox is set. Free text matches candidate name, email, phone or case number.",
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Free text.", maxLength: 100 },
       status: { type: "string", description: "Exact current status, in Hebrew as in Salesforce (e.g. התקבל).", maxLength: 100 },
       paid: { type: "string", enum: ["paid", "unpaid"], description: "Paid or unpaid applications only." },
+      fast: { type: "string", enum: ["fast", "regular"], description: "הגשה מהירה (the site's one-click apply) only, or only ordinary applications." },
+      cv: { type: "string", enum: ["yes", "no"], description: "Only candidates whose קו\"ח checkbox (CV__c) is set, or only those without it." },
       owner: { type: "string", description: "Owner's full name, as in Salesforce.", maxLength: 100 },
       job_id: sfIdField("job"),
       candidate_id: sfIdField("candidate (Contact)"),
@@ -349,6 +352,8 @@ const TOOLS: Tool[] = [
           q: s(a.q),
           status: s(a.status),
           paid: (s(a.paid) as "paid" | "unpaid" | "") || "",
+          fast: (s(a.fast) as "fast" | "regular" | "") || "",
+          cv: (s(a.cv) as "yes" | "no" | "") || "",
           owner: s(a.owner),
           fromDay: s(a.from),
           toDay: s(a.to),

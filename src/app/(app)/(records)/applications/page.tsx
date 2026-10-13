@@ -15,7 +15,7 @@ export const metadata: Metadata = { title: "הגשות" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/applications";
-const KEYS = ["q", "status", "paid", "owner", "from", "to", "job", "candidate", "company", "page"];
+const KEYS = ["q", "status", "paid", "fast", "cv", "owner", "from", "to", "job", "candidate", "company", "page"];
 
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
@@ -29,6 +29,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     q: param(search, "q"),
     status: param(search, "status"),
     paid: choice(search, "paid", ["paid", "unpaid"] as const),
+    fast: choice(search, "fast", ["fast", "regular"] as const),
+    cv: choice(search, "cv", ["yes", "no"] as const),
     owner: param(search, "owner"),
     fromDay: dayParam(search, "from"),
     toDay: dayParam(search, "to"),
@@ -51,6 +53,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     q: filters.q,
     status: filters.status,
     paid: filters.paid,
+    fast: filters.fast ?? "",
+    cv: filters.cv ?? "",
     owner: filters.owner,
     from: filters.fromDay,
     to: filters.toDay,
@@ -76,6 +80,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           { kind: "text", name: "q", label: "חיפוש", placeholder: "שם, מייל, טלפון, משרה, חברה או מספר Case", wide: true },
           { kind: "select", name: "status", label: "סטטוס", options: options.statuses },
           { kind: "select", name: "paid", label: "תשלום", options: [{ value: "paid", label: "בתשלום" }, { value: "unpaid", label: "לא בתשלום" }] },
+          { kind: "select", name: "fast", label: "סוג הגשה", options: [{ value: "fast", label: "הגשה מהירה" }, { value: "regular", label: "הגשה רגילה" }] },
+          { kind: "select", name: "cv", label: "קו\"ח במאגר", options: [{ value: "yes", label: "יש קו\"ח" }, { value: "no", label: "אין קו\"ח" }] },
           { kind: "select", name: "owner", label: "מטפל", options: options.owners },
           { kind: "date", name: "from", label: "הוגשה מתאריך" },
           { kind: "date", name: "to", label: "עד תאריך" },
