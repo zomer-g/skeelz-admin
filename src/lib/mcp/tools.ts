@@ -386,13 +386,15 @@ const TOOLS: Tool[] = [
   {
     name: "search_candidates",
     title: "Search candidates",
-    description: "Candidates (Salesforce Contacts), most recently active first. Free text matches name, email or phone.",
+    description:
+      "Candidates (Salesforce Contacts), most recently active first, with their city, Account, CV flag, הגשה מהירה flag, application count and creation date. Free text matches name, email or phone.",
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Free text.", maxLength: 100 },
       district: { type: "string", description: "District, exactly as in Salesforce.", maxLength: 100 },
       city: { type: "string", description: "City (contains).", maxLength: 100 },
       cv: { type: "string", enum: ["yes", "no"], description: "Has a CV or not." },
+      fast: { type: "string", enum: ["yes", "no"], description: "Came in through the site's one-click apply (הגשה מהירה) or not." },
       applied: { type: "string", enum: ["yes", "no"], description: "Has applied to a job or not." },
       from: dayField("Created on or after"),
       to: dayField("Created on or before"),
@@ -407,6 +409,7 @@ const TOOLS: Tool[] = [
           city: s(a.city),
           account: "",
           cv: (s(a.cv) as "yes" | "no" | "") || "",
+          fast: (s(a.fast) as "yes" | "no" | "") || "",
           applied: (s(a.applied) as "yes" | "no" | "") || "",
           fromDay: s(a.from),
           toDay: s(a.to),

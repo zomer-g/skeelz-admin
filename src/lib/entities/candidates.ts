@@ -17,6 +17,8 @@ export interface CandidateFilters {
   city: string;
   account: string;
   cv: "yes" | "no" | "";
+  /** הגשה מהירה (`Field6__c` on the Contact). */
+  fast: "yes" | "no" | "";
   applied: "yes" | "no" | "";
   fromDay: string;
   toDay: string;
@@ -31,6 +33,8 @@ export interface CandidateRow {
   district: string | null;
   accountName: string | null;
   hasCv: boolean;
+  /** הגשה מהירה (`Field6__c`): the candidate came in through the site's one-click apply. */
+  fastApply: boolean;
   applications: number;
   lastApplicationAt: Date | null;
   createdAt: Date | null;
@@ -50,6 +54,7 @@ export const CANDIDATES = sql`
            coalesce(nullif(ct.data->>'City_fix__c', ''), nullif(ct.data->>'city_index__c', '')) AS city,
            nullif(ct.data->>'district_index__c', '') AS district,
            coalesce(ct.data->>'CV__c', 'false') = 'true' AS has_cv,
+           coalesce(ct.data->>'Field6__c', 'false') = 'true' AS fast_applied,
            coalesce(apps.n, 0) AS applications, apps.last_at
       FROM sf_contact ct
       LEFT JOIN sf_account acc ON acc.id = ct.account_id
@@ -67,6 +72,7 @@ function toCandidate(r: Record<string, unknown>): CandidateRow {
     district: str(r.district),
     accountName: str(r.account_name),
     hasCv: isTrue(r.has_cv),
+    fastApply: isTrue(r.fast_applied),
     applications: num(r.applications),
     lastApplicationAt: asDate(r.last_at),
     createdAt: asDate(r.created_date),
@@ -89,6 +95,8 @@ export async function searchCandidates(
   if (f.account) parts.push(sql`c.account_name = ${f.account}`);
   if (f.cv === "yes") parts.push(sql`c.has_cv`);
   if (f.cv === "no") parts.push(sql`NOT c.has_cv`);
+  if (f.fast === "yes") parts.push(sql`c.fast_applied`);
+  if (f.fast === "no") parts.push(sql`NOT c.fast_applied`);
   if (f.applied === "yes") parts.push(sql`c.applications > 0`);
   if (f.applied === "no") parts.push(sql`c.applications = 0`);
   const { from, to } = dayBounds(f.fromDay, f.toDay);
@@ -139,7 +147,6 @@ export interface CandidateDetail extends CandidateRow {
   gender: string | null;
   contactType: string | null;
   skills: string[];
-  fastApply: boolean;
   talent: boolean;
   lastActivityDate: string | null;
 }
@@ -161,7 +168,6 @@ export async function loadCandidate(id: string): Promise<CandidateDetail | null>
     gender: str(data.Gender__c),
     contactType: str(data.contact_type_C__c),
     skills: [...new Set([...listed, ...checked])],
-    fastApply: isTrue(data.Field6__c),
     talent: isTrue(data.Field3__c),
     lastActivityDate: str(data.LastActivityDate),
   };

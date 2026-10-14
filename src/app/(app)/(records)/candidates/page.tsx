@@ -13,7 +13,7 @@ export const metadata: Metadata = { title: "מועמדים" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/candidates";
-const KEYS = ["q", "district", "city", "account", "cv", "applied", "from", "to", "page"];
+const KEYS = ["q", "district", "city", "account", "cv", "fast", "applied", "from", "to", "page"];
 
 export default async function CandidatesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
@@ -26,6 +26,7 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
     city: param(search, "city"),
     account: param(search, "account"),
     cv: choice(search, "cv", ["yes", "no"] as const),
+    fast: choice(search, "fast", ["yes", "no"] as const),
     applied: choice(search, "applied", ["yes", "no"] as const),
     fromDay: dayParam(search, "from"),
     toDay: dayParam(search, "to"),
@@ -39,6 +40,7 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
     city: filters.city,
     account: filters.account,
     cv: filters.cv,
+    fast: filters.fast,
     applied: filters.applied,
     from: filters.fromDay,
     to: filters.toDay,
@@ -56,13 +58,14 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
           { kind: "text", name: "city", label: "עיר" },
           { kind: "select", name: "account", label: "Account", options: options.accounts },
           { kind: "select", name: "cv", label: 'קו"ח', options: [{ value: "yes", label: 'יש קו"ח' }, { value: "no", label: 'אין קו"ח' }] },
+          { kind: "select", name: "fast", label: "הגשה מהירה", options: [{ value: "yes", label: "הגשה מהירה" }, { value: "no", label: "לא הגשה מהירה" }] },
           { kind: "select", name: "applied", label: "הגשות", options: [{ value: "yes", label: "הגישו" }, { value: "no", label: "לא הגישו" }] },
           { kind: "date", name: "from", label: "נוספו מתאריך" },
           { kind: "date", name: "to", label: "עד תאריך" },
         ]}
       />
       <Card title={`מועמדים · ${fmtInt(total)}`}>
-        <Table head={["מועמד", "טלפון", "עיר", "Account", 'קו"ח', "הגשות", "הגשה אחרונה"]} empty={rows.length === 0 ? "לא נמצאו מועמדים" : undefined}>
+        <Table head={["מועמד", "טלפון", "עיר", "Account", 'קו"ח', "הגשה מהירה", "הגשות", "נוצר", "הגשה אחרונה"]} empty={rows.length === 0 ? "לא נמצאו מועמדים" : undefined}>
           {rows.map((c) => (
             <tr key={c.id}>
               <td className="px-3 py-2">
@@ -86,7 +89,9 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
               </td>
               <td className="px-3 py-2 text-xs">{c.accountName ?? "—"}</td>
               <td className="px-3 py-2">{c.hasCv ? <Badge tone="accent">יש</Badge> : <span className="text-muted">—</span>}</td>
+              <td className="px-3 py-2">{c.fastApply ? <Badge tone="accent">כן</Badge> : <span className="text-muted">—</span>}</td>
               <td className="px-3 py-2 tabular-nums">{fmtInt(c.applications)}</td>
+              <td className="whitespace-nowrap px-3 py-2 tabular-nums">{c.createdAt ? fmtDate(c.createdAt) : "—"}</td>
               <td className="whitespace-nowrap px-3 py-2 tabular-nums">{c.lastApplicationAt ? fmtDate(c.lastApplicationAt) : "—"}</td>
             </tr>
           ))}
