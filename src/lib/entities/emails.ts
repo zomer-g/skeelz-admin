@@ -2,6 +2,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { normStatus, RECORD_TYPES } from "@/lib/metrics/candidates";
 import { CANDIDATES } from "./candidates";
 import { asDate, containsPattern, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
+import { orderBy, type Sort, type SortColumn } from "./sort";
 
 /**
  * Email addresses: one person per address. For historical reasons the same
@@ -79,9 +80,19 @@ function toEmailRow(r: Record<string, unknown>): EmailRow {
   };
 }
 
+/** The columns the list can be sorted by; `last` (the newest case) is the default. */
+export const EMAIL_SORTS: readonly SortColumn[] = [
+  { key: "last", kind: "date", by: sql`p.last_at` },
+  { key: "email", kind: "text", by: sql`p.email` },
+  { key: "name", kind: "text", by: sql`p.names[1]` },
+  { key: "contacts", kind: "number", by: sql`p.contacts` },
+  { key: "cases", kind: "number", by: sql`p.cases` },
+  { key: "first", kind: "date", by: sql`p.first_at` },
+];
+
 export async function searchEmails(
   f: EmailFilters,
-  { page = 1, pageSize = PAGE_SIZE }: { page?: number; pageSize?: number } = {},
+  { page = 1, pageSize = PAGE_SIZE, sort }: { page?: number; pageSize?: number; sort?: Sort } = {},
 ): Promise<{ rows: EmailRow[]; total: number }> {
   const parts: SQL[] = [sql`true`];
   if (f.q) {
@@ -101,7 +112,8 @@ export async function searchEmails(
 
   const [rows, count] = await Promise.all([
     run(sql`${EMAILS} SELECT p.* FROM person p WHERE ${where}
-             ORDER BY p.last_at DESC NULLS LAST, p.email LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
+             ORDER BY ${orderBy(EMAIL_SORTS, sort ?? { key: "last", dir: "desc" }, sql`p.email`)}
+             LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
     run(sql`${EMAILS} SELECT count(*) AS n FROM person p WHERE ${where}`),
   ]);
   return { rows: rows.map(toEmailRow), total: num(count[0]?.n) };

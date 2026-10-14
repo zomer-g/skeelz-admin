@@ -5,9 +5,10 @@ import { Pager, SearchForm } from "@/components/entities/Search";
 import { Card, PageHeader } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
-import { loadApplicationFilterOptions, searchApplications, type ApplicationFilters } from "@/lib/entities/applications";
+import { APPLICATION_SORTS, loadApplicationFilterOptions, searchApplications, type ApplicationFilters } from "@/lib/entities/applications";
 import { loadCandidate } from "@/lib/entities/candidates";
 import { choice, dayParam, isSfId, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
+import { sortParam, tableSort } from "@/lib/entities/sort";
 import { fmtInt } from "@/lib/format";
 import { loadPosition } from "@/lib/metrics/jobs";
 
@@ -15,7 +16,7 @@ export const metadata: Metadata = { title: "הגשות" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/applications";
-const KEYS = ["q", "status", "paid", "fast", "cv", "owner", "from", "to", "job", "candidate", "company", "page"];
+const KEYS = ["q", "status", "paid", "fast", "cv", "owner", "from", "to", "job", "candidate", "company", "sort", "dir", "page"];
 
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
@@ -39,9 +40,10 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     companyKey,
   };
   const page = pageParam(search);
+  const sort = sortParam(search, APPLICATION_SORTS, "created");
 
   const [{ rows, total }, options, job, candidate] = await Promise.all([
-    searchApplications(filters, { page }),
+    searchApplications(filters, { page, sort }),
     loadApplicationFilterOptions(),
     jobId ? loadPosition(jobId) : Promise.resolve(null),
     contactId ? loadCandidate(contactId) : Promise.resolve(null),
@@ -90,8 +92,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
       <Card
         title={`הגשות · ${fmtInt(total)}`}
       >
-        <ApplicationsTable rows={rows} empty="לא נמצאו הגשות" />
-        <Pager action={ACTION} values={{ ...values, ...scope }} page={page} pageSize={PAGE_SIZE} total={total} />
+        <ApplicationsTable rows={rows} empty="לא נמצאו הגשות" sort={tableSort(APPLICATION_SORTS, sort, ACTION, { ...values, ...scope })} />
+        <Pager action={ACTION} values={{ ...values, ...scope, sort: sort.key, dir: sort.dir }} page={page} pageSize={PAGE_SIZE} total={total} />
       </Card>
     </>
   );

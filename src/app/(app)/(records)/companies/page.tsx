@@ -4,15 +4,16 @@ import { Pager, SearchForm } from "@/components/entities/Search";
 import { Badge, Card, PageHeader, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
-import { searchCompanies, type CompanyFilters } from "@/lib/entities/companies";
+import { COMPANY_SORTS, searchCompanies, type CompanyFilters } from "@/lib/entities/companies";
 import { choice, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
+import { sortParam, tableSort } from "@/lib/entities/sort";
 import { fmtDate, fmtInt } from "@/lib/format";
 
 export const metadata: Metadata = { title: "מעסיקים" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/companies";
-const KEYS = ["q", "location", "paid", "sort", "all", "page"];
+const KEYS = ["q", "location", "paid", "all", "sort", "dir", "page"];
 
 export default async function CompaniesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
@@ -23,17 +24,16 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
     q: param(search, "q"),
     location: param(search, "location"),
     paid: choice(search, "paid", ["paid"] as const),
-    sort: choice(search, "sort", ["active", "recent", "applications", "name"] as const),
     all: param(search, "all") === "1",
   };
   const page = pageParam(search);
-  const { rows, total, withoutActive } = await searchCompanies(filters, { page });
+  const sort = sortParam(search, COMPANY_SORTS, "active");
+  const { rows, total, withoutActive } = await searchCompanies(filters, { page, sort });
 
   const values: Record<string, string> = {
     q: filters.q,
     location: filters.location,
     paid: filters.paid,
-    sort: filters.sort,
     all: filters.all ? "1" : "",
   };
   const showAllHref = `${ACTION}?${new URLSearchParams(Object.entries({ ...values, all: "1" }).filter(([, v]) => v)).toString()}`;
@@ -48,22 +48,23 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
           { kind: "text", name: "q", label: "חיפוש", placeholder: "שם חברה, איש קשר, מייל או טלפון", wide: true },
           { kind: "text", name: "location", label: "מיקום משרה", placeholder: "למשל: תל אביב" },
           { kind: "select", name: "paid", label: "תשלום", options: [{ value: "paid", label: "עם משרות בתשלום" }] },
-          {
-            kind: "select",
-            name: "sort",
-            label: "מיון",
-            any: "משרות פעילות",
-            options: [
-              { value: "recent", label: "משרה אחרונה" },
-              { value: "applications", label: "הכי הרבה הגשות" },
-              { value: "name", label: "שם" },
-            ],
-          },
           { kind: "check", name: "all", label: "כולל מעסיקים בלי משרות פעילות" },
         ]}
       />
       <Card title={`${filters.all ? "מעסיקים" : "מעסיקים עם משרות פעילות"} · ${fmtInt(total)}`}>
-        <Table head={["מעסיק", "משרות פעילות", "כל המשרות", "הגשות", "משרה אחרונה", "איש קשר", "מיקומים"]} empty={rows.length === 0 ? "לא נמצאו מעסיקים" : undefined}>
+        <Table
+          head={[
+            { label: "מעסיק", sort: "name" },
+            { label: "משרות פעילות", sort: "active" },
+            { label: "כל המשרות", sort: "jobs" },
+            { label: "הגשות", sort: "applications" },
+            { label: "משרה אחרונה", sort: "recent" },
+            { label: "איש קשר", sort: "contact" },
+            "מיקומים",
+          ]}
+          sort={tableSort(COMPANY_SORTS, sort, ACTION, values)}
+          empty={rows.length === 0 ? "לא נמצאו מעסיקים" : undefined}
+        >
           {rows.map((c) => (
             <tr key={c.key}>
               <td className="px-3 py-2">

@@ -3,6 +3,7 @@ import { normStatus, RECORD_TYPES, STATUS } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { applicationPaidSql } from "@/lib/metrics/paid";
 import { ageInDays, asDate, containsPattern, dayOf, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
+import { orderBy, type Sort, type SortColumn } from "./sort";
 
 /**
  * Applications: Cases of the two application record types — an application
@@ -58,6 +59,14 @@ const NORM_STATUS = sql.raw(`btrim(regexp_replace(replace(a.status, chr(160), ' 
 const FAST_APPLIED = sql`coalesce(a.data->>'fast_applied__c', 'false') = 'true'`;
 const HAS_CV = sql`coalesce(ct.data->>'CV__c', 'false') = 'true'`;
 
+/** When the status first became "התקבל"; before status history was kept, the Case closes on it. */
+const ACCEPTED_AT = sql`coalesce(
+    (SELECT min(h.created_date) FROM sf_case_history h
+      WHERE h.case_id = a.id AND h.field = 'Status'
+        AND btrim(regexp_replace(replace(h.new_value, chr(160), ' '), ' +', ' ', 'g')) = ${STATUS.accepted}),
+    CASE WHEN ${NORM_STATUS} = ${STATUS.accepted} THEN a.closed_date END
+  )`;
+
 const FROM = sql`
   FROM sf_case a
   JOIN sf_record_type rt ON rt.id = a.record_type_id
@@ -81,13 +90,7 @@ const COLUMNS = sql`
   ${FAST_APPLIED} AS fast_applied,
   -- The candidate's own קו"ח checkbox; unknown (null) when the application has no Contact.
   CASE WHEN a.contact_id IS NULL THEN NULL ELSE ${HAS_CV} END AS candidate_has_cv,
-  -- When the status first became "התקבל"; before status history was kept, the Case closes on it.
-  coalesce(
-    (SELECT min(h.created_date) FROM sf_case_history h
-      WHERE h.case_id = a.id AND h.field = 'Status'
-        AND btrim(regexp_replace(replace(h.new_value, chr(160), ' '), ' +', ' ', 'g')) = ${STATUS.accepted}),
-    CASE WHEN ${NORM_STATUS} = ${STATUS.accepted} THEN a.closed_date END
-  ) AS accepted_at,
+  ${ACCEPTED_AT} AS accepted_at,
   nullif(a.data->>'Placement_Date__c', '') AS start_date`;
 
 function whereOf(f: ApplicationFilters): SQL {
@@ -151,13 +154,28 @@ function toRow(r: Record<string, unknown>): ApplicationRow {
   };
 }
 
+/** The columns the list can be sorted by; `created` is the default. */
+export const APPLICATION_SORTS: readonly SortColumn[] = [
+  { key: "created", kind: "date", by: sql`a.created_date` },
+  { key: "fast", kind: "number", by: FAST_APPLIED },
+  { key: "candidate", kind: "text", by: sql`coalesce(ct.name, a.data->>'full_name__c', a.data->>'SuppliedName')` },
+  { key: "cv", kind: "number", by: sql`CASE WHEN a.contact_id IS NULL THEN NULL ELSE ${HAS_CV} END` },
+  { key: "job", kind: "text", by: sql`coalesce(nullif(j.data->>'Position_cambium__c', ''), a.data->>'position_name_for_applied__c')` },
+  { key: "status", kind: "text", by: NORM_STATUS },
+  { key: "accepted", kind: "date", by: ACCEPTED_AT },
+  { key: "start", kind: "date", by: sql`nullif(a.data->>'Placement_Date__c', '')` },
+  { key: "owner", kind: "text", by: sql`u.name` },
+];
+
 export async function searchApplications(
   f: ApplicationFilters,
-  { page = 1, pageSize = PAGE_SIZE }: { page?: number; pageSize?: number } = {},
+  { page = 1, pageSize = PAGE_SIZE, sort }: { page?: number; pageSize?: number; sort?: Sort } = {},
 ): Promise<{ rows: ApplicationRow[]; total: number }> {
   const where = whereOf(f);
   const [rows, count] = await Promise.all([
-    run(sql`SELECT ${COLUMNS} ${FROM} WHERE ${where} ORDER BY a.created_date DESC LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
+    run(sql`SELECT ${COLUMNS} ${FROM} WHERE ${where}
+             ORDER BY ${orderBy(APPLICATION_SORTS, sort ?? { key: "created", dir: "desc" }, sql`a.id`)}
+             LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
     run(sql`SELECT count(*) AS n ${FROM} WHERE ${where}`),
   ]);
   return { rows: rows.map(toRow), total: num(count[0]?.n) };

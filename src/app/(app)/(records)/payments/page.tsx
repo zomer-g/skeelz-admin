@@ -4,15 +4,16 @@ import { SearchForm } from "@/components/entities/Search";
 import { Badge, Card, NewTabNote, PageHeader, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { israelDay, viewPath } from "@/lib/dashboard/params";
-import { AUTO_SUBJECT, loadPaymentStatuses, loadPayments, PAYMENTS_SINCE, type PaymentFilters } from "@/lib/entities/payments";
+import { AUTO_SUBJECT, loadPaymentStatuses, loadPayments, PAYMENTS_SINCE, type PaymentFilters, type PaymentRow } from "@/lib/entities/payments";
 import { choice, param, type SearchParams } from "@/lib/entities/search";
+import { fieldSorts, sortParam, sortRows, tableSort, type SortField } from "@/lib/entities/sort";
 import { fmtInt } from "@/lib/format";
 
 export const metadata: Metadata = { title: "מעקב תשלומים" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/payments";
-const KEYS = ["q", "paid", "cstatus"];
+const KEYS = ["q", "paid", "cstatus", "sort", "dir"];
 /** A payment date this close counts as due soon. */
 const DUE_SOON_DAYS = 14;
 
@@ -23,6 +24,25 @@ const fmtDay = (d: string | null) => (d ? `${Number(d.slice(8, 10))}.${Number(d.
 function daysBetween(a: string, b: string): number {
   return Math.round((Date.parse(`${b}T12:00:00Z`) - Date.parse(`${a}T12:00:00Z`)) / 86_400_000);
 }
+
+/** The columns the list can be sorted by; the newest start date first, as the Salesforce view has it. */
+const SORT_FIELDS: readonly SortField<PaymentRow>[] = [
+  { key: "start", kind: "date", value: (r) => r.startDate },
+  { key: "candidate", kind: "text", value: (r) => r.candidateName },
+  { key: "paid", kind: "number", value: (r) => r.paid },
+  { key: "case", kind: "text", value: (r) => r.caseNumber },
+  { key: "subject", kind: "text", value: (r) => r.subject },
+  { key: "company", kind: "text", value: (r) => r.company },
+  { key: "contact", kind: "text", value: (r) => r.employerContact },
+  { key: "invoice", kind: "date", value: (r) => r.invoiceDate },
+  { key: "percent", kind: "number", value: (r) => r.salaryPercent },
+  { key: "collection", kind: "number", value: (r) => r.collection },
+  { key: "commission", kind: "number", value: (r) => r.commission },
+  { key: "cstatus", kind: "text", value: (r) => r.candidateStatus },
+  { key: "pstatus", kind: "text", value: (r) => r.projectStatus },
+  { key: "due", kind: "date", value: (r) => r.paymentDate },
+];
+const PAYMENT_SORTS = fieldSorts(SORT_FIELDS);
 
 /**
  * Payment tracking: the placements the company invoices for, as in the
@@ -38,7 +58,10 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
     paid: choice(search, "paid", ["yes", "no"] as const),
     candidateStatus: param(search, "cstatus"),
   };
-  const [rows, statuses] = await Promise.all([loadPayments(filters), loadPaymentStatuses()]);
+  const sort = sortParam(search, PAYMENT_SORTS, "start");
+  const values: Record<string, string> = { q: filters.q, paid: filters.paid, cstatus: filters.candidateStatus };
+  const [loaded, statuses] = await Promise.all([loadPayments(filters), loadPaymentStatuses()]);
+  const rows = sortRows(loaded, SORT_FIELDS, sort);
 
   const today = israelDay();
   const sfBase = process.env.SF_LOGIN_URL?.replace(/\/+$/, "");
@@ -52,7 +75,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
       <PageHeader title="מעקב תשלומים" subtitle="השמות שעליהן גובים תשלום, כמו ברשימה “מעקב תשלומים” ב-Salesforce" />
       <SearchForm
         action={ACTION}
-        values={{ q: filters.q, paid: filters.paid, cstatus: filters.candidateStatus }}
+        values={values}
         fields={[
           { kind: "text", name: "q", label: "חיפוש", placeholder: "מועמד, חברה, איש קשר, מספר Case או סטטוס פרויקט", wide: true },
           { kind: "select", name: "paid", label: "שולם", options: [{ value: "yes", label: "שולם" }, { value: "no", label: "לא שולם" }] },
@@ -74,22 +97,23 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
       <Card title={`מעקב תשלומים · ${fmtInt(rows.length)}`}>
         <Table
           caption="מעקב תשלומים"
+          sort={tableSort(PAYMENT_SORTS, sort, ACTION, values)}
           head={[
-            "מועמד",
-            "שולם",
-            "Case",
-            "נושא",
-            "חברה",
-            "איש קשר במעסיק",
+            { label: "מועמד", sort: "candidate" },
+            { label: "שולם", sort: "paid" },
+            { label: "Case", sort: "case" },
+            { label: "נושא", sort: "subject" },
+            { label: "חברה", sort: "company" },
+            { label: "איש קשר במעסיק", sort: "contact" },
             "טלפון משרה",
-            "תחילת עבודה",
-            "תאריך החשבונית",
-            "אחוז משכר",
-            'לגבייה לפני מע"מ',
-            "עמלה 7.5%",
-            "סטטוס מועמד",
-            "סטטוס פרויקט",
-            "תאריך לתשלום",
+            { label: "תחילת עבודה", sort: "start" },
+            { label: "תאריך החשבונית", sort: "invoice" },
+            { label: "אחוז משכר", sort: "percent" },
+            { label: 'לגבייה לפני מע"מ', sort: "collection" },
+            { label: "עמלה 7.5%", sort: "commission" },
+            { label: "סטטוס מועמד", sort: "cstatus" },
+            { label: "סטטוס פרויקט", sort: "pstatus" },
+            { label: "תאריך לתשלום", sort: "due" },
             "",
           ]}
           empty={rows.length === 0 ? "אין השמות שתואמות לחיפוש" : undefined}

@@ -80,7 +80,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
     loadTalentMetrics(params),
     loadPositions(),
     loadLeadFacts(),
-    searchCompanies({ q: "", location: "", paid: paidOnly ? "paid" : "", sort: "", all: false }, { pageSize: 1 }),
+    searchCompanies({ q: "", location: "", paid: paidOnly ? "paid" : "", all: false }, { pageSize: 1 }),
   ]);
 
   const scoped = facts.filter(inScope(params.scope));

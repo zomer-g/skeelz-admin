@@ -3,6 +3,7 @@ import { RECORD_TYPES } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { jobPaidSql } from "@/lib/metrics/paid";
 import { ageInDays, asDate, dayOf, containsPattern, htmlToText, isSfId, isTrue, num, PAGE_SIZE, run, str } from "./search";
+import { orderBy, type Sort, type SortColumn } from "./sort";
 
 /**
  * Employers, as the site knows them: jobs grouped by company name (the Account
@@ -82,7 +83,6 @@ export interface CompanyFilters {
   all: boolean;
   paid: "paid" | "";
   location: string;
-  sort: "active" | "recent" | "applications" | "name" | "";
 }
 
 export interface CompanyRow {
@@ -124,16 +124,22 @@ function toCompany(r: Record<string, unknown>): CompanyRow {
   };
 }
 
-const ORDER: Record<Exclude<CompanyFilters["sort"], "">, SQL> = {
-  active: sql`c.active_jobs DESC, c.last_job_at DESC`,
-  recent: sql`c.last_job_at DESC`,
-  applications: sql`c.applications DESC, c.last_job_at DESC`,
-  name: sql`c.name ASC`,
-};
+/**
+ * The columns the list can be sorted by; `active` (most active jobs) is the
+ * default. The keys are the ones the old sort menu used, so shared links keep working.
+ */
+export const COMPANY_SORTS: readonly SortColumn[] = [
+  { key: "active", kind: "number", by: sql`c.active_jobs` },
+  { key: "name", kind: "text", by: sql`c.name` },
+  { key: "jobs", kind: "number", by: sql`c.jobs` },
+  { key: "applications", kind: "number", by: sql`c.applications` },
+  { key: "recent", kind: "date", by: sql`c.last_job_at` },
+  { key: "contact", kind: "text", by: sql`c.contact_name` },
+];
 
 export async function searchCompanies(
   f: CompanyFilters,
-  { page = 1, pageSize = PAGE_SIZE }: { page?: number; pageSize?: number } = {},
+  { page = 1, pageSize = PAGE_SIZE, sort }: { page?: number; pageSize?: number; sort?: Sort } = {},
 ): Promise<{ rows: CompanyRow[]; total: number; withoutActive: number }> {
   const parts: SQL[] = [sql`true`];
   if (!f.all) parts.push(sql`c.active_jobs > 0`);
@@ -144,7 +150,7 @@ export async function searchCompanies(
   }
   if (f.location) parts.push(sql`EXISTS (SELECT 1 FROM unnest(c.locations) l WHERE l ILIKE ${containsPattern(f.location)})`);
   const where = sql.join(parts, sql` AND `);
-  const order = ORDER[f.sort || "active"];
+  const order = orderBy(COMPANY_SORTS, sort ?? { key: "active", dir: "desc" }, sql`c.last_job_at DESC NULLS LAST, c.key`);
 
   const [rows, count] = await Promise.all([
     run(sql`${COMPANIES} SELECT c.* FROM companies c WHERE ${where} ORDER BY ${order} LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),

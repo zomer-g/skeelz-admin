@@ -5,15 +5,16 @@ import { Badge, Card, PageHeader, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
 import { emailPath } from "@/lib/entities/emails";
-import { loadCandidateFilterOptions, searchCandidates, type CandidateFilters } from "@/lib/entities/candidates";
+import { CANDIDATE_SORTS, loadCandidateFilterOptions, searchCandidates, type CandidateFilters } from "@/lib/entities/candidates";
 import { choice, dayParam, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
+import { sortParam, tableSort } from "@/lib/entities/sort";
 import { fmtDate, fmtInt } from "@/lib/format";
 
 export const metadata: Metadata = { title: "מועמדים" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/candidates";
-const KEYS = ["q", "district", "city", "account", "cv", "fast", "applied", "from", "to", "page"];
+const KEYS = ["q", "district", "city", "account", "cv", "fast", "applied", "from", "to", "sort", "dir", "page"];
 
 export default async function CandidatesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
@@ -32,7 +33,8 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
     toDay: dayParam(search, "to"),
   };
   const page = pageParam(search);
-  const [{ rows, total }, options] = await Promise.all([searchCandidates(filters, { page }), loadCandidateFilterOptions()]);
+  const sort = sortParam(search, CANDIDATE_SORTS, "created");
+  const [{ rows, total }, options] = await Promise.all([searchCandidates(filters, { page, sort }), loadCandidateFilterOptions()]);
 
   const values: Record<string, string> = {
     q: filters.q,
@@ -65,7 +67,21 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
         ]}
       />
       <Card title={`מועמדים · ${fmtInt(total)}`}>
-        <Table head={["מועמד", "טלפון", "עיר", "Account", 'קו"ח', "הגשה מהירה", "הגשות", "נוצר", "הגשה אחרונה"]} empty={rows.length === 0 ? "לא נמצאו מועמדים" : undefined}>
+        <Table
+          head={[
+            { label: "מועמד", sort: "name" },
+            "טלפון",
+            { label: "עיר", sort: "city" },
+            { label: "Account", sort: "account" },
+            { label: 'קו"ח', sort: "cv" },
+            { label: "הגשה מהירה", sort: "fast" },
+            { label: "הגשות", sort: "applications" },
+            { label: "נוצר", sort: "created" },
+            { label: "הגשה אחרונה", sort: "last" },
+          ]}
+          sort={tableSort(CANDIDATE_SORTS, sort, ACTION, values)}
+          empty={rows.length === 0 ? "לא נמצאו מועמדים" : undefined}
+        >
           {rows.map((c) => (
             <tr key={c.id}>
               <td className="px-3 py-2">
@@ -96,7 +112,7 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
             </tr>
           ))}
         </Table>
-        <Pager action={ACTION} values={values} page={page} pageSize={PAGE_SIZE} total={total} />
+        <Pager action={ACTION} values={{ ...values, sort: sort.key, dir: sort.dir }} page={page} pageSize={PAGE_SIZE} total={total} />
       </Card>
     </>
   );

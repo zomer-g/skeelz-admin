@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Badge, formatDateTime, NewTabNote, Table } from "@/components/ui";
+import { Badge, formatDateTime, NewTabNote, Table, type TableSort } from "@/components/ui";
 import type { ActivityItem, ActivityKind } from "@/lib/entities/activity";
 import type { ApplicationRow } from "@/lib/entities/applications";
 import { fmtDate, fmtInt } from "@/lib/format";
@@ -163,20 +163,32 @@ export function Timeline({ items, empty = "לא נרשמה פעילות" }: { it
 }
 
 /** Applications, each linked to itself, its candidate and its job. */
-export function ApplicationsTable({ rows, hide = [], empty = "אין הגשות" }: { rows: ApplicationRow[]; hide?: ("candidate" | "job")[]; empty?: string }) {
+export function ApplicationsTable({
+  rows,
+  hide = [],
+  empty = "אין הגשות",
+  sort,
+}: {
+  rows: ApplicationRow[];
+  hide?: ("candidate" | "job")[];
+  empty?: string;
+  /** Only the full list sorts by column; the tables inside a record page keep their own order. */
+  sort?: TableSort;
+}) {
   const showCandidate = !hide.includes("candidate");
   const showJob = !hide.includes("job");
   return (
     <Table
+      sort={sort}
       head={[
-        "הוגשה",
-        "סוג הגשה",
-        ...(showCandidate ? ["מועמד", 'קו"ח במאגר'] : []),
-        ...(showJob ? ["משרה"] : []),
-        "סטטוס",
-        "התקבל",
-        "תחילת עבודה",
-        "מטפל",
+        { label: "הוגשה", sort: "created" },
+        { label: "סוג הגשה", sort: "fast" },
+        ...(showCandidate ? [{ label: "מועמד", sort: "candidate" }, { label: 'קו"ח במאגר', sort: "cv" }] : []),
+        ...(showJob ? [{ label: "משרה", sort: "job" }] : []),
+        { label: "סטטוס", sort: "status" },
+        { label: "התקבל", sort: "accepted" },
+        { label: "תחילת עבודה", sort: "start" },
+        { label: "מטפל", sort: "owner" },
       ]}
       empty={rows.length === 0 ? empty : undefined}
     >

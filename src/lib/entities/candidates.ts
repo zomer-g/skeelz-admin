@@ -3,6 +3,7 @@ import { RECORD_TYPES } from "@/lib/metrics/candidates";
 import { CANDIDATE_ACCOUNT_PATTERN } from "@/lib/metrics/marketing";
 import { salesforceConfigured, sf } from "@/lib/sf/client";
 import { asDate, containsPattern, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
+import { orderBy, type Sort, type SortColumn } from "./sort";
 import { logError } from "@/lib/log";
 
 /**
@@ -79,9 +80,21 @@ function toCandidate(r: Record<string, unknown>): CandidateRow {
   };
 }
 
+/** The columns the list can be sorted by; `created` is the default. */
+export const CANDIDATE_SORTS: readonly SortColumn[] = [
+  { key: "created", kind: "date", by: sql`c.created_date` },
+  { key: "name", kind: "text", by: sql`c.name` },
+  { key: "city", kind: "text", by: sql`c.city` },
+  { key: "account", kind: "text", by: sql`c.account_name` },
+  { key: "cv", kind: "number", by: sql`c.has_cv` },
+  { key: "fast", kind: "number", by: sql`c.fast_applied` },
+  { key: "applications", kind: "number", by: sql`c.applications` },
+  { key: "last", kind: "date", by: sql`c.last_at` },
+];
+
 export async function searchCandidates(
   f: CandidateFilters,
-  { page = 1, pageSize = PAGE_SIZE }: { page?: number; pageSize?: number } = {},
+  { page = 1, pageSize = PAGE_SIZE, sort }: { page?: number; pageSize?: number; sort?: Sort } = {},
 ): Promise<{ rows: CandidateRow[]; total: number }> {
   const parts: SQL[] = [sql`true`];
   if (f.q) {
@@ -106,7 +119,8 @@ export async function searchCandidates(
 
   const [rows, count] = await Promise.all([
     run(sql`${CANDIDATES} SELECT c.* FROM cand c WHERE ${where}
-             ORDER BY c.last_at DESC NULLS LAST, c.created_date DESC LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
+             ORDER BY ${orderBy(CANDIDATE_SORTS, sort ?? { key: "created", dir: "desc" }, sql`c.id`)}
+             LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
     run(sql`${CANDIDATES} SELECT count(*) AS n FROM cand c WHERE ${where}`),
   ]);
   return { rows: rows.map(toCandidate), total: num(count[0]?.n) };

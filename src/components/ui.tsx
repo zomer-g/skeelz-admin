@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { Explained } from "./Explained";
 
@@ -106,12 +107,13 @@ export function Badge({ tone = "neutral", children }: { tone?: BadgeTone; childr
  * (`.table-cards` in globals.css) shows beside the value. Rows are the `<tr>`
  * children; conditionally skipped cells (null) don't shift the headings.
  */
-function labelCells(children: ReactNode, head: string[]): ReactNode {
+function labelCells(children: ReactNode, head: readonly HeadCell[]): ReactNode {
+  const labels = head.map(headLabel);
   return Children.map(children, (row) => {
     if (!isValidElement<{ children?: ReactNode }>(row) || row.type !== "tr") return row;
     let column = 0;
     const cells = Children.map(row.props.children, (cell) =>
-      isValidElement(cell) ? cloneElement(cell as ReactElement<Record<string, unknown>>, { "data-label": head[column++] ?? "" }) : cell,
+      isValidElement(cell) ? cloneElement(cell as ReactElement<Record<string, unknown>>, { "data-label": labels[column++] ?? "" }) : cell,
     );
     return cloneElement(row, {}, cells);
   });
@@ -123,25 +125,109 @@ function labelCells(children: ReactNode, head: string[]): ReactNode {
  * becomes a card, its first cell as the title and every other value beside its
  * column heading. An empty column head is read as "פעולות".
  */
-export function Table({ head, children, empty, caption }: { head: string[]; children: ReactNode; empty?: string; caption?: string }) {
+export function Table({
+  head,
+  children,
+  empty,
+  caption,
+  sort,
+}: {
+  head: readonly HeadCell[];
+  children: ReactNode;
+  empty?: string;
+  caption?: string;
+  /** Makes the columns that carry a `sort` key into sorting links. */
+  sort?: TableSort;
+}) {
   return (
     // `relative` keeps visually-hidden text (absolutely positioned) inside the scroll box instead of widening the page.
     <div className="table-cards relative overflow-x-auto" tabIndex={0} role={caption ? "region" : undefined} aria-label={caption}>
+      {sort ? <SortBar head={head} sort={sort} /> : null}
       <table className="w-full min-w-[40rem] border-collapse text-start text-sm max-sm:min-w-0">
         {caption ? <caption className="sr-only">{caption}</caption> : null}
         <thead>
           <tr className="border-b-2 border-line text-muted">
-            {head.map((h, i) => (
-              <th key={h || `col-${i}`} scope="col" className="px-3 py-2 text-start font-medium">
-                {h || <span className="sr-only">פעולות</span>}
-              </th>
-            ))}
+            {head.map((cell, i) => {
+              const label = headLabel(cell);
+              const key = typeof cell === "string" ? undefined : cell.sort;
+              const active = sort && key === sort.key;
+              return (
+                <th
+                  key={label || `col-${i}`}
+                  scope="col"
+                  className="px-3 py-2 text-start font-medium"
+                  aria-sort={!sort || !key ? undefined : active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  {sort && key ? <SortLink label={label} column={key} sort={sort} active={!!active} /> : label || <span className="sr-only">פעולות</span>}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody className="divide-y divide-line">{labelCells(children, head)}</tbody>
       </table>
       {empty ? <p className="px-3 py-6 text-center text-muted">{empty}</p> : null}
     </div>
+  );
+}
+
+/** One column heading: a plain label, or a label that sorts the list by `sort`. */
+export type HeadCell = string | { label: string; sort?: string };
+
+export interface TableSort {
+  /** The column the list is sorted by now. */
+  key: string;
+  dir: "asc" | "desc";
+  /** Where a click on `column` goes: the same search, sorted by it. */
+  href: (column: string) => string;
+  /** What each direction is called for this column, e.g. "מהחדש לישן" — read by screen readers. */
+  dirLabel: (column: string, dir: "asc" | "desc") => string;
+}
+
+const headLabel = (cell: HeadCell) => (typeof cell === "string" ? cell : cell.label);
+
+/**
+ * Phones hide the column headings (each row is a card), so the same sorting
+ * lives here as a row of pills above the cards.
+ */
+function SortBar({ head, sort }: { head: readonly HeadCell[]; sort: TableSort }) {
+  const columns = head.filter((c): c is { label: string; sort: string } => typeof c !== "string" && !!c.sort);
+  if (!columns.length) return null;
+  return (
+    <nav aria-label="מיון הרשימה" className="mb-3 flex flex-wrap items-center gap-2 text-xs sm:hidden">
+      <span className="text-muted">מיון:</span>
+      {columns.map((c) => {
+        const active = c.sort === sort.key;
+        return (
+          <Link
+            key={c.sort}
+            href={sort.href(c.sort)}
+            className={`rounded-full px-3 py-1 ${active ? "bg-accent/10 font-medium text-accent-dark" : "bg-panel text-muted"}`}
+          >
+            {c.label}
+            {active ? <span aria-hidden="true"> {sort.dir === "asc" ? "▲" : "▼"}</span> : null}
+            <span className="sr-only">
+              {active ? ` · ממוין ${sort.dirLabel(c.sort, sort.dir)} · מיון ${sort.dirLabel(c.sort, sort.dir === "asc" ? "desc" : "asc")}` : ""}
+            </span>
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+function SortLink({ label, column, sort, active }: { label: string; column: string; sort: TableSort; active: boolean }) {
+  // The arrow is decorative: the direction is also said in words for screen readers.
+  const arrow = !active ? "" : sort.dir === "asc" ? "▲" : "▼";
+  const next = active ? (sort.dir === "asc" ? "desc" : "asc") : null;
+  return (
+    <Link href={sort.href(column)} className="inline-flex items-center gap-1 underline-offset-4 hover:underline focus-visible:underline">
+      <span className={active ? "text-ink" : undefined}>{label}</span>
+      {arrow ? <span aria-hidden="true">{arrow}</span> : null}
+      <span className="sr-only">
+        {active ? `ממוין ${sort.dirLabel(column, sort.dir)} · מיון ${sort.dirLabel(column, next!)}` : `מיון לפי ${label}`}
+      </span>
+    </Link>
   );
 }
 

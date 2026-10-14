@@ -8,9 +8,10 @@ import { addDays, ALL_FROM_DAY, eachDay, israelDay, parseDashboardParams } from 
 import { getDb } from "@/lib/db/client";
 import { accessRequests, auditLog, invites, syncRuns, syncState, users } from "@/lib/db/schema";
 import { loadCaseTimeline } from "@/lib/entities/activity";
-import { loadApplication, searchApplications } from "@/lib/entities/applications";
-import { loadCandidate, searchCandidates } from "@/lib/entities/candidates";
-import { loadCompany, loadJobDetails, searchCompanies } from "@/lib/entities/companies";
+import { APPLICATION_SORTS, loadApplication, searchApplications } from "@/lib/entities/applications";
+import { CANDIDATE_SORTS, loadCandidate, searchCandidates } from "@/lib/entities/candidates";
+import { COMPANY_SORTS, loadCompany, loadJobDetails, searchCompanies } from "@/lib/entities/companies";
+import { startDir, type Sort, type SortColumn } from "@/lib/entities/sort";
 import { casePath, loadEmailCases, loadEmailContacts, normEmail } from "@/lib/entities/emails";
 import { loadPayments } from "@/lib/entities/payments";
 import {
@@ -80,6 +81,19 @@ const pageFields: Fields = {
   page_size: { type: "integer", description: "Rows per page.", minimum: 1, maximum: 50, default: 20 },
 };
 const paging = (a: Record<string, ArgValue>) => ({ page: n(a.page, 1), pageSize: n(a.page_size, 20) });
+
+/** `sort`/`dir` as the screens read them: an unknown column falls back, an unknown direction follows the column's kind. */
+function mcpSort(a: Record<string, ArgValue>, columns: readonly SortColumn[], fallback: string): Sort {
+  const column = columns.find((c) => c.key === s(a.sort)) ?? columns.find((c) => c.key === fallback)!;
+  const dir = s(a.dir);
+  return { key: column.key, dir: dir === "asc" || dir === "desc" ? dir : startDir(column.kind) };
+}
+
+/** The sorting arguments every list tool takes, named after its own columns. */
+const sortFields = (columns: readonly SortColumn[], fallback: string): Fields => ({
+  sort: { type: "string", enum: columns.map((c) => c.key), description: `Column to order by (default ${fallback}).` },
+  dir: { type: "string", enum: ["asc", "desc"], description: "Order direction; the column's own default when absent (text a→z, dates newest first, numbers largest first)." },
+});
 
 function dayRange(a: Record<string, ArgValue>, defaultDays: number): { fromDay: string; toDay: string } {
   const toDay = s(a.to) || israelDay();
@@ -343,6 +357,7 @@ const TOOLS: Tool[] = [
       company_key: { type: "string", description: "A company key from search_companies.", maxLength: 300 },
       from: dayField("Created on or after"),
       to: dayField("Created on or before"),
+      ...sortFields(APPLICATION_SORTS, "created"),
       ...pageFields,
     },
     run: async (a, ctx) => {
@@ -361,7 +376,7 @@ const TOOLS: Tool[] = [
           contactId: s(a.candidate_id) || undefined,
           companyKey: s(a.company_key) || undefined,
         },
-        { page, pageSize },
+        { page, pageSize, sort: mcpSort(a, APPLICATION_SORTS, "created") },
       );
       return { total: result.total, page, applications: result.rows.map((r) => ({ ...r, admin_url: link(ctx, `/applications/${r.id}`) })) };
     },
@@ -398,6 +413,7 @@ const TOOLS: Tool[] = [
       applied: { type: "string", enum: ["yes", "no"], description: "Has applied to a job or not." },
       from: dayField("Created on or after"),
       to: dayField("Created on or before"),
+      ...sortFields(CANDIDATE_SORTS, "created"),
       ...pageFields,
     },
     run: async (a, ctx) => {
@@ -414,7 +430,7 @@ const TOOLS: Tool[] = [
           fromDay: s(a.from),
           toDay: s(a.to),
         },
-        { page, pageSize },
+        { page, pageSize, sort: mcpSort(a, CANDIDATE_SORTS, "created") },
       );
       return { total: result.total, page, candidates: result.rows.map((r) => ({ ...r, admin_url: link(ctx, `/candidates/${r.id}`) })) };
     },
@@ -470,7 +486,7 @@ const TOOLS: Tool[] = [
       include_inactive: { type: "boolean", description: "Include companies with no live job (default false).", default: false },
       paid_only: { type: "boolean", description: "Only companies with paid jobs (default false).", default: false },
       location: { type: "string", description: "Job location (contains).", maxLength: 100 },
-      sort: { type: "string", enum: ["active", "recent", "applications", "name"], description: "Order (default active)." },
+      ...sortFields(COMPANY_SORTS, "active"),
       ...pageFields,
     },
     run: async (a, ctx) => {
@@ -481,9 +497,8 @@ const TOOLS: Tool[] = [
           all: a.include_inactive === true,
           paid: a.paid_only ? "paid" : "",
           location: s(a.location),
-          sort: (s(a.sort) as "active" | "recent" | "applications" | "name" | "") || "",
         },
-        { page, pageSize },
+        { page, pageSize, sort: mcpSort(a, COMPANY_SORTS, "active") },
       );
       return { total: result.total, page, companies: result.rows.map((c) => ({ ...c, admin_url: link(ctx, `/companies/${encodeURIComponent(c.key)}`) })) };
     },
