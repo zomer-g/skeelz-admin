@@ -19,9 +19,9 @@ function statsHint(s: Stats, unit: string): string {
   return `ממוצע ${fmtDecimal(s.avg)} ${unit} · מתוך ${fmtInt(s.count)} הגשות`;
 }
 
-export function SectionTitle({ children, hint }: { children: string; hint?: string }) {
+export function SectionTitle({ children, hint, id }: { children: string; hint?: string; id?: string }) {
   return (
-    <div className="mb-4 mt-10 flex flex-wrap items-baseline gap-3 first:mt-0">
+    <div id={id} className="mb-4 mt-10 flex scroll-mt-4 flex-wrap items-baseline gap-3 first:mt-0">
       <h2 className="text-xl font-bold">{children}</h2>
       {hint ? <span className="text-sm text-muted">{hint}</span> : null}
     </div>

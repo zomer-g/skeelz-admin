@@ -4,7 +4,11 @@ import { CANDIDATE_ACCOUNT_PATTERN } from "@/lib/metrics/marketing";
 import { salesforceConfigured, sf } from "@/lib/sf/client";
 import { asDate, containsPattern, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
 import { orderBy, type Sort, type SortColumn } from "./sort";
+import { placeFilterSql, placeLabel, type PlaceLabel } from "@/lib/geo/filters";
+import { GEO_CTES } from "@/lib/geo/localities";
 import { logError } from "@/lib/log";
+import { candidatePlaceSql } from "@/lib/metrics/geo";
+import { skillNames, skillRowsSql } from "@/lib/skills";
 
 /**
  * Candidates: Contacts in the candidate Accounts, and any Contact that applied.
@@ -14,7 +18,14 @@ import { logError } from "@/lib/log";
 
 export interface CandidateFilters {
   q: string;
+  /** The site's own district (`district_index__c`), exactly as in Salesforce. */
   district: string;
+  /** CBS district (1–7), or "unknown" (lib/geo/filters.ts). */
+  area: string;
+  /** CBS sub-district code. */
+  napa: string;
+  /** A skill name (lib/skills.ts). */
+  skill: string;
   city: string;
   account: string;
   cv: "yes" | "no" | "";
@@ -32,6 +43,8 @@ export interface CandidateRow {
   phone: string | null;
   city: string | null;
   district: string | null;
+  /** Where the candidate lives, in CBS terms (from the locality code, else the city name). */
+  place: PlaceLabel;
   accountName: string | null;
   hasCv: boolean;
   /** הגשה מהירה (`Field6__c`): the candidate came in through the site's one-click apply. */
@@ -41,8 +54,11 @@ export interface CandidateRow {
   createdAt: Date | null;
 }
 
+const PLACE = candidatePlaceSql("ct");
+
 export const CANDIDATES = sql`
-  WITH apps AS (
+  WITH ${GEO_CTES},
+  apps AS (
     SELECT a.contact_id, count(*) AS n, max(a.created_date) AS last_at
       FROM sf_case a JOIN sf_record_type rt ON rt.id = a.record_type_id
      WHERE rt.developer_name IN (${RECORD_TYPES.application}, ${RECORD_TYPES.accepted}) AND NOT a.is_deleted AND a.contact_id IS NOT NULL
@@ -56,10 +72,12 @@ export const CANDIDATES = sql`
            nullif(ct.data->>'district_index__c', '') AS district,
            coalesce(ct.data->>'CV__c', 'false') = 'true' AS has_cv,
            coalesce(ct.data->>'Field6__c', 'false') = 'true' AS fast_applied,
-           coalesce(apps.n, 0) AS applications, apps.last_at
+           coalesce(apps.n, 0) AS applications, apps.last_at,
+           ${PLACE.kind} AS place_kind, ${PLACE.napa} AS napa, ${PLACE.locality} AS locality
       FROM sf_contact ct
       LEFT JOIN sf_account acc ON acc.id = ct.account_id
       LEFT JOIN apps ON apps.contact_id = ct.id
+      ${PLACE.joins}
      WHERE NOT ct.is_deleted AND (acc.name ILIKE ${CANDIDATE_ACCOUNT_PATTERN} OR apps.n IS NOT NULL)
   )`;
 
@@ -71,6 +89,7 @@ function toCandidate(r: Record<string, unknown>): CandidateRow {
     phone: str(r.phone),
     city: str(r.city),
     district: str(r.district),
+    place: placeLabel(r),
     accountName: str(r.account_name),
     hasCv: isTrue(r.has_cv),
     fastApply: isTrue(r.fast_applied),
@@ -104,6 +123,8 @@ export async function searchCandidates(
       ${digits ? sql`OR regexp_replace(coalesce(c.phone, ''), '[^0-9]', '', 'g') LIKE ${`%${digits}%`}` : sql.raw("")})`);
   }
   if (f.district) parts.push(sql`c.district = ${f.district}`);
+  parts.push(...placeFilterSql("c", f.area, f.napa));
+  if (f.skill) parts.push(sql`EXISTS (SELECT 1 FROM (${skillRowsSql("c.id", "c.data->>'skills_cambium__c'", "c.data")}) k WHERE k.skill = ${f.skill})`);
   if (f.city) parts.push(sql`c.city ILIKE ${containsPattern(f.city)}`);
   if (f.account) parts.push(sql`c.account_name = ${f.account}`);
   if (f.cv === "yes") parts.push(sql`c.has_cv`);
@@ -126,34 +147,12 @@ export async function searchCandidates(
   return { rows: rows.map(toCandidate), total: num(count[0]?.n) };
 }
 
-export async function loadCandidateFilterOptions(): Promise<{ districts: string[]; accounts: string[] }> {
-  const [districts, accounts] = await Promise.all([
-    run(sql`${CANDIDATES} SELECT c.district AS v, count(*) AS n FROM cand c WHERE c.district IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`),
-    run(sql`${CANDIDATES} SELECT c.account_name AS v, count(*) AS n FROM cand c WHERE c.account_name IS NOT NULL GROUP BY 1 ORDER BY 2 DESC LIMIT 20`),
-  ]);
-  return { districts: districts.map((r) => String(r.v)), accounts: accounts.map((r) => String(r.v)) };
+export async function loadCandidateFilterOptions(): Promise<{ accounts: string[] }> {
+  const accounts = await run(sql`
+    SELECT acc.name AS v, count(*) AS n FROM sf_contact ct JOIN sf_account acc ON acc.id = ct.account_id
+     WHERE NOT ct.is_deleted AND acc.name ILIKE ${CANDIDATE_ACCOUNT_PATTERN} GROUP BY 1 ORDER BY 2 DESC LIMIT 20`);
+  return { accounts: accounts.map((r) => String(r.v)) };
 }
-
-/** Skill checkboxes on the Contact, with their labels. */
-export const SKILL_FIELDS: [field: string, label: string][] = [
-  ["Team_work__c", "עבודה בצוות"],
-  ["Service__c", "שירותיות"],
-  ["Creative_thinking__c", "חשיבה יצירתית"],
-  ["Self_study_and_fast__c", "לימוד עצמי ומהיר"],
-  ["expression__c", "התבטאות בכתב ובעל פה"],
-  ["administration__c", "אדמיניסטרציה"],
-  ["Multitasking__c", "מולטיטסקינג"],
-  ["Digital_skills__c", "מיומנויות דיגיטליות"],
-  ["Training_and_teaching__c", "הדרכה והוראה"],
-  ["Care_and_empathy__c", "טיפול ואמפתיה"],
-  ["Analysis_and_presentation__c", "ניתוח והצגת נתונים"],
-  ["Entrepreneurship__c", "יזמות"],
-  ["skill_tech__c", "ידע טכנולוגי"],
-  ["Financial_knowledge__c", "ידע פיננסי"],
-  ["time_management__c", "ניהול זמן עצמאי"],
-  ["people_management__c", "ניהול אנשים"],
-  ["marketing_and_sales__c", "שיווק ומכירות"],
-];
 
 export interface CandidateDetail extends CandidateRow {
   firstName: string | null;
@@ -170,18 +169,14 @@ export async function loadCandidate(id: string): Promise<CandidateDetail | null>
   const [r] = await run(sql`${CANDIDATES} SELECT c.* FROM cand c WHERE c.id = ${id}`);
   if (!r) return null;
   const data = (r.data ?? {}) as Record<string, unknown>;
-  const listed = (str(data.skills_cambium__c) ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const checked = SKILL_FIELDS.filter(([field]) => isTrue(data[field])).map(([, label]) => label);
   return {
     ...toCandidate(r),
     firstName: str(data.FirstName) ?? str(data.firstName_cambium__c),
     birthDate: str(data.Birthdate) ?? str(data.dateOfBirth_cambium__c),
     gender: str(data.Gender__c),
     contactType: str(data.contact_type_C__c),
-    skills: [...new Set([...listed, ...checked])],
+    // The site lists skills by id; each id has its name (lib/skills.ts), and the checkboxes repeat them.
+    skills: skillNames(str(data.skills_cambium__c), data),
     talent: isTrue(data.Field3__c),
     lastActivityDate: str(data.LastActivityDate),
   };

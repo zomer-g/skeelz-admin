@@ -13,6 +13,8 @@ import { CANDIDATE_SORTS, loadCandidate, searchCandidates } from "@/lib/entities
 import { COMPANY_SORTS, loadCompany, loadJobDetails, searchCompanies } from "@/lib/entities/companies";
 import { startDir, type Sort, type SortColumn } from "@/lib/entities/sort";
 import { casePath, loadEmailCases, loadEmailContacts, normEmail } from "@/lib/entities/emails";
+import { AREA_VALUES, NAPA_VALUES } from "@/lib/geo/filters";
+import { SKILLS } from "@/lib/skills";
 import { loadPayments } from "@/lib/entities/payments";
 import {
   IMPACT_DAYS,
@@ -406,7 +408,10 @@ const TOOLS: Tool[] = [
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Free text.", maxLength: 100 },
-      district: { type: "string", description: "District, exactly as in Salesforce.", maxLength: 100 },
+      district: { type: "string", description: "The site's own district field, exactly as in Salesforce.", maxLength: 100 },
+      area: { type: "string", enum: [...AREA_VALUES], description: "CBS district: 1 ירושלים, 2 הצפון, 3 חיפה, 4 המרכז, 5 תל אביב, 6 הדרום, 7 יהודה ושומרון; or unknown." },
+      napa: { type: "string", enum: NAPA_VALUES, description: "CBS sub-district (נפה) code, e.g. 51 תל אביב, 52 רמת גן, 53 חולון, 42 פתח תקווה." },
+      skill: { type: "string", enum: SKILLS.map((x) => x.label), description: "A skill the candidate has." },
       city: { type: "string", description: "City (contains).", maxLength: 100 },
       cv: { type: "string", enum: ["yes", "no"], description: "Has a CV or not." },
       fast: { type: "string", enum: ["yes", "no"], description: "Came in through the site's one-click apply (הגשה מהירה) or not." },
@@ -422,6 +427,9 @@ const TOOLS: Tool[] = [
         {
           q: s(a.q),
           district: s(a.district),
+          area: s(a.area),
+          napa: s(a.napa),
+          skill: s(a.skill),
           city: s(a.city),
           account: "",
           cv: (s(a.cv) as "yes" | "no" | "") || "",

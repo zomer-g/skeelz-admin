@@ -49,8 +49,23 @@ export function jobFieldItems(position: Position, d: JobDetails | null): [string
     ["גודל חברה", d?.companySize],
     ["היקף משרה", d?.time],
     ["מיקום", d?.location],
-    ["עיר", d?.city],
-    ["מחוז", d?.district],
+    ["יישוב (למ״ס)", d?.place.locality ?? d?.place.note],
+    ["נפה", d?.place.subdistrict],
+    ["מחוז (למ״ס)", d?.place.district],
+    ["עיר באתר", d?.city && d.city !== "אין" ? d.city : null],
+    ["אזור באתר", d?.district && d.district !== "אין" ? d.district : null],
+    [
+      "כישורים נדרשים",
+      d?.skills.length ? (
+        <span className="flex flex-wrap gap-1.5">
+          {d.skills.map((s) => (
+            <Badge key={s} tone="accent">
+              {s}
+            </Badge>
+          ))}
+        </span>
+      ) : null,
+    ],
     ["איש קשר באתר", d?.contactName],
     ["מייל איש הקשר באתר", mail(d?.contactEmail ?? null)],
     ["טלפון איש הקשר באתר", tel(d?.contactPhone ?? null)],

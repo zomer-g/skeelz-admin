@@ -8,13 +8,15 @@ import { emailPath } from "@/lib/entities/emails";
 import { CANDIDATE_SORTS, loadCandidateFilterOptions, searchCandidates, type CandidateFilters } from "@/lib/entities/candidates";
 import { choice, dayParam, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
 import { sortParam, tableSort } from "@/lib/entities/sort";
+import { AREA_VALUES, areaOptions, NAPA_VALUES, napaOptions, placeText } from "@/lib/geo/filters";
+import { SKILLS } from "@/lib/skills";
 import { fmtDate, fmtInt } from "@/lib/format";
 
 export const metadata: Metadata = { title: "מועמדים" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/candidates";
-const KEYS = ["q", "district", "city", "account", "cv", "fast", "applied", "from", "to", "sort", "dir", "page"];
+const KEYS = ["q", "district", "area", "napa", "skill", "city", "account", "cv", "fast", "applied", "from", "to", "sort", "dir", "page"];
 
 export default async function CandidatesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
@@ -24,6 +26,9 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
   const filters: CandidateFilters = {
     q: param(search, "q"),
     district: param(search, "district"),
+    area: choice(search, "area", AREA_VALUES),
+    napa: choice(search, "napa", NAPA_VALUES),
+    skill: choice(search, "skill", SKILLS.map((s) => s.label)),
     city: param(search, "city"),
     account: param(search, "account"),
     cv: choice(search, "cv", ["yes", "no"] as const),
@@ -39,6 +44,9 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
   const values: Record<string, string> = {
     q: filters.q,
     district: filters.district,
+    area: filters.area,
+    napa: filters.napa,
+    skill: filters.skill,
     city: filters.city,
     account: filters.account,
     cv: filters.cv,
@@ -56,8 +64,10 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
         values={values}
         fields={[
           { kind: "text", name: "q", label: "חיפוש", placeholder: "שם, מייל או טלפון", wide: true },
-          { kind: "select", name: "district", label: "מחוז", options: options.districts },
+          { kind: "select", name: "area", label: "מחוז", options: areaOptions(["unknown"]) },
+          { kind: "select", name: "napa", label: "נפה", options: napaOptions(filters.area) },
           { kind: "text", name: "city", label: "עיר" },
+          { kind: "select", name: "skill", label: "כישור", options: SKILLS.map((s) => s.label) },
           { kind: "select", name: "account", label: "Account", options: options.accounts },
           { kind: "select", name: "cv", label: 'קו"ח', options: [{ value: "yes", label: 'יש קו"ח' }, { value: "no", label: 'אין קו"ח' }] },
           { kind: "select", name: "fast", label: "הגשה מהירה", options: [{ value: "yes", label: "הגשה מהירה" }, { value: "no", label: "לא הגשה מהירה" }] },
@@ -100,8 +110,8 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
                 {c.phone ?? "—"}
               </td>
               <td className="px-3 py-2 text-xs">
-                {c.city ?? "—"}
-                {c.district ? <p className="text-muted">{c.district}</p> : null}
+                {c.city ?? c.place.locality ?? "—"}
+                {placeText(c.place, true) ? <p className="text-muted">{placeText(c.place, true)}</p> : null}
               </td>
               <td className="px-3 py-2 text-xs">{c.accountName ?? "—"}</td>
               <td className="px-3 py-2">{c.hasCv ? <Badge tone="accent">יש</Badge> : <span className="text-muted">—</span>}</td>

@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { cached } from "@/lib/cache";
 import type { DashboardParams } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
-import { SKILL_FIELDS } from "@/lib/entities/candidates";
+import { skillRowsSql } from "@/lib/skills";
 import { CALL_PARTY, RECORD_TYPES } from "./candidates";
 import { CANDIDATE_ACCOUNT_PATTERN } from "./marketing";
 import { applicationPaidSql } from "./paid";
@@ -136,20 +136,11 @@ async function queryTalentMetrics(p: DashboardParams): Promise<TalentMetrics> {
       (SELECT json_agg(x ORDER BY x.count DESC) FROM (
          SELECT c.district, count(*) AS count FROM c WHERE c.applied_n IS NOT NULL GROUP BY c.district ORDER BY 2 DESC LIMIT 8) x) AS districts,
       (SELECT json_agg(x ORDER BY x.count DESC) FROM (
-         -- The site's skill list holds names for some candidates and internal ids for others; ids are skipped.
-         -- The skill checkboxes on the Contact cover the rest; a candidate counts once per skill.
-         -- Read from the Contact for the applicants only, not carried through the whole pool.
-         SELECT k.skill, count(DISTINCT k.id) AS count FROM (
-           SELECT ct.id, btrim(s) AS skill
-             FROM c JOIN sf_contact ct ON ct.id = c.id, unnest(string_to_array(ct.data->>'skills_cambium__c', ',')) s
-            WHERE c.applied_n IS NOT NULL AND btrim(s) <> '' AND btrim(s) !~ '^[0-9a-f]{24}$'
-           UNION ALL
-           SELECT ct.id, flag
-             FROM c JOIN sf_contact ct ON ct.id = c.id,
-                  unnest(array_remove(ARRAY[${sql.join(
-                    SKILL_FIELDS.map(([field, label]) => sql`CASE WHEN ct.data->>${field} = 'true' THEN ${label}::text END`),
-                    sql`, `,
-                  )}], NULL)) flag
+         -- The site's skill list (ids, named in lib/skills.ts) and the skill checkboxes on the Contact;
+         -- a candidate counts once per skill. Read from the Contact for the applicants only.
+         SELECT k.skill, count(DISTINCT k.owner) AS count FROM (
+           SELECT named.* FROM c JOIN sf_contact ct ON ct.id = c.id,
+                  LATERAL (${skillRowsSql("ct.id", "ct.data->>'skills_cambium__c'", "ct.data")}) named
             WHERE c.applied_n IS NOT NULL
          ) k GROUP BY k.skill ORDER BY 2 DESC LIMIT 10) x) AS skills`);
 

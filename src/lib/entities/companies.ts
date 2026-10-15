@@ -2,6 +2,9 @@ import { sql, type SQL } from "drizzle-orm";
 import { RECORD_TYPES } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { jobPaidSql } from "@/lib/metrics/paid";
+import { districtName, districtOf, subdistrictName } from "@/lib/geo/map";
+import { PLACE_KIND_LABELS, resolvePlace } from "@/lib/geo/localities";
+import { skillNames } from "@/lib/skills";
 import { ageInDays, asDate, dayOf, containsPattern, htmlToText, isSfId, isTrue, num, PAGE_SIZE, run, str } from "./search";
 import { orderBy, type Sort, type SortColumn } from "./sort";
 
@@ -218,6 +221,10 @@ export interface JobDetails {
   location: string | null;
   city: string | null;
   district: string | null;
+  /** CBS place: the locality, its sub-district and district — or nationwide / from home. */
+  place: { locality: string | null; subdistrict: string | null; district: string | null; note: string | null };
+  /** The skills the job asks for (`PSkills_cambium__c`, ids named in lib/skills.ts). */
+  skills: string[];
   time: string | null;
   companySize: string | null;
   contactName: string | null;
@@ -259,6 +266,7 @@ export async function loadJobDetails(id: string): Promise<JobDetails | null> {
     SELECT ${sql.raw(COMPANY_NAME)} AS company_name, ${companyKeySql(COMPANY_NAME)} AS company_key, acc.name AS account_name,
            p.data->>'PStatus__c' AS p_status, p.data->>'PLocation_cambium__c' AS location, p.data->>'PTime_cambium__c' AS job_time,
            p.data->>'city_index__c' AS city, p.data->>'district_index__c' AS district, p.data->>'company_size__c' AS company_size,
+           p.data->>'citySymbol_cambium__c' AS city_code, p.data->>'PSkills_cambium__c' AS skills,
            p.data->>'PFullName_cambium__c' AS contact_name, lower(p.data->>'PEmail_cambium__c') AS contact_email,
            p.data->>'PPhone_cambium__c' AS contact_phone,
            ct.name AS case_contact_name, coalesce(nullif(lower(p.data->>'ContactEmail'), ''), ct.email) AS case_contact_email,
@@ -281,6 +289,8 @@ export async function loadJobDetails(id: string): Promise<JobDetails | null> {
   const closedAt = asDate(r.closed_date);
   const siteKey = str(r.site_job_key);
   const link = str(r.site_link);
+  const place = resolvePlace(str(r.city_code), str(r.location) ?? str(r.city));
+  const napa = place.locality?.subdistrict ?? null;
   return {
     companyName: str(r.company_name),
     companyKey: str(r.company_key),
@@ -289,6 +299,13 @@ export async function loadJobDetails(id: string): Promise<JobDetails | null> {
     location: str(r.location),
     city: str(r.city),
     district: str(r.district),
+    place: {
+      locality: place.locality?.name ?? null,
+      subdistrict: napa == null ? null : subdistrictName(napa),
+      district: napa == null ? null : districtName(districtOf(napa)),
+      note: place.kind === "locality" ? null : PLACE_KIND_LABELS[place.kind],
+    },
+    skills: skillNames(str(r.skills)),
     time: jobTimeLabel(str(r.job_time)),
     companySize: str(r.company_size),
     contactName: str(r.contact_name),

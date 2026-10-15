@@ -6,6 +6,7 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { LineChart } from "@/components/dashboard/LineChart";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
+import { PlaceMapCard, regionListHref, withLevel } from "@/components/dashboard/PlaceMapCard";
 import { Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { EXPLAIN } from "@/lib/dashboard/explain";
@@ -13,6 +14,7 @@ import { eachDay, formatDay, parseDashboardParams, rangeQuery, viewPath } from "
 import { fmtDecimal, fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
 import { campaignLabel, isMailing, loadCampaignSummaries } from "@/lib/metrics/campaigns";
 import { syncFreshness } from "@/lib/metrics/candidates";
+import { loadCandidateFacts, parseLevel } from "@/lib/metrics/geo";
 import { loadTalentMetrics, OTHER_ACCOUNT } from "@/lib/metrics/talent";
 
 export const metadata: Metadata = { title: "דשבורד מועמדים" };
@@ -20,12 +22,20 @@ export const dynamic = "force-dynamic";
 
 export default async function TalentPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath("/talent", search));
+  const auth = await pageAuth("viewer", viewPath("/talent", search, ["range", "scope", "from", "to", "level"]));
   if (!auth.ok) return auth.render;
 
   const params = parseDashboardParams(search);
   const query = rangeQuery(params);
-  const [t, freshness, campaigns] = await Promise.all([loadTalentMetrics(params), syncFreshness(), loadCampaignSummaries(params.fromDay, params.toDay)]);
+  const level = parseLevel(search.level);
+  const [t, freshness, campaigns, candidateFacts] = await Promise.all([
+    loadTalentMetrics(params),
+    syncFreshness(),
+    loadCampaignSummaries(params.fromDay, params.toDay),
+    loadCandidateFacts(),
+  ]);
+  const inRange = (d: Date | null) => d != null && d >= params.from && d < params.to;
+  const recentCandidates = candidateFacts.filter((c) => inRange(c.createdAt) || inRange(c.lastApplicationAt));
   const paidOnly = params.scope === "paid";
 
   const days = eachDay(params.fromDay, params.toDay);
@@ -36,7 +46,14 @@ export default async function TalentPage({ searchParams }: { searchParams: Promi
   return (
     <>
       <DashboardTabs active="candidates" query={query} />
-      <DashboardShell preset={params.preset} scope={params.scope} fromDay={params.fromDay} toDay={params.toDay} showBasis={false}>
+      <DashboardShell
+        preset={params.preset}
+        scope={params.scope}
+        fromDay={params.fromDay}
+        toDay={params.toDay}
+        showBasis={false}
+        keep={level === "district" ? { level } : undefined}
+      >
         <PaidSplit scope={params.scope} items={[{ label: "מועמדים שהגישו", paid: t.appliedSplit.paid, total: t.appliedSplit.all }]} />
         <p className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted">
           <span>
@@ -101,6 +118,24 @@ export default async function TalentPage({ searchParams }: { searchParams: Promi
           </Table>
         </Card>
 
+        <SectionTitle id="map" hint="איפה גרים המועמדים, לפי מחוזות ונפות של הלמ״ס">מועמדים על המפה</SectionTitle>
+        <PlaceMapCard
+          id="talent-map"
+          title="מאגר המועמדים לפי אזור"
+          unit="מועמדים"
+          level={level}
+          levelHref={(l) => withLevel("/talent", search, l, "#map")}
+          facts={candidateFacts}
+          extra={{ label: "פעילים בטווח", facts: recentCandidates }}
+          regionHref={(code, l) => regionListHref("/candidates", code, l)}
+          note="המקום לפי סמל היישוב של הלמ״ס באיש הקשר, ואם אין — לפי העיר שנרשמה. פעילים בטווח: נוספו או הגישו לאחרונה בטווח."
+        />
+        <p className="mt-3 text-sm">
+          <Link href={`/matching?${query}`} className="font-medium text-accent-dark underline underline-offset-4">
+            התאמה בין משרות למועמדים לפי אזור וכישורים
+          </Link>
+        </p>
+
         <SectionTitle hint="לפי יום, עם ימי הדיוור">לאורך זמן</SectionTitle>
         <Card level={3} title="מועמדים חדשים ומגישים">
           <LineChart
@@ -115,8 +150,8 @@ export default async function TalentPage({ searchParams }: { searchParams: Promi
 
         <SectionTitle hint="המועמדים שהגישו בטווח">מי מגיש</SectionTitle>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <Card level={3} title="לפי מחוז">
-            <BarList caption="מגישים לפי מחוז" items={t.districts.map((d) => ({ label: d.district, value: d.count }))} showShareOf={t.applicants || undefined} />
+          <Card level={3} title="לפי אזור באתר">
+            <BarList caption="מגישים לפי האזור שהאתר רושם" items={t.districts.map((d) => ({ label: d.district, value: d.count }))} showShareOf={t.applicants || undefined} />
           </Card>
           <Card level={3} title="כישורים נפוצים">
             <BarList caption="כישורים נפוצים אצל המגישים" items={t.skills.map((s) => ({ label: s.skill, value: s.count }))} showShareOf={t.applicants || undefined} />

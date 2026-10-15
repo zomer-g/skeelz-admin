@@ -62,12 +62,13 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   on jobs). The site's crown / featured mark = `isMarked_cambium__c` (`marked` on `Position`, `filterPositions`;
   `withCrown_cambium__c` exists but is never set). Definitions in `docs/employers-tab-metrics.md`, code in `src/lib/metrics/employers.ts`.
 - **Dashboard tabs** (`docs/dashboard-tabs.md`): `/` executive summary · `/talent` candidate pool · `/jobs` jobs ·
+  `/matching` demand (open jobs) vs supply (candidates) by CBS district / sub-district and skill (`src/lib/metrics/geo.ts`) ·
   `/pipeline` applications: the anchored funnel (`src/lib/metrics/funnel.ts`, `docs/applications-tab.md`) + the application
   pipeline (`ApplicationPipeline`), campaigns from send to apply (`CampaignFunnel`, SMOOV + GA) and a side-by-side period
   comparison (`?cmp=1&cfrom=&cto=`, `CompareFunnels`) · `/employers` · `/marketing` · `/analytics` Google Analytics (every
   mirrored GA report through `src/lib/metrics/ga-report.ts`, shared with the MCP `ga_report`) · `/campaigns`. A job has two pages: `/jobs/[id]`
   (dashboard analytics) and `/positions/[id]` (the entity card, under מעסיקים) — entity pages link to `/positions`.
-- **Entities** (`/applications`, `/companies`, `/candidates`, `/emails`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
+- **Entities** (`/applications`, `/companies`, `/positions` (jobs list), `/candidates`, `/emails`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
   GET search forms, 50 per page, each sortable by column (`?sort=&dir=`, `src/lib/entities/sort.ts`: a list declares its
   `SortColumn[]`, `Table` turns the headings into links and shows the same choices as pills on phones, where the headings are hidden). A company is jobs grouped by normalized `company_cambium__c` (`src/lib/metrics/company.ts`).
   Candidate files are never mirrored: listed live via `ContentDocumentLink` and served only through
@@ -77,6 +78,10 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   The record pages' timeline (`loadFullCaseTimeline`) adds, live from Salesforce and never mirrored, the case's Chatter
   posts, case comments and email texts; the mirror keeps email metadata only. Task/Event descriptions come from the mirror.
   Anything interpolated into SOQL must pass `isSfId` first.
+- **Places and skills** (`docs/geo-and-skills.md`): regions are CBS districts (מחוז) and sub-districts (נפה), resolved from
+  `citySymbol_cambium__c` (CBS locality code) then the city name (`src/lib/geo/localities.ts`, SQL via `GEO_CTES` + `geoPlaceSql`);
+  map outlines in `src/lib/geo/map.ts`, drawn by `RegionMap`. Skills are Mongo ids on jobs (`PSkills_cambium__c`) and candidates
+  (`skills_cambium__c`), named in `src/lib/skills.ts` — always show names, never ids.
 - **Paid scope:** every figure built on jobs or applications honours `?scope=` (default `paid`, or `all`). Paid job =
   `isSponserd_cambium__c` or `Field18__c`; paid application = `A_Money__c` or a paid job (the site never sets
   `isSponserd_cambium__c` on applications). Defined once in `src/lib/metrics/paid.ts`; show `PaidSplit` so the other side

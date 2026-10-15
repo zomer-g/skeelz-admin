@@ -4,6 +4,7 @@ import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
+import { PlaceMapCard, regionListHref, withLevel } from "@/components/dashboard/PlaceMapCard";
 import { MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
@@ -12,6 +13,7 @@ import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/das
 import { fmtDate, fmtInt, fmtRelative } from "@/lib/format";
 import { countNewJobs, loadApplicationFacts, syncFreshness } from "@/lib/metrics/candidates";
 import { buildJobRows, loadJobGa, loadPositions, matchesSearch, type JobRow } from "@/lib/metrics/jobs";
+import { loadJobFacts, parseLevel } from "@/lib/metrics/geo";
 import { inScope } from "@/lib/metrics/paid";
 
 export const metadata: Metadata = { title: "משרות" };
@@ -22,7 +24,7 @@ const MAX_ROWS = 150;
 /** Jobs tab: every job-side figure — the jobs themselves, and the pipeline their applications go through. */
 export default async function JobsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath("/jobs", search, ["range", "scope", "from", "to", "q", "marked"]));
+  const auth = await pageAuth("viewer", viewPath("/jobs", search, ["range", "scope", "from", "to", "q", "marked", "level"]));
   if (!auth.ok) return auth.render;
 
   const params = parseDashboardParams(search, new Date(), "90d");
@@ -30,13 +32,18 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
   const q = typeof search.q === "string" ? search.q.trim() : "";
   const markedOnly = search.marked === "1";
 
-  const [positions, ga, facts, newJobs, freshness] = await Promise.all([
+  const level = parseLevel(search.level);
+  const [positions, ga, facts, newJobs, freshness, jobFacts] = await Promise.all([
     loadPositions(),
     loadJobGa(params.fromDay, params.toDay),
     loadApplicationFacts(),
     countNewJobs(params.from, params.to),
     syncFreshness(),
+    loadJobFacts(),
   ]);
+  const scopedJobs = jobFacts.filter(inScope(params.scope));
+  const liveJobs = scopedJobs.filter((j) => j.active);
+  const openedInRange = scopedJobs.filter((j) => j.createdAt && j.createdAt >= params.from && j.createdAt < params.to);
 
   const all = buildJobRows(positions, ga, facts, params.from, params.to);
   const inView = (r: JobRow) => inScope(params.scope)(r.position);
@@ -78,6 +85,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         scope={params.scope}
         fromDay={params.fromDay}
         toDay={params.toDay}
+        keep={level === "district" ? { level } : undefined}
         search={{ value: q, placeholder: "חיפוש משרה: שם, חברה או מספר Case" }}
       >
         <PaidSplit
@@ -110,6 +118,24 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             הגשות
           </Link>
           .
+        </p>
+
+        <SectionTitle id="map" hint="המשרות הפעילות באתר עכשיו, לפי מחוזות ונפות של הלמ״ס">משרות על המפה</SectionTitle>
+        <PlaceMapCard
+          id="jobs-map"
+          title="משרות פעילות לפי אזור"
+          unit="משרות פעילות"
+          level={level}
+          levelHref={(l) => withLevel("/jobs", search, l, "#map")}
+          facts={liveJobs}
+          extra={{ label: "נפתחו בטווח", facts: openedInRange }}
+          regionHref={(code, l) => regionListHref("/positions", code, l, { status: "Active", ...(params.scope === "paid" ? { paid: "paid" } : {}) })}
+          note="המיקום לפי סמל היישוב של הלמ״ס במשרה, ואם אין — לפי שם היישוב. משרות בפריסה ארצית ומהבית לא משויכות לאזור."
+        />
+        <p className="mt-3 text-sm">
+          <Link href={`/matching${detailQuery}`} className="font-medium text-accent-dark underline underline-offset-4">
+            התאמה בין משרות למועמדים לפי אזור וכישורים
+          </Link>
         </p>
 
         <SectionTitle hint="פתיחות, לחיצות ושלבי ההגשה לכל משרה">כל המשרות</SectionTitle>

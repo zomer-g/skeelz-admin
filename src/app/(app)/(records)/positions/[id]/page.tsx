@@ -44,7 +44,7 @@ export default async function PositionPage({ params }: { params: Promise<{ id: s
   return (
     <>
       <EntityHeader
-        back={companyHref ? { href: companyHref, label: `כל המשרות של ${companyName ?? "המעסיק"}` } : { href: "/companies", label: "כל המעסיקים" }}
+        back={companyHref ? { href: companyHref, label: `כל המשרות של ${companyName ?? "המעסיק"}` } : { href: "/positions", label: "כל המשרות" }}
         title={position.title ?? "(ללא שם)"}
         subtitle={
           companyHref ? (
