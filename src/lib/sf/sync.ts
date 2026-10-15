@@ -138,7 +138,8 @@ async function syncObject(def: SyncObjectDef, mode: SyncMode, trigger: string): 
 
     const [state] = await db.select().from(syncState).where(eq(syncState.object, def.name));
     const since = mode === "full" || !state?.cursor ? null : new Date(state.cursor.getTime() - CURSOR_OVERLAP_MS);
-    const conditions = [def.where, since ? `${def.cursorField} > ${soqlDateTime(since)}` : null].filter(Boolean);
+    // The object's own filter is parenthesised: it may hold an OR, which would otherwise swallow the cursor condition.
+    const conditions = [def.where ? `(${def.where})` : null, since ? `${def.cursorField} > ${soqlDateTime(since)}` : null].filter(Boolean);
     const soql =
       `SELECT ${selectFields(describe, def).join(", ")} FROM ${def.name}` +
       (conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "") +
@@ -157,7 +158,7 @@ async function syncObject(def: SyncObjectDef, mode: SyncMode, trigger: string): 
     if (def.hasIsDeleted && since) {
       const gone = await sf.query<{ Id: string }>(
         `SELECT Id FROM ${def.name} WHERE IsDeleted = true AND SystemModstamp > ${soqlDateTime(since)}` +
-          (def.where ? ` AND ${def.where}` : ""),
+          (def.where ? ` AND (${def.where})` : ""),
         { includeDeleted: true },
       );
       const idColumn = getTableColumns(def.table).id!;

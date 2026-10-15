@@ -15,28 +15,28 @@ describe("statusSummary", () => {
     ["c", { initial: "New", changes: [change("2026-09-05", 'נשלחו קו"ח')] }],
   ]);
   const range = { from: new Date("2026-09-08T00:00:00Z"), to: new Date("2026-10-01T00:00:00Z") };
-  const get = (rows: ReturnType<typeof statusSummary>, s: string) => rows.find((r) => r.status === s)!;
+  const get = (summary: ReturnType<typeof statusSummary>, s: string) => summary.rows.find((r) => r.status === s)!;
 
-  it("counts where each application is now, whatever the range", () => {
-    const rows = statusSummary(facts, histories, { basis: "event", ...range });
-    assert.equal(get(rows, 'נשלחו קו"ח').now, 1);
-    assert.equal(get(rows, "New").now, 1);
-  });
-
-  it("by event date: moves into the status inside the range", () => {
-    const rows = statusSummary(facts, histories, { basis: "event", ...range });
-    // a moved to CV sent on 10.9 (in range); c on 5.9 (before it).
-    assert.equal(get(rows, 'נשלחו קו"ח').entered, 1);
-    // b was created in New inside the range.
-    assert.equal(get(rows, "New").entered, 1);
+  it("by event date: moves into the status inside the range, and how many are still there", () => {
+    const summary = statusSummary(facts, histories, { basis: "event", ...range });
+    // a moved to CV sent on 10.9 (in range) and on to an interview; c moved on 5.9 (before it).
+    assert.equal(get(summary, 'נשלחו קו"ח').entered, 1);
+    assert.equal(get(summary, 'נשלחו קו"ח').current, 0);
+    assert.equal(get(summary, "זומן לראיון").current, 1);
+    // b was created in New inside the range and is still there.
+    assert.equal(get(summary, "New").entered, 1);
+    assert.equal(get(summary, "New").current, 1);
+    // c did not change in the range, so it is not counted at all.
+    assert.equal(summary.total, 2);
   });
 
   it("by application date: of those created in the range, where they are and what they passed", () => {
-    const rows = statusSummary(facts, histories, { basis: "application", from: new Date("2026-08-25T00:00:00Z"), to: range.to });
+    const summary = statusSummary(facts, histories, { basis: "application", from: new Date("2026-08-25T00:00:00Z"), to: range.to });
     // a and b were created in the range; c was not.
-    assert.equal(get(rows, 'נשלחו קו"ח').entered, 1);
-    assert.equal(get(rows, 'נשלחו קו"ח').nowOfCohort, 0);
-    assert.equal(get(rows, "זומן לראיון").nowOfCohort, 1);
-    assert.equal(get(rows, "New").entered, 2);
+    assert.equal(summary.total, 2);
+    assert.equal(get(summary, 'נשלחו קו"ח').entered, 1);
+    assert.equal(get(summary, 'נשלחו קו"ח').current, 0);
+    assert.equal(get(summary, "זומן לראיון").current, 1);
+    assert.equal(get(summary, "New").entered, 2);
   });
 });

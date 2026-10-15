@@ -60,12 +60,22 @@ export function statusEvents(f: ApplicationFacts, h: StatusHistory | undefined):
 
 export interface StatusRow {
   status: string;
-  /** Applications in this status now (all of them, with the page's filters). */
-  now: number;
-  /** In the range: applications that moved into it (event basis), or of those created in it, how many passed through it (application basis). */
+  /**
+   * Application basis: of the applications created in the range, how many passed through the status.
+   * Event basis: how many moved into it in the range (or were created in it).
+   */
   entered: number;
-  /** Application basis: of those created in the range, how many are in it now. */
-  nowOfCohort: number;
+  /**
+   * Application basis: of those created in the range, how many are in it now.
+   * Event basis: of those that moved into it in the range, how many are still in it.
+   */
+  current: number;
+}
+
+export interface StatusSummary {
+  rows: StatusRow[];
+  /** The applications counted: created in the range (application basis), or with any status change in it (event basis). */
+  total: number;
 }
 
 /** Pipeline order for the statuses the dashboard knows; the rest follow by size. */
@@ -83,28 +93,35 @@ export function statusSummary(
   facts: ApplicationFacts[],
   histories: Map<string, StatusHistory>,
   { basis, from, to }: { basis: Basis; from: Date; to: Date },
-): StatusRow[] {
+): StatusSummary {
   const inRange = (d: Date) => d >= from && d < to;
   const rows = new Map<string, StatusRow>();
   const row = (status: string) => {
     let r = rows.get(status);
-    if (!r) rows.set(status, (r = { status, now: 0, entered: 0, nowOfCohort: 0 }));
+    if (!r) rows.set(status, (r = { status, entered: 0, current: 0 }));
     return r;
   };
+  let total = 0;
   for (const f of facts) {
-    const current = f.status ?? "ללא סטטוס";
-    row(current).now++;
+    const now = f.status ?? "ללא סטטוס";
     const events = statusEvents(f, histories.get(f.id));
     if (basis === "event") {
-      for (const s of new Set(events.filter((e) => inRange(e.at)).map((e) => e.status))) row(s).entered++;
+      const entered = new Set(events.filter((e) => inRange(e.at)).map((e) => e.status));
+      if (!entered.size) continue;
+      total++;
+      for (const s of entered) {
+        row(s).entered++;
+        if (s === now) row(s).current++;
+      }
     } else if (inRange(f.createdAt)) {
+      total++;
       for (const s of new Set(events.map((e) => e.status))) row(s).entered++;
-      row(current).nowOfCohort++;
+      row(now).current++;
     }
   }
   const rank = (s: string) => {
     const i = ORDER.indexOf(s);
     return i === -1 ? ORDER.length : i;
   };
-  return [...rows.values()].sort((a, b) => rank(a.status) - rank(b.status) || b.now + b.entered - (a.now + a.entered));
+  return { rows: [...rows.values()].sort((a, b) => rank(a.status) - rank(b.status) || b.entered - a.entered), total };
 }

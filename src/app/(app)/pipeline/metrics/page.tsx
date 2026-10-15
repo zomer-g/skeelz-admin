@@ -45,7 +45,6 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
   ).length;
   const pipeline = computeCandidateMetrics(facts, newJobs, { ...params, basis });
   const statuses = statusSummary(facts, histories, { basis, from: params.from, to: params.to });
-  const cohort = basis === "application" ? facts.filter((f) => f.createdAt >= params.from && f.createdAt < params.to).length : null;
 
   return (
     <>
@@ -86,10 +85,15 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         {freshness.casesSyncedAt ? <span>Salesforce עודכן {fmtRelative(freshness.casesSyncedAt)}</span> : null}
       </p>
 
-      <SectionTitle hint={basis === "event" ? "כמה הגשות נמצאות בכל סטטוס עכשיו, וכמה עברו אליו בטווח" : "כמה הגשות נמצאות בכל סטטוס עכשיו, ומה קרה עם ההגשות שנוצרו בטווח"}>
+      <SectionTitle
+        hint={basis === "event" ? "כמה הגשות עברו לכל סטטוס בטווח, וכמה מהן עדיין בו" : "מתוך ההגשות שנוצרו בטווח: כמה נמצאות בכל סטטוס עכשיו, וכמה עברו בו"}
+      >
         הגשות לפי סטטוס
       </SectionTitle>
-      <Card level={3} title={`סטטוסים · ${fmtInt(facts.length)} הגשות במסננים`}>
+      <Card
+        level={3}
+        title={basis === "event" ? `סטטוסים · ${fmtInt(statuses.total)} הגשות שהסטטוס שלהן השתנה בטווח` : `סטטוסים · ${fmtInt(statuses.total)} הגשות שנוצרו בטווח`}
+      >
         <div className="relative overflow-x-auto">
           <table className="w-full text-start text-sm">
             <caption className="sr-only">הגשות לפי סטטוס</caption>
@@ -99,56 +103,37 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
                   סטטוס
                 </th>
                 <th scope="col" className="px-3 py-2 text-start font-medium">
-                  כרגע
+                  {basis === "event" ? "עברו אליו בטווח" : "נמצאות בו כרגע"}
                 </th>
-                {basis === "event" ? (
-                  <th scope="col" className="px-3 py-2 text-start font-medium">
-                    עברו אליו בטווח
-                  </th>
-                ) : (
-                  <>
-                    <th scope="col" className="px-3 py-2 text-start font-medium">
-                      מההגשות בטווח: נמצאות בו כרגע
-                    </th>
-                    <th scope="col" className="px-3 py-2 text-start font-medium">
-                      מההגשות בטווח: עברו בו
-                    </th>
-                  </>
-                )}
+                <th scope="col" className="px-3 py-2 text-start font-medium">
+                  {basis === "event" ? "מהן עדיין בו" : "עברו בו (גם אם המשיכו)"}
+                </th>
               </tr>
             </thead>
             <tbody>
-              {statuses.map((s) => (
+              {statuses.rows.map((s) => (
                 <tr key={s.status} className="border-b border-line/60">
                   <th scope="row" className="px-3 py-2 text-start font-medium">
                     {s.status}
                   </th>
-                  <td className="px-3 py-2 tabular-nums">{fmtInt(s.now)}</td>
-                  {basis === "event" ? (
-                    <td className="px-3 py-2 font-bold tabular-nums">{fmtInt(s.entered)}</td>
-                  ) : (
-                    <>
-                      <td className="px-3 py-2 tabular-nums">{fmtInt(s.nowOfCohort)}</td>
-                      <td className="px-3 py-2 font-bold tabular-nums">{fmtInt(s.entered)}</td>
-                    </>
-                  )}
+                  <td className="px-3 py-2 font-bold tabular-nums">{fmtInt(basis === "event" ? s.entered : s.current)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(basis === "event" ? s.current : s.entered)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
+          {statuses.rows.length === 0 ? <p className="py-4 text-center text-sm text-muted">אין הגשות בטווח ובמסננים</p> : null}
         </div>
         <ul className="mt-3 flex flex-col gap-1 text-xs text-muted">
-          <li>&quot;כרגע&quot;: כל ההגשות במסננים לפי הסטטוס שלהן עכשיו, בלי קשר לטווח.</li>
           {basis === "event" ? (
-            <li>&quot;עברו אליו בטווח&quot;: הגשות שהסטטוס שלהן השתנה אליו בטווח (או שנוצרו בו בטווח), לפי היסטוריית הסטטוסים. הגשה שעברה לכמה סטטוסים נספרת בכל אחד.</li>
+            <li>הגשה נספרת בכל סטטוס שעברה אליו בטווח (או שנוצרה בו בטווח), לפי היסטוריית הסטטוסים. &quot;מהן עדיין בו&quot;: הסטטוס שלהן עכשיו.</li>
           ) : (
-            <li>
-              מתוך {fmtInt(cohort ?? 0)} ההגשות שנוצרו בטווח: כמה נמצאות בכל סטטוס עכשיו, וכמה עברו בו אי-פעם (גם אם המשיכו הלאה).
-            </li>
+            <li>&quot;נמצאות בו כרגע&quot; מסתכם במספר ההגשות שנוצרו בטווח. &quot;עברו בו&quot;: כל סטטוס שההגשה הייתה בו אי-פעם, ולכן הגשה נספרת בכמה שורות.</li>
           )}
-          <li>היסטוריית הסטטוסים נשמרת ב-Salesforce מ-13.3.2025; להגשות מלפני כן ידוע רק הסטטוס הנוכחי.</li>
+          <li>לתמונת מצב של כל ההגשות בוחרים בטווח &quot;הכל&quot;. היסטוריית הסטטוסים נשמרת ב-Salesforce מ-13.3.2025; להגשות מלפני כן ידוע רק הסטטוס הנוכחי.</li>
         </ul>
       </Card>
+
 
       <ApplicationPipeline m={pipeline} basis={basis} callsAvailable={freshness.callsAvailable} />
     </>
