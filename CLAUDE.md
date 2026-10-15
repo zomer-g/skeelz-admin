@@ -57,16 +57,18 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   from `data` like paid/active. Rows synced before a field became readable lack it until a full sync. Formula fields
   (e.g. `Field17__c` case age) and Contact-derived fields (`ContactEmail`) go stale in the mirror: compute or join instead.
   Full schema: `npm run sf:describe` writes `docs/sf-schema-report.md` (gitignored — org-specific); connectivity: `npm run sf:check`.
-- **Employers:** employer lead = Case RecordType `lead_employer`, employer = its `AccountId`, pipeline = `Status` history
-  (פנייה ראשונה → … → נחתם חוזה). A job is live on the site when `PStatus__c` = `Active` (Case `Status` is not maintained
+- **Employers:** employer lead = an Account with "סטטוס מעסיק" (`acount_status__c`); the lead and the employer are one record,
+  pipeline = that field's history (AccountHistory → `sf_account_history`; חדש → פנייה ראשונה → … → נחתם חוזה → פורסמו משרות לפי חוזה).
+  Calls/emails on the lead are those logged on the Account (Task/Event/EmailMessage sync includes Account-related rows).
+  The old Case leads (`lead_employer`) are no longer read. A job is live on the site when `PStatus__c` = `Active` (Case `Status` is not maintained
   on jobs). The site's crown / featured mark = `isMarked_cambium__c` (`marked` on `Position`, `filterPositions`;
   `withCrown_cambium__c` exists but is never set). Definitions in `docs/employers-tab-metrics.md`, code in `src/lib/metrics/employers.ts`.
 - **Dashboard tabs** (`docs/dashboard-tabs.md`): `/` executive summary · `/talent` candidate pool · `/jobs` jobs ·
   `/matching` demand (open jobs) vs supply (candidates) by CBS district / sub-district and skill (`src/lib/metrics/geo.ts`) ·
-  `/pipeline` applications: the anchored funnel (`src/lib/metrics/funnel.ts`, `docs/applications-tab.md`) + the application
-  pipeline (`ApplicationPipeline`), campaigns from send to apply (`CampaignFunnel`, SMOOV + GA) and a side-by-side period
-  comparison (`?cmp=1&cfrom=&cto=`, `CompareFunnels`) · `/employers` · `/marketing` · `/analytics` Google Analytics (every
-  mirrored GA report through `src/lib/metrics/ga-report.ts`, shared with the MCP `ga_report`) · `/campaigns`. A job has two pages: `/jobs/[id]`
+  `/pipeline` applications in three views sharing one filter box (`pipeline/shared.tsx`, `docs/applications-tab.md`): the
+  anchored funnel + leaks + a side-by-side period comparison (`?cmp=1&cfrom=&cto=`, `CompareFunnels`), `/pipeline/active` open
+  cases, `/pipeline/metrics` counts by status (`src/lib/metrics/statuses.ts`, application/event date basis) + `ApplicationPipeline` · `/employers` · `/marketing` · `/analytics` Google Analytics (every
+  mirrored GA report through `src/lib/metrics/ga-report.ts`, shared with the MCP `ga_report`) · `/campaigns` (with campaigns from send to apply, `CampaignFunnel`, SMOOV + GA). A job has two pages: `/jobs/[id]`
   (dashboard analytics) and `/positions/[id]` (the entity card, under מעסיקים) — entity pages link to `/positions`.
 - **Entities** (`/applications`, `/companies`, `/positions` (jobs list), `/candidates`, `/emails`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
   GET search forms, 50 per page, each sortable by column (`?sort=&dir=`, `src/lib/entities/sort.ts`: a list declares its

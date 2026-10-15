@@ -181,6 +181,23 @@ export const sfCaseHistory = pgTable(
   (t) => [index("sf_case_history_case_field_idx").on(t.caseId, t.field, t.createdDate)],
 );
 
+/** History of the employer pipeline field on Accounts (`acount_status__c`, "סטטוס מעסיק"). */
+export const sfAccountHistory = pgTable(
+  "sf_account_history",
+  {
+    id: sfId("id").primaryKey(),
+    accountId: sfId("account_id").notNull(),
+    field: text("field").notNull(),
+    oldValue: text("old_value"),
+    newValue: text("new_value"),
+    dataType: text("data_type"),
+    createdDate: ts("created_date").notNull(),
+    createdById: sfId("created_by_id"),
+    syncedAt: syncedAt(),
+  },
+  (t) => [index("sf_account_history_account_field_idx").on(t.accountId, t.field, t.createdDate)],
+);
+
 /** Email metadata only — bodies are never copied. */
 export const sfEmailMessage = pgTable(
   "sf_email_message",

@@ -8,24 +8,53 @@ import { jobPaidSql } from "./paid";
 /**
  * Employers tab. Definitions live in docs/employers-tab-metrics.md.
  *
- * An employer lead is a Case of record type `lead_employer`; its Account is the
- * employer. The lead's pipeline is its Status, whose history Salesforce keeps, so
- * every stage carries the date it was first reached. The employer's jobs are the
- * Position Cases on the same Account, and a job is live on the site while
- * `PStatus__c` is "Active".
+ * Employer leads live on the Account: every Account with an employer status
+ * ("סטטוס מעסיק", `acount_status__c`) is a lead, and that field is its pipeline.
+ * Salesforce keeps the field's history (AccountHistory), so every stage carries
+ * the date it was first reached. Calls and emails on the lead are the ones logged
+ * on the Account. The employer's jobs are the Position Cases on the same Account
+ * (or with its name), and a job is live on the site while `PStatus__c` is "Active".
+ * Until October 2026 leads were Cases of type `lead_employer`; those are no longer read.
  */
 
-export const LEAD_RECORD_TYPE = "lead_employer";
+/** The employer pipeline field on Account. */
+export const LEAD_STATUS_FIELD = "acount_status__c";
 
+/** The field's values, in pipeline order. Salesforce spells the contract-sent value "חיונית". */
 export const LEAD_STATUS = {
+  fresh: normStatus("חדש")!,
   first: normStatus("פנייה ראשונה")!,
   second: normStatus("פנייה שנייה")!,
   third: normStatus("פנייה שלישית")!,
-  contractSent: normStatus("תשובה חיובית נשלח חוזה")!,
   later: normStatus("לפנות בהמשך")!,
-  signed: normStatus("נחתם חוזה")!,
   negative: normStatus("תשובה שלילית")!,
-  noAnswer: normStatus("אין תשובה")!,
+  noAnswer: normStatus("מעולם לא הגיבו")!,
+  contractSent: normStatus("תשובה חיונית נשלח חוזה")!,
+  signed: normStatus("נחתם חוזה")!,
+  noOpenJobs: normStatus("אין משרות פתוחות")!,
+  jobsPublished: normStatus("פורסמו משרות לפי חוזה")!,
+  contractClosed: normStatus("חוזה נסגר")!,
+};
+
+export type LeadStage = keyof typeof LEAD_STATUS;
+
+/** The stages that come after a signed contract: reaching any of them means the contract was signed. */
+const AFTER_SIGNING = [LEAD_STATUS.signed, LEAD_STATUS.noOpenJobs, LEAD_STATUS.jobsPublished, LEAD_STATUS.contractClosed];
+
+/** Values that count as each stage: the stage itself, plus later stages that imply it. */
+const STAGE_VALUES: Record<LeadStage, string[]> = {
+  fresh: [LEAD_STATUS.fresh],
+  first: [LEAD_STATUS.first],
+  second: [LEAD_STATUS.second],
+  third: [LEAD_STATUS.third],
+  later: [LEAD_STATUS.later],
+  negative: [LEAD_STATUS.negative],
+  noAnswer: [LEAD_STATUS.noAnswer],
+  contractSent: [LEAD_STATUS.contractSent, normStatus("תשובה חיובית נשלח חוזה")!, ...AFTER_SIGNING],
+  signed: AFTER_SIGNING,
+  noOpenJobs: [LEAD_STATUS.noOpenJobs],
+  jobsPublished: [LEAD_STATUS.jobsPublished],
+  contractClosed: [LEAD_STATUS.contractClosed],
 };
 
 /** `PStatus__c` of a job that is live on the site. */
@@ -41,6 +70,9 @@ const norm = (col: string) => sql.raw(`btrim(regexp_replace(replace(${col}, chr(
 /** A logged call on the Task aliased `t`. */
 const isCall = sql.raw(`(t.task_subtype = 'Call' OR t.type ILIKE 'call%')`);
 
+/** The employer status of the Account aliased `a`. */
+const accountStatus = (a: string) => norm(`(${a}.data->>'${LEAD_STATUS_FIELD}')`);
+
 // Site jobs share one Account, so a job finds its employer by company name (see ./company.ts).
 const companyKey = companyKeySql;
 const employerEmails = employerEmailsSql;
@@ -54,24 +86,20 @@ const asDate = (v: unknown) => (v == null ? null : v instanceof Date ? v : new D
 /* ------------------------------------------------------------------ leads */
 
 export interface LeadFacts {
+  /** The Account: the lead and the employer are one record. */
   id: string;
-  caseNumber: string | null;
-  accountId: string | null;
+  accountId: string;
   accountName: string | null;
   ownerName: string | null;
   status: string | null;
+  /** When the Account entered the pipeline: its first employer status, or its creation when there is no history. */
   createdAt: Date;
-  firstAt: Date | null;
-  secondAt: Date | null;
-  thirdAt: Date | null;
-  contractSentAt: Date | null;
+  /** The first time the lead reached each stage. */
+  reached: Record<LeadStage, Date | null>;
   signedAt: Date | null;
-  negativeAt: Date | null;
-  noAnswerAt: Date | null;
-  laterAt: Date | null;
-  /** The employer's earliest lead: where "days from first lead to signing" starts. */
+  /** Where "days from first lead to signing" starts: the same as createdAt. */
   firstLeadAt: Date;
-  /** Outgoing emails and logged calls on the lead, up to the signing (or up to now). */
+  /** Outgoing emails and logged calls on the Account, up to the signing (or up to now). */
   emails: number;
   calls: number;
 }
@@ -81,74 +109,67 @@ export function loadLeadFacts(): Promise<LeadFacts[]> {
   return cached("lead-facts", queryLeadFacts);
 }
 
+const STAGES = Object.keys(STAGE_VALUES) as LeadStage[];
+
 async function queryLeadFacts(): Promise<LeadFacts[]> {
-  // A stage counts from its first appearance in the status history; a lead that
-  // sits in a stage with no history for it (created straight into it) reached it when created.
-  const reached = (key: keyof typeof LEAD_STATUS) =>
-    sql`coalesce(min(h.created_date) FILTER (WHERE ${norm("h.new_value")} = ${LEAD_STATUS[key]}),
-                 CASE WHEN ${norm("l.status")} = ${LEAD_STATUS[key]} THEN l.created_date END)`;
+  // A stage counts from its first appearance in the history; a lead sitting in a stage with
+  // no history for it (set before tracking began) reached it when it entered the pipeline.
+  const reached = (k: LeadStage) =>
+    sql`coalesce(min(h.created_date) FILTER (WHERE ${norm("h.new_value")} IN ${STAGE_VALUES[k]}),
+                 CASE WHEN ${accountStatus("l")} IN ${STAGE_VALUES[k]} THEN coalesce(min(h.created_date), l.created_date) END)`;
 
   const rows = await run(sql`
-    WITH leads AS (
-      SELECT c.id, c.account_id, c.owner_id, c.status, c.created_date, c.data->>'CaseNumber' AS case_number
-        FROM sf_case c JOIN sf_record_type rt ON rt.id = c.record_type_id
-       WHERE rt.developer_name = ${LEAD_RECORD_TYPE} AND NOT c.is_deleted
-    ),
-    lf AS (
-      SELECT l.id, l.account_id, l.owner_id, l.status, l.created_date, l.case_number,
-             ${reached("first")} AS first_at,
-             ${reached("second")} AS second_at,
-             ${reached("third")} AS third_at,
-             ${reached("contractSent")} AS contract_sent_at,
-             ${reached("signed")} AS signed_at,
-             ${reached("negative")} AS negative_at,
-             ${reached("noAnswer")} AS no_answer_at,
-             ${reached("later")} AS later_at
-        FROM leads l
-        LEFT JOIN sf_case_history h ON h.case_id = l.id AND h.field = 'Status'
-       GROUP BY l.id, l.account_id, l.owner_id, l.status, l.created_date, l.case_number
+    WITH lf AS (
+      SELECT l.id, l.name, l.data->>${LEAD_STATUS_FIELD} AS status, l.data->>'OwnerId' AS owner_id,
+             coalesce(min(h.created_date), l.created_date) AS start_at,
+             ${sql.join(
+               STAGES.map((k) => sql`${reached(k)} AS ${sql.raw(`"${k}"`)}`),
+               sql`, `,
+             )}
+        FROM sf_account l
+        LEFT JOIN sf_account_history h ON h.account_id = l.id AND h.field = ${LEAD_STATUS_FIELD}
+       WHERE NOT l.is_deleted AND nullif(l.data->>${LEAD_STATUS_FIELD}, '') IS NOT NULL
+       GROUP BY l.id, l.name, l.data, l.created_date
     )
-    SELECT lf.*, acc.name AS account_name, u.name AS owner_name,
-           min(lf.created_date) OVER (PARTITION BY coalesce(lf.account_id, lf.id)) AS first_lead_at,
+    SELECT lf.*, u.name AS owner_name,
            (SELECT count(*) FROM sf_email_message e
              WHERE e.parent_id = lf.id AND NOT e.incoming AND NOT e.is_deleted
-               AND e.message_date <= coalesce(lf.signed_at, now()))::int AS emails,
+               AND e.message_date <= coalesce(lf.signed, now()))::int AS emails,
            (SELECT count(*) FROM sf_task t
              WHERE t.what_id = lf.id AND NOT t.is_deleted AND ${isCall}
-               AND coalesce(t.completed_at, t.created_date) <= coalesce(lf.signed_at, now()))::int AS calls
+               AND coalesce(t.completed_at, t.created_date) <= coalesce(lf.signed, now()))::int AS calls
       FROM lf
-      LEFT JOIN sf_account acc ON acc.id = lf.account_id
       LEFT JOIN sf_user u ON u.id = lf.owner_id`);
 
-  return rows.map((r) => ({
-    id: String(r.id),
-    caseNumber: str(r.case_number),
-    accountId: str(r.account_id),
-    accountName: str(r.account_name),
-    ownerName: str(r.owner_name),
-    status: normStatus(str(r.status)),
-    createdAt: asDate(r.created_date)!,
-    firstAt: asDate(r.first_at),
-    secondAt: asDate(r.second_at),
-    thirdAt: asDate(r.third_at),
-    contractSentAt: asDate(r.contract_sent_at),
-    signedAt: asDate(r.signed_at),
-    negativeAt: asDate(r.negative_at),
-    noAnswerAt: asDate(r.no_answer_at),
-    laterAt: asDate(r.later_at),
-    firstLeadAt: asDate(r.first_lead_at)!,
-    emails: num(r.emails),
-    calls: num(r.calls),
-  }));
+  return rows.map((r) => {
+    const startAt = asDate(r.start_at)!;
+    const reachedAt = Object.fromEntries(STAGES.map((k) => [k, asDate(r[k])])) as Record<LeadStage, Date | null>;
+    return {
+      id: String(r.id),
+      accountId: String(r.id),
+      accountName: str(r.name),
+      ownerName: str(r.owner_name),
+      status: normStatus(str(r.status)),
+      createdAt: startAt,
+      reached: reachedAt,
+      signedAt: reachedAt.signed,
+      firstLeadAt: startAt,
+      emails: num(r.emails),
+      calls: num(r.calls),
+    };
+  });
 }
 
 export interface LeadMetrics {
   newLeads: number;
-  /** Leads created in the range that ever reached each stage. */
-  stages: Record<keyof typeof LEAD_STATUS, number>;
+  /** Leads that entered the pipeline in the range and ever reached each stage. */
+  stages: Record<LeadStage, number>;
+  /** Every lead by its status now, whenever it entered the pipeline. */
   currentStatus: { status: string; count: number }[];
   /** Leads whose contract was signed in the range. */
   signed: LeadFacts[];
+  /** Of those, how many entered the pipeline already signed (no earlier stage): left out of the time and touches to signing. */
+  signedOnEntry: number;
   touchesToSign: Stats;
   touchMix: { emails: number | null; calls: number | null };
   daysToSign: Stats;
@@ -159,32 +180,28 @@ const mean = (v: number[]) => (v.length ? v.reduce((s, x) => s + x, 0) / v.lengt
 
 export function computeLeadMetrics(leads: LeadFacts[], from: Date, to: Date): LeadMetrics {
   const cohort = leads.filter((l) => inRange(l.createdAt, from, to));
-  const at: Record<keyof typeof LEAD_STATUS, (l: LeadFacts) => Date | null> = {
-    first: (l) => l.firstAt,
-    second: (l) => l.secondAt,
-    third: (l) => l.thirdAt,
-    contractSent: (l) => l.contractSentAt,
-    later: (l) => l.laterAt,
-    signed: (l) => l.signedAt,
-    negative: (l) => l.negativeAt,
-    noAnswer: (l) => l.noAnswerAt,
-  };
-  const stages = Object.fromEntries(
-    (Object.keys(at) as (keyof typeof LEAD_STATUS)[]).map((k) => [k, cohort.filter((l) => at[k](l)).length]),
-  ) as Record<keyof typeof LEAD_STATUS, number>;
+  const stages = Object.fromEntries(STAGES.map((k) => [k, cohort.filter((l) => l.reached[k]).length])) as Record<LeadStage, number>;
 
+  // The current status is a snapshot of every lead, in pipeline order.
+  const order = new Map<string, number>(Object.values(LEAD_STATUS).map((v, i) => [v, i]));
   const current = new Map<string, number>();
-  for (const l of cohort) current.set(l.status ?? "ללא סטטוס", (current.get(l.status ?? "ללא סטטוס") ?? 0) + 1);
+  for (const l of leads) current.set(l.status ?? "ללא סטטוס", (current.get(l.status ?? "ללא סטטוס") ?? 0) + 1);
 
   const signed = leads.filter((l) => inRange(l.signedAt, from, to));
+  // An Account entered straight into a signed stage (an existing customer when the field was introduced)
+  // has no road to signing to measure.
+  const worked = signed.filter((l) => l.signedAt!.getTime() > l.firstLeadAt.getTime());
   return {
     newLeads: cohort.length,
     stages,
-    currentStatus: [...current.entries()].map(([status, count]) => ({ status, count })).sort((a, b) => b.count - a.count),
+    currentStatus: [...current.entries()]
+      .map(([status, count]) => ({ status, count }))
+      .sort((a, b) => (order.get(a.status) ?? 99) - (order.get(b.status) ?? 99)),
     signed,
-    touchesToSign: stats(signed.map((l) => l.emails + l.calls)),
-    touchMix: { emails: mean(signed.map((l) => l.emails)), calls: mean(signed.map((l) => l.calls)) },
-    daysToSign: stats(signed.map((l) => (l.signedAt!.getTime() - l.firstLeadAt.getTime()) / DAY)),
+    signedOnEntry: signed.length - worked.length,
+    touchesToSign: stats(worked.map((l) => l.emails + l.calls)),
+    touchMix: { emails: mean(worked.map((l) => l.emails)), calls: mean(worked.map((l) => l.calls)) },
+    daysToSign: stats(worked.map((l) => (l.signedAt!.getTime() - l.firstLeadAt.getTime()) / DAY)),
   };
 }
 
@@ -193,36 +210,39 @@ export function computeLeadMetrics(leads: LeadFacts[], from: Date, to: Date): Le
 export interface SignedEmployer {
   accountId: string;
   name: string | null;
+  /** The record that holds the lead: the Account itself. */
   leadId: string;
   ownerName: string | null;
   signedAt: Date;
+  /** The employer status now (e.g. פורסמו משרות לפי חוזה). */
+  status: string | null;
   jobsSinceSigned: number;
   paidJobsSinceSigned: number;
   activeJobs: number;
   paidActiveJobs: number;
-  /** Latest call or outgoing email with the employer, on any of its Cases. */
+  /** Latest call or outgoing email with the employer: on the Account, its jobs, or applications to them. */
   lastTouchAt: Date | null;
 }
 
-/** Every employer with a signed contract, as of now. */
+/** Every employer with a signed contract (its status reached "נחתם חוזה" or a later stage), as of now. */
 export async function loadSignedEmployers(): Promise<SignedEmployer[]> {
   const rows = await run(sql`
     WITH signed AS (
-      SELECT DISTINCT ON (c.account_id) c.account_id, c.id AS lead_id, c.owner_id, s.signed_at
-        FROM sf_case c
-        JOIN sf_record_type rt ON rt.id = c.record_type_id
-        JOIN LATERAL (
-          SELECT coalesce(
-                   (SELECT min(h.created_date) FROM sf_case_history h
-                     WHERE h.case_id = c.id AND h.field = 'Status' AND ${norm("h.new_value")} = ${LEAD_STATUS.signed}),
-                   CASE WHEN ${norm("c.status")} = ${LEAD_STATUS.signed} THEN c.created_date END) AS signed_at
-        ) s ON true
-       WHERE rt.developer_name = ${LEAD_RECORD_TYPE} AND NOT c.is_deleted AND c.account_id IS NOT NULL AND s.signed_at IS NOT NULL
-       ORDER BY c.account_id, s.signed_at
+      SELECT a.id AS account_id, a.data->>'OwnerId' AS owner_id, a.data->>${LEAD_STATUS_FIELD} AS status,
+             coalesce(
+               (SELECT min(h.created_date) FROM sf_account_history h
+                 WHERE h.account_id = a.id AND h.field = ${LEAD_STATUS_FIELD} AND ${norm("h.new_value")} IN ${AFTER_SIGNING}),
+               CASE WHEN ${accountStatus("a")} IN ${AFTER_SIGNING}
+                    THEN coalesce((SELECT min(h.created_date) FROM sf_account_history h WHERE h.account_id = a.id AND h.field = ${LEAD_STATUS_FIELD}),
+                                  a.created_date) END
+             ) AS signed_at
+        FROM sf_account a
+       WHERE NOT a.is_deleted AND nullif(a.data->>${LEAD_STATUS_FIELD}, '') IS NOT NULL
     ),
     signed_keys AS (
       SELECT s.account_id, ${companyKey("acc.name")} AS company_key
         FROM signed s JOIN sf_account acc ON acc.id = s.account_id
+       WHERE s.signed_at IS NOT NULL
     ),
     jobs AS (
       SELECT p.id, k.account_id, p.created_date,
@@ -237,18 +257,19 @@ export async function loadSignedEmployers(): Promise<SignedEmployer[]> {
           OR (k.company_key IS NOT NULL AND k.company_key = ${companyKey("p.data->>'company_cambium__c'")})
        WHERE rt.developer_name = ${RECORD_TYPES.position} AND NOT p.is_deleted
     ),
-    lead_cases AS (
-      SELECT c.id, c.account_id FROM sf_case c JOIN sf_record_type rt ON rt.id = c.record_type_id
-       WHERE rt.developer_name = ${LEAD_RECORD_TYPE} AND NOT c.is_deleted AND c.account_id IN (SELECT account_id FROM signed)
+    touched AS (
+      -- The lead is the Account itself, so its own activity counts, as does the activity on its jobs.
+      SELECT account_id AS id, account_id FROM signed_keys
+      UNION ALL
+      SELECT id, account_id FROM jobs
     ),
     touches AS (
-      -- On the employer's leads and jobs: every call and outgoing email.
       SELECT c.account_id, e.message_date AS at
-        FROM sf_email_message e JOIN (SELECT id, account_id FROM lead_cases UNION ALL SELECT id, account_id FROM jobs) c ON c.id = e.parent_id
+        FROM sf_email_message e JOIN touched c ON c.id = e.parent_id
        WHERE NOT e.incoming AND NOT e.is_deleted
       UNION ALL
       SELECT c.account_id, coalesce(t.completed_at, t.created_date)
-        FROM sf_task t JOIN (SELECT id, account_id FROM lead_cases UNION ALL SELECT id, account_id FROM jobs) c ON c.id = t.what_id
+        FROM sf_task t JOIN touched c ON c.id = t.what_id
        WHERE NOT t.is_deleted AND ${isCall}
       UNION ALL
       -- On applications to its jobs: only what went to the employer, not to the candidate.
@@ -261,7 +282,7 @@ export async function loadSignedEmployers(): Promise<SignedEmployer[]> {
         FROM sf_task t JOIN sf_case a ON a.id = t.what_id JOIN jobs j ON j.id = a.parent_id
        WHERE NOT t.is_deleted AND ${isCall} AND btrim(t.call_party) = ${CALL_PARTY.employer}
     )
-    SELECT s.account_id, acc.name, s.lead_id, u.name AS owner_name, s.signed_at,
+    SELECT s.account_id, acc.name, u.name AS owner_name, s.signed_at, s.status,
            (SELECT count(*) FROM jobs j WHERE j.account_id = s.account_id AND j.created_date >= s.signed_at)::int AS jobs_since,
            (SELECT count(*) FROM jobs j WHERE j.account_id = s.account_id AND j.created_date >= s.signed_at AND j.paid)::int AS paid_jobs_since,
            (SELECT count(*) FROM jobs j WHERE j.account_id = s.account_id AND j.active)::int AS active_jobs,
@@ -270,14 +291,16 @@ export async function loadSignedEmployers(): Promise<SignedEmployer[]> {
       FROM signed s
       LEFT JOIN sf_account acc ON acc.id = s.account_id
       LEFT JOIN sf_user u ON u.id = s.owner_id
+     WHERE s.signed_at IS NOT NULL
      ORDER BY s.signed_at DESC`);
 
   return rows.map((r) => ({
     accountId: String(r.account_id),
     name: str(r.name),
-    leadId: String(r.lead_id),
+    leadId: String(r.account_id),
     ownerName: str(r.owner_name),
     signedAt: asDate(r.signed_at)!,
+    status: normStatus(str(r.status)),
     jobsSinceSigned: num(r.jobs_since),
     paidJobsSinceSigned: num(r.paid_jobs_since),
     activeJobs: num(r.active_jobs),

@@ -10,7 +10,7 @@ const MAX_ROWS = 25;
 const cell = (v: number | null) => (v == null ? <span className="text-muted">—</span> : fmtInt(v));
 
 /**
- * The applications tab's campaign section: how many a message reached, opened and clicked
+ * The campaigns tab's funnel section: how many a message reached, opened and clicked
  * (SMOOV), and what those visits did on the site (GA4) — per campaign, and as a funnel for
  * the one picked (or all of them).
  */

@@ -5,11 +5,11 @@
 | תקציר מנהלים | `/` | השורה התחתונה של כל הלשוניות בעמוד אחד |
 | מועמדים | `/talent` | מאגר המועמדים עצמו |
 | משרות | `/jobs` | המשרות, עם פתיחות, לחיצות ושלבי ההגשה לכל משרה |
-| הגשות | `/pipeline` | המשפך מהחשיפה ועד ההשמה עם עוגן נייד, בשלות ופוטנציאל (`docs/applications-tab.md`), ותהליך ההגשה (16 השאלות, `docs/candidates-tab-metrics.md`) |
+| הגשות | `/pipeline` | שלוש תצוגות (`docs/applications-tab.md`): המשפך מהחשיפה ועד ההשמה, פעילות כרגע (`/pipeline/active`), ומדדי הגשות לפי סטטוס ותהליך ההגשה (`/pipeline/metrics`, `docs/candidates-tab-metrics.md`) |
 | מעסיקים | `/employers` | לידים, חוזים ואימות משרות (`docs/employers-tab-metrics.md`) |
 | התאמה | `/matching` | ביקוש (משרות פעילות) מול היצע (מועמדים) לפי מחוז ונפה ולפי כישורים (`docs/geo-and-skills.md`) |
 | שיווק | `/marketing` | Google Analytics ו-Salesforce במקביל |
-| דיוורים | `/campaigns` | קמפיינים וקישור למשרות |
+| דיוורים | `/campaigns` | קמפיינים וקישור למשרות, ומהדיוור ועד ההגשה (SMOOV + GA) |
 
 כל הלשוניות מכבדות את טווח התאריכים ואת הבורר "בתשלום בלבד / כל המשרות" (`src/lib/metrics/paid.ts`).
 

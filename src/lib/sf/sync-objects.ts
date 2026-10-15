@@ -1,6 +1,7 @@
 import type { PgTableWithColumns } from "drizzle-orm/pg-core";
 import {
   sfAccount,
+  sfAccountHistory,
   sfCase,
   sfCaseHistory,
   sfContact,
@@ -172,12 +173,34 @@ export const SYNC_OBJECTS: SyncObjectDef[] = [
     }),
   },
   {
+    name: "AccountHistory",
+    table: sfAccountHistory,
+    cursorField: "CreatedDate",
+    include: ["Id", "AccountId", "Field", "OldValue", "NewValue", "DataType", "CreatedDate", "CreatedById"],
+    // The employer pipeline ("סטטוס מעסיק") only: employer leads live on the Account (docs/employers-tab-metrics.md).
+    where: "Field IN ('acount_status__c', 'created')",
+    hasIsDeleted: false,
+    reconcile: false,
+    optional: true,
+    toRow: (r) => ({
+      id: str(r, "Id"),
+      accountId: str(r, "AccountId"),
+      field: str(r, "Field"),
+      oldValue: str(r, "OldValue"),
+      newValue: str(r, "NewValue"),
+      dataType: str(r, "DataType"),
+      createdDate: date(r, "CreatedDate"),
+      createdById: str(r, "CreatedById"),
+    }),
+  },
+  {
     name: "EmailMessage",
     table: sfEmailMessage,
     cursorField: "SystemModstamp",
     include: [
       "Id",
       "ParentId",
+      "RelatedToId",
       "Incoming",
       "MessageDate",
       "FromAddress",
@@ -188,12 +211,13 @@ export const SYNC_OBJECTS: SyncObjectDef[] = [
       "SystemModstamp",
       "IsDeleted",
     ],
-    where: "ParentId != null",
+    // Case emails, and emails on an Account (employer leads); `parent_id` holds the Case or the Account.
+    where: "ParentId != null OR RelatedTo.Type = 'Account'",
     hasIsDeleted: true,
     reconcile: true,
     toRow: (r) => ({
       id: str(r, "Id"),
-      parentId: str(r, "ParentId"),
+      parentId: str(r, "ParentId") ?? str(r, "RelatedToId"),
       incoming: bool(r, "Incoming"),
       messageDate: date(r, "MessageDate"),
       fromAddress: str(r, "FromAddress")?.toLowerCase() ?? null,
@@ -211,7 +235,8 @@ export const SYNC_OBJECTS: SyncObjectDef[] = [
     cursorField: "SystemModstamp",
     // All fields: the org's own call fields (who the call was with, whether it
     // was answered) are custom and would be missed by a fixed list.
-    where: "What.Type = 'Case'",
+    // On Cases, and on Accounts, where employer leads are worked.
+    where: "What.Type IN ('Case', 'Account')",
     hasIsDeleted: true,
     reconcile: true,
     optional: true,
@@ -253,7 +278,7 @@ export const SYNC_OBJECTS: SyncObjectDef[] = [
       "SystemModstamp",
       "IsDeleted",
     ],
-    where: "What.Type = 'Case'",
+    where: "What.Type IN ('Case', 'Account')",
     hasIsDeleted: true,
     reconcile: true,
     optional: true,

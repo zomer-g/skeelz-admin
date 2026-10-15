@@ -113,9 +113,13 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         </div>
 
         <p className="mt-6 rounded-card bg-white px-4 py-3 text-sm ring-1 ring-line">
-          שלבי ההגשה, המשפך מהחשיפה ועד ההשמה והממתינים לתגובת מעסיק נמצאים בלשונית{" "}
+          המשפך מהחשיפה ועד ההשמה נמצא בלשונית{" "}
           <Link href={`/pipeline${detailQuery}`} className="font-medium text-accent-dark underline underline-offset-4">
             הגשות
+          </Link>
+          , ושלבי ההגשה והממתינים לתגובת מעסיק ב
+          <Link href={`/pipeline/metrics${detailQuery}`} className="font-medium text-accent-dark underline underline-offset-4">
+            מדדי הגשות
           </Link>
           .
         </p>

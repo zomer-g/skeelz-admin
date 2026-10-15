@@ -75,7 +75,6 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
   const noTouch = employers
     .filter((e) => (daysSince(e.lastTouchAt, now) ?? Infinity) > NO_TOUCH_DAYS)
     .sort((a, b) => (a.lastTouchAt?.getTime() ?? 0) - (b.lastTouchAt?.getTime() ?? 0));
-  const signedWithoutAccount = leads.filter((l) => l.signedAt && !l.accountId).length;
 
   // Active jobs, least recently verified first; a job with no activity at all leads the list.
   const activeAll = positions.filter((p) => p.active);
@@ -92,7 +91,8 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
     { label: "פנייה שלישית", value: m.stages.third },
     { label: "תשובה חיובית, נשלח חוזה", value: m.stages.contractSent },
     { label: "נחתם חוזה", value: m.stages.signed },
-  ].map((s, i) => ({ ...s, color: FUNNEL[i] }));
+    { label: "פורסמו משרות לפי חוזה", value: m.stages.jobsPublished },
+  ].map((s, i) => ({ ...s, color: FUNNEL[Math.min(i, FUNNEL.length - 1)] }));
 
   const sfLink = (id: string, name: string | null) =>
     sfBase ? (
@@ -113,13 +113,14 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
           ]}
         />
         <p className="mb-6 text-sm text-muted">
-          {formatDay(params.fromDay)} – {formatDay(params.toDay)} · לידים מסוג &quot;ליד מעסיק&quot;. הבורר &quot;בתשלום&quot; חל על המשרות, לא על הלידים.
+          {formatDay(params.fromDay)} – {formatDay(params.toDay)} · לידים = Accounts עם &quot;סטטוס מעסיק&quot;, והשלבים לפי הסטטוס והיסטוריית השינויים שלו.
+          הבורר &quot;בתשלום&quot; חל על המשרות, לא על הלידים.
         </p>
 
         <SectionTitle hint="לידים שנכנסו וחוזים שנחתמו בטווח">לידים וחוזים</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <StatCard label="לידים חדשים" value={fmtInt(m.newLeads)} hint="לידי מעסיק שנוצרו בטווח" info={EXPLAIN.newLeads} />
-          <StatCard label="חוזים שנחתמו" value={fmtInt(m.signed.length)} hint='הסטטוס עבר ל"נחתם חוזה" בטווח' info={EXPLAIN.signedContracts} />
+          <StatCard label="לידים חדשים" value={fmtInt(m.newLeads)} hint="Accounts שקיבלו סטטוס מעסיק לראשונה בטווח" info={EXPLAIN.newLeads} />
+          <StatCard label="חוזים שנחתמו" value={fmtInt(m.signed.length)} hint={m.signedOnEntry ? `${fmtInt(m.signedOnEntry)} מהם נכנסו לתהליך כבר בשלב חתום` : 'סטטוס המעסיק עבר ל"נחתם חוזה" בטווח'} info={EXPLAIN.signedContracts} />
           <StatCard
             label="מגעים עד חתימה"
             value={fmtDecimal(m.touchesToSign.avg)}
@@ -136,19 +137,24 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title="שלבי הפנייה · הלידים שנכנסו בטווח">
             <BarList caption="לידים לפי השלבים שהגיעו אליהם" items={pipeline} showShareOf={m.newLeads || undefined} />
-            <p className="mt-3 text-xs text-muted">ליד נספר בכל שלב שהגיע אליו, לפי היסטוריית הסטטוסים.</p>
+            <p className="mt-3 text-xs text-muted">
+              ליד נספר בכל שלב שהגיע אליו, לפי היסטוריית &quot;סטטוס מעסיק&quot;. שלב אחרי החתימה (פורסמו משרות, אין משרות פתוחות, חוזה נסגר) נחשב גם כחתימה וגם
+              כחוזה שנשלח.
+            </p>
           </Card>
           <Card level={3} title="תוצאות וסטטוס נוכחי">
             <BarList
-              caption="לידים שהגיעו לתוצאה אחרת"
+              caption="לידים שנכנסו בטווח והגיעו לתוצאה אחרת"
               items={[
                 { label: "לפנות בהמשך", value: m.stages.later },
                 { label: "תשובה שלילית", value: m.stages.negative },
-                { label: "אין תשובה", value: m.stages.noAnswer },
+                { label: "מעולם לא הגיבו", value: m.stages.noAnswer },
+                { label: "אין משרות פתוחות", value: m.stages.noOpenJobs },
+                { label: "חוזה נסגר", value: m.stages.contractClosed },
               ]}
             />
-            <p className="mb-2 mt-5 text-sm font-medium text-muted">הסטטוס כרגע</p>
-            <BarList caption="לידים לפי סטטוס נוכחי" items={m.currentStatus.map((s) => ({ label: s.status, value: s.count }))} />
+            <p className="mb-2 mt-5 text-sm font-medium text-muted">הסטטוס כרגע · כל המעסיקים עם סטטוס, נכון להיום</p>
+            <BarList caption="מעסיקים לפי סטטוס מעסיק נוכחי" items={m.currentStatus.map((s) => ({ label: s.status, value: s.count }))} />
           </Card>
         </div>
 
@@ -157,7 +163,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
           <StatCard
             label="מעסיקים שחתמו"
             value={fmtInt(employers.length)}
-            hint={signedWithoutAccount ? `עוד ${fmtInt(signedWithoutAccount)} חוזים בלי Account לא נכללים` : 'לידים ב"נחתם חוזה" עם Account'}
+            hint='סטטוס המעסיק הגיע ל"נחתם חוזה" או לשלב שאחריו' 
             info={EXPLAIN.signedEmployers}
           />
           <StatCard
@@ -175,14 +181,14 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
           <StatCard
             label={`בלי מגע מעל ${NO_TOUCH_DAYS} יום`}
             value={fmtInt(noTouch.length)}
-            hint="שיחה או מייל יוצא, בליד, במשרות או בהגשות"
+            hint="שיחה או מייל יוצא, ב-Account, במשרות או בהגשות"
             info={EXPLAIN.noTouchEmployers}
           />
         </div>
 
         <Card level={3} title={`חוזים שלא יצאה מהם משרה · ${fmtInt(noJob.length)}`} className="mt-4">
           <Table
-            head={["מעסיק", "נחתם", "ימים מאז החתימה", "מטפל", ""]}
+            head={["מעסיק", "נחתם", "ימים מאז החתימה", "סטטוס מעסיק", "מטפל", ""]}
             empty={noJob.length === 0 ? (employers.length ? "לכל המעסיקים שחתמו נפתחה משרה" : "עדיין אין מעסיקים שחתמו") : undefined}
           >
             {noJob.map((e) => (
@@ -190,14 +196,15 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
                 <td className="px-3 py-2 font-medium">{e.name ?? "—"}</td>
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums">{fmtDate(e.signedAt)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(daysSince(e.signedAt, now) ?? 0)}</td>
+                <td className="px-3 py-2">{e.status ?? "—"}</td>
                 <td className="px-3 py-2">{e.ownerName ?? "—"}</td>
                 <td className="px-3 py-2 text-end">{sfLink(e.leadId, e.name)}</td>
               </tr>
             ))}
           </Table>
           <p className="mt-3 text-xs text-muted">
-            משרה משויכת למעסיק לפי ה-Account שלה, ומשרה מהאתר (תחת ה-Account המשותף) לפי שם החברה. אם שם החברה במשרה כתוב אחרת משם ה-Account של
-            הליד, המשרה לא תימצא והמעסיק יופיע כאן.
+            משרה משויכת למעסיק לפי ה-Account שלה, ומשרה מהאתר (תחת ה-Account המשותף) לפי שם החברה. אם שם החברה במשרה כתוב אחרת משם ה-Account,
+            המשרה לא תימצא והמעסיק יופיע כאן.
           </p>
         </Card>
 

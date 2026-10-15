@@ -1,92 +1,41 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AnchoredFunnel, OUTCOME_COLORS } from "@/components/dashboard/AnchoredFunnel";
-import { ApplicationPipeline, SectionTitle } from "@/components/dashboard/ApplicationPipeline";
+import { AnchoredFunnel } from "@/components/dashboard/AnchoredFunnel";
+import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
+import { CompareFunnels } from "@/components/dashboard/CompareFunnels";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
-import { RangeTimeline } from "@/components/dashboard/RangeTimeline";
 import { Badge, Card, smallFieldClass, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { EXPLAIN } from "@/lib/dashboard/explain";
-import { CampaignFunnel } from "@/components/dashboard/CampaignFunnel";
-import { CompareFunnels } from "@/components/dashboard/CompareFunnels";
-import { addDays, formatDay, israelDay, israelMidnight, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
-import { loadCampaignFunnel } from "@/lib/metrics/campaign-funnel";
+import { addDays, formatDay, israelMidnight, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDecimal, fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
-import { computeCandidateMetrics, loadApplicationFacts, syncFreshness } from "@/lib/metrics/candidates";
-import {
-  ANCHORS,
-  buildFunnelApps,
-  buildJobContexts,
-  computeFunnel,
-  DEFAULT_ANCHOR,
-  DIMENSIONS,
-  FILTER_KEYS,
-  hasJobFilters,
-  jobMatches,
-  loadFunnelAttrs,
-  loadFunnelGa,
-  MIN_STEP_BASE,
-  parseAnchor,
-  parseDimension,
-  parseFunnelFilters,
-  reachedAt,
-  SF_STAGES,
-  STAGES,
-  STALE_DAYS,
-  type FunnelFilters,
-} from "@/lib/metrics/funnel";
-import { loadPositions } from "@/lib/metrics/jobs";
+import { ANCHORS, computeFunnel, DEFAULT_ANCHOR, DIMENSIONS, FILTER_KEYS, hasJobFilters, MIN_STEP_BASE, reachedAt, SF_STAGES, STAGES, STALE_DAYS } from "@/lib/metrics/funnel";
+import { Field, linkBuilder, loadPipeline, PipelineFilters, PipelineNav, TIMELINE_FROM } from "./shared";
 
-export const metadata: Metadata = { title: "הגשות" };
+export const metadata: Metadata = { title: "הגשות · המשפך" };
 export const dynamic = "force-dynamic";
 
-/** Applications in Salesforce start in early 2025; the timeline starts with that year so whole months can be picked. */
-const TIMELINE_FROM = "2025-01-01";
 const MAX_GROUPS = 30;
-const MAX_OPEN = 50;
 const PATH = "/pipeline";
-const PARAM_KEYS = ["range", "from", "to", "scope", "anchor", "by", "basis", "cmp", "cfrom", "cto", "camp", ...FILTER_KEYS];
+const PARAM_KEYS = ["range", "from", "to", "scope", "anchor", "by", "cmp", "cfrom", "cto", ...FILTER_KEYS];
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
 type Search = Record<string, string | string[] | undefined>;
 
-const FILTER_LABELS: Record<keyof FunnelFilters, string> = {
-  company: "חברה",
-  job: "משרה",
-  owner: "מטפל",
-  loc: "מיקום",
-  ptime: "היקף",
-  fast: "הגשה מהירה",
-  cv: 'קו"ח במאגר',
-};
-const VALUE_LABELS: Record<string, string> = { full: "מלאה", part: "חלקית", yes: "כן", no: "לא" };
-
 /**
- * Applications tab: the anchored funnel from site exposure to a hire, where it
- * leaks, how much of the range is still open — and every application figure
- * from the pipeline. Definitions in docs/applications-tab.md.
+ * Applications tab, the funnel view: the anchored funnel from site exposure to a hire, how much of
+ * the range is still open, a comparison with another period, and where the funnel leaks.
+ * The cases in progress and the figures by status are the other two views (./shared.tsx).
  */
 export default async function PipelinePage({ searchParams }: { searchParams: Promise<Search> }) {
   const search = await searchParams;
   const auth = await pageAuth("viewer", viewPath(PATH, search, PARAM_KEYS));
   if (!auth.ok) return auth.render;
 
-  const params = parseDashboardParams(search, new Date(), "90d");
-  const filters = parseFunnelFilters(search);
-  const dimension = parseDimension(typeof search.by === "string" ? search.by : undefined);
-  const now = new Date();
-
-  const [facts, attrs, positions, ga, freshness, campaigns] = await Promise.all([
-    loadApplicationFacts(),
-    loadFunnelAttrs(),
-    loadPositions(),
-    loadFunnelGa(),
-    syncFreshness(),
-    loadCampaignFunnel(params.fromDay, params.toDay),
-  ]);
-  const selectedCampaign = typeof search.camp === "string" && campaigns.some((c) => c.key === search.camp) ? search.camp : "";
+  const p = await loadPipeline(search, "90d");
+  const { params, filters, dimension, now, apps, jobs, ga, freshness, hasGa, anchor, anchorStage, anchorIsSite, funnel, timeline, breakdown, options } = p;
 
   // Comparison: period B defaults to the same length right before the selected range.
   const comparing = search.cmp === "1";
@@ -94,29 +43,6 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   let cmpTo = typeof search.cto === "string" && DAY_RE.test(search.cto) ? search.cto : addDays(params.fromDay, -1);
   let cmpFrom = typeof search.cfrom === "string" && DAY_RE.test(search.cfrom) ? search.cfrom : addDays(cmpTo, -span);
   if (cmpFrom > cmpTo) [cmpFrom, cmpTo] = [cmpTo, cmpFrom];
-  const hasGa = Boolean(ga.syncedAt) || ga.events.length > 0;
-  let anchor = parseAnchor(typeof search.anchor === "string" ? search.anchor : undefined);
-  if (!hasGa && STAGES.find((s) => s.key === anchor)?.source === "ga") anchor = DEFAULT_ANCHOR;
-  const anchorStage = STAGES.find((s) => s.key === anchor)!;
-  const anchorIsSite = anchorStage.source === "ga";
-
-  const jobs = buildJobContexts(positions, attrs.jobs);
-  const apps = buildFunnelApps(facts, attrs.apps, jobs, now);
-  const { funnel, timeline, breakdown, filtered, options } = computeFunnel({
-    apps,
-    jobs,
-    ga,
-    scope: params.scope,
-    filters,
-    anchor,
-    dimension,
-    from: params.from,
-    to: params.to,
-    fromDay: params.fromDay,
-    toDay: params.toDay,
-    timelineFromDay: TIMELINE_FROM,
-    now,
-  });
   const compareFunnel = comparing
     ? computeFunnel({
         apps,
@@ -135,41 +61,15 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
       }).funnel
     : null;
 
-  // Every link on the page keeps the current slice and changes one thing.
-  const current = new URLSearchParams(
-    Object.entries(search).flatMap(([k, v]) => (typeof v === "string" && v && PARAM_KEYS.includes(k) ? [[k, v]] : [])),
-  );
-  const hrefWith = (over: Record<string, string | null>) => {
-    const q = new URLSearchParams(current);
-    for (const [k, v] of Object.entries(over)) {
-      if (v) q.set(k, v);
-      else q.delete(k);
-    }
-    const s = q.toString();
-    return s ? `${PATH}?${s}` : PATH;
-  };
-  const withoutRange = new URLSearchParams(current);
-  for (const k of ["range", "from", "to"]) withoutRange.delete(k);
-
+  const { current, hrefWith } = linkBuilder(PATH, search, PARAM_KEYS);
   const anchorHrefs = Object.fromEntries(
     ANCHORS.filter((s) => hasGa || s.source === "sf").map((s) => [s.key, hrefWith({ anchor: s.key === DEFAULT_ANCHOR ? null : s.key })]),
   );
-  const basis = params.basis;
-  const newJobs = positions.filter(
-    (p) => p.createdAt && p.createdAt >= params.from && p.createdAt < params.to && (params.scope === "all" || p.paid) && jobMatches(jobs.get(p.id)!, filters),
-  ).length;
-  const pipeline = computeCandidateMetrics(
-    filtered.map((a) => a.fact),
-    newJobs,
-    { ...params, basis },
-  );
-
   const createdInRange = apps.filter((a) => a.fact.createdAt >= params.from && a.fact.createdAt < params.to);
   const hiredInRange = apps.filter((a) => {
     const at = reachedAt(a, SF_STAGES.length - 1);
     return at && at >= params.from && at < params.to;
   });
-  const activeFilters = FILTER_KEYS.filter((k) => filters[k]);
   const sfAnchorLabel = anchorIsSite ? STAGES.find((s) => s.key === "applied")!.label : anchorStage.label;
   const open = funnel.active + funnel.stuck;
   const m = funnel.maturity;
@@ -178,122 +78,23 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
   const dim = DIMENSIONS.find((d) => d.key === dimension)!;
   const sfStart = anchorIsSite ? 0 : SF_STAGES.indexOf(anchor as (typeof SF_STAGES)[number]);
   const laterStages = SF_STAGES.slice(sfStart + 1).map((k) => STAGES.find((s) => s.key === k)!.short);
-  const openCases = filtered
-    .filter((a) => {
-      const at = reachedAt(a, sfStart);
-      return a.outcome === "active" && at !== null && at >= params.from && at < params.to;
-    })
-    .sort((a, b) => b.level - a.level || b.fact.createdAt.getTime() - a.fact.createdAt.getTime());
 
   return (
     <>
       <DashboardTabs active="pipeline" query={rangeQuery(params)} />
-
-      <div className="mb-6 flex flex-col gap-5 rounded-card border-2 border-line bg-surface p-4">
-        <RangeTimeline
-          days={timeline}
-          segments={
-            anchorIsSite
-              ? [{ label: anchorStage.short, color: "var(--color-accent)" }]
-              : [
-                  { label: "התקבלו", color: OUTCOME_COLORS.hired },
-                  { label: "בתהליך", color: OUTCOME_COLORS.active },
-                  { label: "תקועים", color: OUTCOME_COLORS.stuck },
-                  { label: "נסגרו", color: OUTCOME_COLORS.closed },
-                ]
-          }
-          unit={anchorStage.short}
-          preset={params.preset}
-          fromDay={params.fromDay}
-          toDay={params.toDay}
-          query={withoutRange.toString()}
-        />
-
-        <form method="get" action={PATH} className="flex flex-col gap-3" aria-label="מסננים">
-          {["range", "from", "to", "anchor", "by", "basis", "cmp", "cfrom", "cto", "camp"].map((k) =>
-            current.get(k) ? <input key={k} type="hidden" name={k} value={current.get(k)!} /> : null,
-          )}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Field label="סוג המשרות">
-              <select name="scope" defaultValue={params.scope === "all" ? "all" : ""} className={smallFieldClass}>
-                <option value="">בתשלום בלבד</option>
-                <option value="all">כל המשרות</option>
-              </select>
-            </Field>
-            <Field label="חברה">
-              <input name="company" defaultValue={filters.company} list="funnel-companies" placeholder="שם החברה או חלק ממנו" className={smallFieldClass} />
-              <datalist id="funnel-companies">
-                {options.companies.map((c) => (
-                  <option key={c} value={c} />
-                ))}
-              </datalist>
-            </Field>
-            <Field label="משרה">
-              <input name="job" defaultValue={filters.job} placeholder="שם משרה או מספר Case" className={smallFieldClass} />
-            </Field>
-            <Field label="מיקום המשרה">
-              <input name="loc" defaultValue={filters.loc} list="funnel-locations" placeholder="עיר" className={smallFieldClass} />
-              <datalist id="funnel-locations">
-                {options.locations.map((l) => (
-                  <option key={l} value={l} />
-                ))}
-              </datalist>
-            </Field>
-            <Field label="היקף משרה">
-              <select name="ptime" defaultValue={filters.ptime} className={smallFieldClass}>
-                <option value="">הכל</option>
-                <option value="full">מלאה</option>
-                <option value="part">חלקית</option>
-              </select>
-            </Field>
-            <Field label="מטפל">
-              <select name="owner" defaultValue={filters.owner} className={smallFieldClass}>
-                <option value="">הכל</option>
-                {options.owners.map((o) => (
-                  <option key={o} value={o}>
-                    {o}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="הגשה מהירה">
-              <select name="fast" defaultValue={filters.fast} className={smallFieldClass}>
-                <option value="">הכל</option>
-                <option value="yes">כן</option>
-                <option value="no">לא</option>
-              </select>
-            </Field>
-            <Field label='למועמד יש קו"ח במאגר'>
-              <select name="cv" defaultValue={filters.cv} className={smallFieldClass}>
-                <option value="">הכל</option>
-                <option value="yes">כן</option>
-                <option value="no">לא</option>
-              </select>
-            </Field>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <button type="submit" className="rounded-full bg-brand px-5 py-2 text-sm font-medium text-white hover:bg-brand-hover">
-              סינון
-            </button>
-            {activeFilters.length || params.scope === "all" ? (
-              <Link href={hrefWith(Object.fromEntries([...FILTER_KEYS, "scope"].map((k) => [k, null])))} className="text-sm font-medium text-accent-dark underline underline-offset-4">
-                ניקוי המסננים
-              </Link>
-            ) : null}
-            {activeFilters.map((k) => (
-              <Link
-                key={k}
-                href={hrefWith({ [k]: null })}
-                className="inline-flex items-center gap-1 rounded-full bg-accent/10 px-3 py-1 text-xs font-medium text-accent-dark hover:bg-accent/20"
-              >
-                {FILTER_LABELS[k]}: {VALUE_LABELS[filters[k]] ?? filters[k]}
-                <span aria-hidden> ✕</span>
-                <span className="sr-only"> (הסרת המסנן)</span>
-              </Link>
-            ))}
-          </div>
-        </form>
-      </div>
+      <PipelineNav active="funnel" current={current} />
+      <PipelineFilters
+        path={PATH}
+        current={current}
+        hrefWith={hrefWith}
+        params={params}
+        filters={filters}
+        options={options}
+        timeline={timeline}
+        anchorStage={anchorStage}
+        anchorIsSite={anchorIsSite}
+        hidden={["by", "cmp", "cfrom", "cto"]}
+      />
 
       <PaidSplit
         scope={params.scope}
@@ -460,15 +261,6 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
         </section>
       ) : null}
 
-      <SectionTitle hint="דיוורים וקמפיינים עם כניסות לאתר בטווח: כמה קיבלו, פתחו והקליקו, ומה עשו באתר">מהדיוור ועד ההגשה</SectionTitle>
-      <CampaignFunnel
-        rows={campaigns}
-        selected={selectedCampaign}
-        hrefFor={(key) => hrefWith({ camp: key })}
-        fromDay={params.fromDay}
-        toDay={params.toDay}
-      />
-
       <SectionTitle hint={`אותם מקרים מהעוגן, לפי ${dim.label}`}>איפה המשפך דולף</SectionTitle>
       <nav className="mb-4 flex flex-wrap gap-2" aria-label="פילוח לפי">
         {DIMENSIONS.map((d) => (
@@ -531,58 +323,18 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
         </p>
       </Card>
 
-      <SectionTitle hint={`בעוגן, עדיין זזים (שינוי ב-${STALE_DAYS} הימים האחרונים) · הקרובים להשמה קודם`}>המקרים שבתהליך</SectionTitle>
-      <Card level={3} title={`${fmtInt(openCases.length)} מקרים בתהליך`} tone="accent-light">
-        <Table head={["מועמד", "משרה", "חברה", "הגיע עד", "סטטוס", "מטפל"]} empty={openCases.length === 0 ? "אין מקרים בתהליך בעוגן" : undefined}>
-          {openCases.slice(0, MAX_OPEN).map((a) => (
-            <tr key={a.fact.id}>
-              <td className="px-3 py-2 font-medium">
-                <Link href={`/applications/${a.fact.id}`} className="underline-offset-4 hover:underline">
-                  {a.fact.candidateName ?? "(ללא שם)"}
-                </Link>
-              </td>
-              <td className="px-3 py-2">{a.fact.jobTitle ?? "—"}</td>
-              <td className="px-3 py-2">{a.fact.company ?? "—"}</td>
-              <td className="px-3 py-2">
-                <Badge tone={a.level >= 2 ? "success" : "accent"}>{STAGES.find((s) => s.key === SF_STAGES[a.level])!.short}</Badge>
-              </td>
-              <td className="px-3 py-2">{a.status ?? "—"}</td>
-              <td className="px-3 py-2">{a.fact.ownerName ?? "—"}</td>
-            </tr>
-          ))}
-        </Table>
-        {openCases.length > MAX_OPEN ? <p className="mt-3 text-xs text-muted">מוצגים {MAX_OPEN} הראשונים. אפשר לצמצם במסננים.</p> : null}
-      </Card>
-
-      <SectionTitle hint="כל מדדי ההגשות, לפי אותו טווח ואותם מסננים">מדדי ההגשות</SectionTitle>
-      <div className="mb-2 flex flex-wrap items-center gap-2" role="group" aria-label="בסיס התאריך">
-        {[
-          { key: "application", label: "לפי תאריך הגשה", hint: "ההגשות שנוצרו בטווח, ומה קרה איתן" },
-          { key: "event", label: "לפי תאריך אירוע", hint: "כל מה שקרה בטווח, לא משנה מתי הוגשה ההגשה" },
-        ].map((b) => (
-          <Link
-            key={b.key}
-            href={hrefWith({ basis: b.key === "application" ? null : b.key })}
-            scroll={false}
-            aria-current={basis === b.key ? "true" : undefined}
-            title={b.hint}
-            className={`rounded-full px-4 py-2 text-sm font-medium ${basis === b.key ? "bg-ink text-white" : "bg-white text-ink ring-1 ring-line hover:bg-surface"}`}
-          >
-            {b.label}
-          </Link>
-        ))}
-      </div>
-      <ApplicationPipeline m={pipeline} basis={basis} callsAvailable={freshness.callsAvailable} />
+      <p className="mt-8 text-sm text-muted">
+        המקרים שבתהליך נמצאים ב
+        <Link href={`/pipeline/active?${new URLSearchParams([...current].filter(([k]) => !["by", "cmp", "cfrom", "cto"].includes(k))).toString()}`} className="font-medium text-accent-dark underline underline-offset-4">
+          פעילות כרגע
+        </Link>
+        , ודיוורים עד ההגשה בלשונית{" "}
+        <Link href={`/campaigns?${rangeQuery(params)}#funnel`} className="font-medium text-accent-dark underline underline-offset-4">
+          דיוורים
+        </Link>
+        .
+      </p>
     </>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="flex flex-col gap-1 text-sm font-medium text-muted">
-      {label}
-      {children}
-    </label>
   );
 }
 

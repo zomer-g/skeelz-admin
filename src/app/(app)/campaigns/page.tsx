@@ -1,11 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
+import { CampaignFunnel } from "@/components/dashboard/CampaignFunnel";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtInt, fmtPercent } from "@/lib/format";
+import { loadCampaignFunnel } from "@/lib/metrics/campaign-funnel";
 import { campaignLabel, isMailing, loadCampaignSummaries } from "@/lib/metrics/campaigns";
 
 export const metadata: Metadata = { title: "דיוורים" };
@@ -15,13 +18,22 @@ const MIN_SESSIONS = 5;
 
 export default async function CampaignsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath("/campaigns", search));
+  const auth = await pageAuth("viewer", viewPath("/campaigns", search, ["range", "from", "to", "q", "camp"]));
   if (!auth.ok) return auth.render;
 
   const params = parseDashboardParams(search, new Date(), "90d");
   const query = rangeQuery(params);
   const q = typeof search.q === "string" ? search.q.trim().toLowerCase() : "";
-  const all = (await loadCampaignSummaries(params.fromDay, params.toDay)).filter((c) => c.sessions >= MIN_SESSIONS);
+  const [summaries, funnelRows] = await Promise.all([loadCampaignSummaries(params.fromDay, params.toDay), loadCampaignFunnel(params.fromDay, params.toDay)]);
+  const all = summaries.filter((c) => c.sessions >= MIN_SESSIONS);
+  const selectedCampaign = typeof search.camp === "string" && funnelRows.some((c) => c.key === search.camp) ? search.camp : "";
+  // The funnel's campaign picker keeps the range and the search.
+  const funnelHref = (key: string | null) => {
+    const next = new URLSearchParams(query);
+    if (typeof search.q === "string" && search.q) next.set("q", search.q);
+    if (key) next.set("camp", key);
+    return `/campaigns?${next.toString()}#funnel`;
+  };
   const campaigns = q ? all.filter((c) => `${c.key} ${c.label ?? ""}`.toLowerCase().includes(q)) : all;
   const mailings = all.filter(isMailing);
 
@@ -36,6 +48,7 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
         toDay={params.toDay}
         showBasis={false}
         search={{ value: typeof search.q === "string" ? search.q : "", placeholder: "חיפוש קמפיין לפי שם" }}
+        keep={selectedCampaign ? { camp: selectedCampaign } : undefined}
       >
         <p className="mb-6 text-sm text-muted">
           {formatDay(params.fromDay)} – {formatDay(params.toDay)} · קמפיינים מתגיות UTM ב-Google Analytics. יום השליחה = יום השיא של הקמפיין, אלא אם עורך תיקן אותו.
@@ -80,6 +93,11 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
           </Table>
           <p className="mt-3 text-xs text-muted">מוצגים קמפיינים עם {MIN_SESSIONS} כניסות ומעלה בטווח.</p>
         </Card>
+
+        <SectionTitle id="funnel" hint="דיוורים וקמפיינים עם כניסות לאתר בטווח: כמה קיבלו, פתחו והקליקו, ומה עשו באתר">
+          מהדיוור ועד ההגשה
+        </SectionTitle>
+        <CampaignFunnel rows={funnelRows} selected={selectedCampaign} hrefFor={funnelHref} fromDay={params.fromDay} toDay={params.toDay} />
       </DashboardShell>
     </>
   );
