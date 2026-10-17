@@ -4,9 +4,10 @@ import { notFound } from "next/navigation";
 import { EntityHeader, EntityTabs } from "@/components/entities/EntityParts";
 import { Badge, Card, formatDateTime, NewTabNote, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
-import { fileName, loadCandidateFiles, type CandidateFile } from "@/lib/entities/candidates";
+import { cvCount, cvFilePath, fileSize, loadEmailCvs, type CvFile, type EmailCvs } from "@/lib/entities/cv";
 import { casePath, emailPath, loadEmailCases, loadEmailContacts, MAX_EMAIL_CASES, normEmail } from "@/lib/entities/emails";
 import { param, sfRecordUrl, type SearchParams } from "@/lib/entities/search";
+import { fileName } from "@/lib/entities/serve-file";
 import { fmtDate, fmtInt } from "@/lib/format";
 
 export const metadata: Metadata = { title: "כתובת דוא״ל" };
@@ -15,11 +16,9 @@ export const dynamic = "force-dynamic";
 const TABS = [
   { key: "cases", label: "פניות והגשות" },
   { key: "contacts", label: "אנשי קשר" },
-  { key: "files", label: 'קבצים וקו"ח' },
+  { key: "files", label: 'קורות חיים וקבצים' },
 ] as const;
 type Tab = (typeof TABS)[number]["key"];
-
-const fileSize = (bytes: number) => (bytes >= 1_048_576 ? `${(bytes / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
 /** A link to the same email page with some parameters changed ("" removes one). */
 function hrefWith(email: string, current: Record<string, string>, change: Record<string, string>): string {
@@ -43,25 +42,12 @@ export default async function EmailPage({ params, searchParams }: { params: Prom
   const auth = await pageAuth("viewer", hrefWith(email, current, {}));
   if (!auth.ok) return auth.render;
 
-  const [contacts, { cases, total }] = await Promise.all([loadEmailContacts(email), loadEmailCases(email)]);
+  const [contacts, { cases, total }, cvs] = await Promise.all([loadEmailContacts(email), loadEmailCases(email), loadEmailCvs(email)]);
   if (!contacts.length && !cases.length) notFound();
 
   const names = [...new Set(contacts.map((c) => c.name).filter((n): n is string => Boolean(n)))];
   const phones = [...new Set(contacts.map((c) => c.phone).filter((p): p is string => Boolean(p)))];
   const bySender = cases.filter((c) => !c.contactId).length;
-
-  // Files are listed live from Salesforce, so only when their tab is open.
-  let files: (CandidateFile & { contactId: string })[] = [];
-  let filesError: string | null = null;
-  if (tab === "files") {
-    const lists = await Promise.all(contacts.map(async (c) => ({ contactId: c.id, ...(await loadCandidateFiles(c.id)) })));
-    filesError = lists.find((l) => l.error)?.error ?? null;
-    const seen = new Set<string>();
-    files = lists
-      .flatMap((l) => l.files.map((f) => ({ ...f, contactId: l.contactId })))
-      .filter((f) => (seen.has(f.documentId) ? false : (seen.add(f.documentId), true)))
-      .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
-  }
 
   const typeCounts = [...cases.reduce((m, c) => m.set(c.recordType ?? "", { label: c.typeLabel, n: (m.get(c.recordType ?? "")?.n ?? 0) + 1 }), new Map<string, { label: string; n: number }>())]
     .sort((a, b) => b[1].n - a[1].n);
@@ -99,6 +85,8 @@ export default async function EmailPage({ params, searchParams }: { params: Prom
           active: t.key === tab,
         }))}
       />
+
+      <CvBox email={email} cvs={cvs} allHref={hrefWith(email, {}, { tab: "files" })} onFilesTab={tab === "files"} />
 
       {tab === "cases" ? (
         <Card title={`פניות והגשות · ${fmtInt(shown.length)}`}>
@@ -232,42 +220,164 @@ export default async function EmailPage({ params, searchParams }: { params: Prom
       ) : null}
 
       {tab === "files" ? (
-        <Card title={`קבצים וקו"ח · ${fmtInt(files.length)}`}>
-          {files.length ? (
+        <Card title={`כל הקבצים שנמצאו · ${fmtInt(cvs.files.length)}`}>
+          <p className="mb-3 text-sm text-muted">
+            כל הקבצים של האדם הזה ב-Salesforce: על אנשי הקשר, על התיקים שלהם, ועל המיילים שבתוך התיקים. קבצים שנראים כמו קורות חיים
+            מופיעים ראשונים. קבצים קטנים שהם חתימות מייל או הזמנות יומן לא נכללים.
+          </p>
+          {cvs.files.length ? (
             <ul className="flex flex-col gap-3">
-              {files.map((f) => (
+              {cvs.files.map((f) => (
                 <li key={f.documentId} className="flex flex-col">
-                  <a
-                    href={`/api/candidates/${f.contactId}/files/${f.documentId}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="font-medium text-accent-dark underline underline-offset-4"
-                    dir="auto"
-                  >
-                    {fileName(f)}
-                    <NewTabNote />
-                  </a>
-                  <span className="text-xs text-muted">
-                    {fileSize(f.size)} · {fmtDate(f.createdAt)}
-                    {contacts.length > 1 ? ` · ${contactName.get(f.contactId)}` : ""}
-                    {f.applicationId ? (
-                      <>
-                        {" · "}
-                        <Link href={`/applications/${f.applicationId}`} className="underline underline-offset-2">
-                          צורף להגשה
-                        </Link>
-                      </>
-                    ) : null}
-                  </span>
+                  <CvFileLink email={email} file={f} />
+                  <CvFileWhere file={f} />
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-muted">{filesError ?? "אין קבצים מצורפים."}</p>
+            <p className="text-muted">{cvs.error ?? "לא נמצאו קבצים."}</p>
           )}
-          <p className="mt-3 text-xs text-muted">הקבצים נטענים ישירות מ-Salesforce, מכל אנשי הקשר עם הכתובת ומההגשות שלהם. כל פתיחה נרשמת ביומן הפעילות.</p>
+          <p className="mt-3 text-xs text-muted">הקבצים נטענים ישירות מ-Salesforce ולא נשמרים כאן. כל פתיחה נרשמת ביומן הפעילות.</p>
         </Card>
       ) : null}
     </>
+  );
+}
+
+/**
+ * The CV box. Finding someone's CV is the thing this page is used for, so it
+ * sits above the tabs and says plainly whether one was found and, when it was
+ * not, where we looked — the three places a CV can sit in Salesforce.
+ */
+function CvBox({ email, cvs, allHref, onFilesTab }: { email: string; cvs: EmailCvs; allHref: string; onFilesTab: boolean }) {
+  const cvFiles = cvs.files.filter((f) => f.looksLikeCv);
+  const found = cvFiles.length > 0;
+  const onContact = cvs.files.filter((f) => f.sources.includes("contact"));
+  const onCase = cvs.files.filter((f) => f.sources.includes("case"));
+  const onMail = cvs.files.filter((f) => f.sources.includes("email"));
+  const cvCaseFiles = cvs.files.filter((f) => f.caseType === "cv_message");
+
+  return (
+    <Card
+      title={`קורות חיים${found ? ` · ${fmtInt(cvCount(cvs.files))}` : ""}`}
+      level={2}
+    >
+      <p className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        {cvs.error ? (
+          <Badge tone="warning">{cvs.error}</Badge>
+        ) : found ? (
+          <Badge tone="success">נמצאו קורות חיים</Badge>
+        ) : cvs.files.length ? (
+          <Badge tone="warning">נמצאו קבצים, אף אחד לא מזוהה כקורות חיים</Badge>
+        ) : (
+          <Badge tone="neutral">לא נמצא קובץ</Badge>
+        )}
+        {cvs.cvFlag ? <Badge tone="accent">תיבת קו&quot;ח מסומנת באיש הקשר</Badge> : null}
+        {!cvs.cvFlag && found ? <span className="text-muted">תיבת קו&quot;ח באיש הקשר לא מסומנת, אף שיש קובץ</span> : null}
+      </p>
+
+      <ul className="mb-4 flex flex-col gap-1 text-sm">
+        <CvWhereRow label="קובץ על איש הקשר" files={onContact} empty={`נבדקו ${fmtInt(cvs.checked.contacts)} אנשי קשר`} />
+        <CvWhereRow
+          label='תיק מסוג "קורות חיים"'
+          files={cvCaseFiles}
+          empty={cvs.checked.cvCases ? `יש ${fmtInt(cvs.checked.cvCases)} תיקים כאלה, בלי קובץ` : "אין תיק כזה"}
+        />
+        <CvWhereRow
+          label="קובץ מצורף למייל בתיק"
+          files={onMail}
+          empty={`נבדקו ${fmtInt(cvs.checked.emails)} מיילים ב-${fmtInt(cvs.checked.cases)} תיקים`}
+        />
+        {onCase.length ? <CvWhereRow label="קובץ על התיק עצמו" files={onCase} empty="" /> : null}
+      </ul>
+
+      {cvs.files.length && !onFilesTab ? (
+        <>
+          <ul className="flex flex-col gap-3">
+            {cvs.files.slice(0, 3).map((f) => (
+              <li key={f.documentId} className="flex flex-col">
+                <CvFileLink email={email} file={f} />
+                <CvFileWhere file={f} />
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-sm">
+            <Link href={allHref} className="font-medium text-accent-dark underline underline-offset-4">
+              {cvs.files.length > 3 ? `כל ${fmtInt(cvs.files.length)} הקבצים` : "לשונית הקבצים"}
+            </Link>
+          </p>
+        </>
+      ) : null}
+    </Card>
+  );
+}
+
+/** One of the three places a CV can sit: how many files are there, or what was checked. */
+function CvWhereRow({ label, files, empty }: { label: string; files: CvFile[]; empty: string }) {
+  return (
+    <li className="flex flex-wrap items-baseline gap-2">
+      <span aria-hidden="true" className={files.length ? "text-success" : "text-muted"}>
+        {files.length ? "✓" : "—"}
+      </span>
+      <span className="font-medium">{label}:</span>
+      <span className={files.length ? "" : "text-muted"}>
+        {files.length ? `${fmtInt(files.length)} קבצים` : empty}
+        <span className="sr-only">{files.length ? "" : " — לא נמצא"}</span>
+      </span>
+    </li>
+  );
+}
+
+function CvFileLink({ email, file }: { email: string; file: CvFile }) {
+  return (
+    <a
+      href={cvFilePath(email, file.documentId)}
+      target="_blank"
+      rel="noreferrer"
+      className="font-medium text-accent-dark underline underline-offset-4"
+      dir="auto"
+    >
+      {fileName(file)}
+      <NewTabNote />
+    </a>
+  );
+}
+
+/** Where the file was found, in words, with a link to the Case it came from. */
+function CvFileWhere({ file }: { file: CvFile }) {
+  const path = file.caseId ? casePath({ id: file.caseId, recordType: file.caseType }) : null;
+  const sfUrl = file.caseId ? sfRecordUrl(file.caseId) : null;
+  const caseLabel = `${file.caseTypeLabel ?? "תיק"}${file.caseNumber ? ` ${file.caseNumber}` : ""}`;
+  return (
+    <span className="text-xs text-muted">
+      {fileSize(file.size)} · {fmtDate(file.createdAt)}
+      {file.sources.includes("contact") ? <> · על איש הקשר{file.contactName ? ` ${file.contactName}` : ""}</> : null}
+      {file.sources.includes("case") ? <> · על התיק עצמו</> : null}
+      {file.sources.includes("email") ? (
+        <>
+          {" · "}
+          מייל {file.emailIncoming === false ? "יוצא" : "נכנס"}
+          {file.emailSubject ? <span dir="auto">: {file.emailSubject}</span> : null}
+        </>
+      ) : null}
+      {file.caseId ? (
+        <>
+          {" · "}
+          {path ? (
+            <Link href={path} className="underline underline-offset-2">
+              {caseLabel}
+            </Link>
+          ) : sfUrl ? (
+            <a href={sfUrl} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+              {caseLabel}
+              <span className="sr-only"> ב-Salesforce</span>
+              <NewTabNote />
+            </a>
+          ) : (
+            caseLabel
+          )}
+        </>
+      ) : null}
+    </span>
   );
 }

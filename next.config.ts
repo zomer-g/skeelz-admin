@@ -32,9 +32,11 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
-      // Candidate files send their own policy. Next keeps a config header over a route handler's
-      // header of the same name, so that route is left out here rather than silently overridden.
-      { source: "/((?!api/candidates/).*)", headers: [{ key: "Content-Security-Policy", value: contentSecurityPolicy }] },
+      // Candidate files send their own sandboxing policy — the routes under /api/candidates/ and the
+      // ones under /api/emails/ that serve a found CV. Next keeps a config header over a route
+      // handler's header of the same name, so those routes are left out here rather than silently
+      // overridden (`serve-file.ts` is what sets their policy).
+      { source: "/((?!api/candidates/|api/emails/).*)", headers: [{ key: "Content-Security-Policy", value: contentSecurityPolicy }] },
     ];
   },
 };

@@ -5,7 +5,8 @@ import { ApplicationsTable, EntityHeader, FieldList } from "@/components/entitie
 import { Badge, Card } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { searchApplications } from "@/lib/entities/applications";
-import { fileName, loadCandidate, loadCandidateFiles } from "@/lib/entities/candidates";
+import { loadCandidate, loadCandidateFiles } from "@/lib/entities/candidates";
+import { fileName } from "@/lib/entities/serve-file";
 import { emailPath } from "@/lib/entities/emails";
 import { isSfId, sfRecordUrl } from "@/lib/entities/search";
 import { fmtDate, fmtInt } from "@/lib/format";

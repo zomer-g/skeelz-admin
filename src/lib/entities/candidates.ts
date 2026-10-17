@@ -182,10 +182,6 @@ export async function loadCandidate(id: string): Promise<CandidateDetail | null>
   };
 }
 
-/** A file name for display and download: the title, with the extension added only if the title lacks it. */
-export const fileName = (f: Pick<CandidateFile, "title" | "extension">) =>
-  f.extension && !f.title.toLowerCase().endsWith(`.${f.extension}`) ? `${f.title}.${f.extension}` : f.title;
-
 export interface CandidateFile {
   documentId: string;
   versionId: string;

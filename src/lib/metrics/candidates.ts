@@ -20,6 +20,8 @@ export const RECORD_TYPES = {
   application: "RecordType2",
   accepted: "Placement_cambium",
   position: "Position",
+  /** "קורות חיים": a Case opened from a CV that arrived by email. */
+  cvMessage: "cv_message",
 } as const;
 
 /** Folds no-break spaces and runs of spaces into one space. */

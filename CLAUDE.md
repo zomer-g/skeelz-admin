@@ -74,7 +74,13 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   GET search forms, 50 per page, each sortable by column (`?sort=&dir=`, `src/lib/entities/sort.ts`: a list declares its
   `SortColumn[]`, `Table` turns the headings into links and shows the same choices as pills on phones, where the headings are hidden). A company is jobs grouped by normalized `company_cambium__c` (`src/lib/metrics/company.ts`).
   Candidate files are never mirrored: listed live via `ContentDocumentLink` and served only through
-  `/api/candidates/[id]/files/[documentId]`, which checks the file is linked to that candidate and writes an audit entry.
+  `/api/candidates/[id]/files/[documentId]` or `/api/emails/[email]/files/[documentId]`, which check the file really is that
+  person's, write an audit entry and share one 60-opens-an-hour limit (`src/lib/entities/serve-file.ts`; both routes are left
+  out of the config CSP in `next.config.ts` so their sandboxing policy survives).
+  **Finding a CV** (`src/lib/entities/cv.ts`, the box on `/emails/<address>`): it sits in one of three places — on the Contact,
+  on one of the person's Cases (an application, or a `cv_message` "קורות חיים" Case), or attached to an **email of such a Case**,
+  where a CV that arrived by mail actually lands (the file hangs off the EmailMessage). All three are searched, a file is
+  counted in every place it is linked, and when nothing is found the box says what was checked.
   `/emails` treats one address as one person: every Contact with that email, and every Case on them plus Contact-less
   Cases whose `SuppliedEmail` is it (`src/lib/entities/emails.ts`).
   The record pages' timeline (`loadFullCaseTimeline`) adds, live from Salesforce and never mirrored, the case's Chatter
