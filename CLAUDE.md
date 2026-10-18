@@ -77,6 +77,10 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `/api/candidates/[id]/files/[documentId]` or `/api/emails/[email]/files/[documentId]`, which check the file really is that
   person's, write an audit entry and share one 60-opens-an-hour limit (`src/lib/entities/serve-file.ts`; both routes are left
   out of the config CSP in `next.config.ts` so their sandboxing policy survives).
+  **Copying contact details:** `/candidates` hands over the emails or phones behind the *whole* filter (not the page) through
+  `/api/candidates/contacts` + `CopyContacts` — `candidateFilters()` parses the URL once for both the page and that route, each
+  value appears once (phones compared by digits), it stops at 5,000, and every copy writes `candidates.contacts_copied` with the
+  filter and the count.
   **Finding a CV** (`src/lib/entities/cv.ts`, the box on `/emails/<address>`): it sits in one of three places — on the Contact,
   on one of the person's Cases (an application, or a `cv_message` "קורות חיים" Case), or attached to an **email of such a Case**,
   where a CV that arrived by mail actually lands (the file hangs off the EmailMessage). All three are searched, a file is

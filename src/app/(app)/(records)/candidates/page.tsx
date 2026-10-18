@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { CopyContacts } from "@/components/entities/CopyContacts";
 import { Pager, SearchForm } from "@/components/entities/Search";
 import { Badge, Card, PageHeader, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
 import { emailPath } from "@/lib/entities/emails";
-import { CANDIDATE_SORTS, loadCandidateFilterOptions, searchCandidates, type CandidateFilters } from "@/lib/entities/candidates";
+import { CANDIDATE_SORTS, candidateFilters, loadCandidateFilterOptions, searchCandidates } from "@/lib/entities/candidates";
 import { choice, dayParam, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
 import { sortParam, tableSort } from "@/lib/entities/sort";
 import { AREA_VALUES, areaOptions, NAPA_VALUES, napaOptions, placeText } from "@/lib/geo/filters";
@@ -23,20 +24,7 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
   const auth = await pageAuth("viewer", viewPath(ACTION, search, KEYS));
   if (!auth.ok) return auth.render;
 
-  const filters: CandidateFilters = {
-    q: param(search, "q"),
-    district: param(search, "district"),
-    area: choice(search, "area", AREA_VALUES),
-    napa: choice(search, "napa", NAPA_VALUES),
-    skill: choice(search, "skill", SKILLS.map((s) => s.label)),
-    city: param(search, "city"),
-    account: param(search, "account"),
-    cv: choice(search, "cv", ["yes", "no"] as const),
-    fast: choice(search, "fast", ["yes", "no"] as const),
-    applied: choice(search, "applied", ["yes", "no"] as const),
-    fromDay: dayParam(search, "from"),
-    toDay: dayParam(search, "to"),
-  };
+  const filters = candidateFilters(search);
   const page = pageParam(search);
   const sort = sortParam(search, CANDIDATE_SORTS, "created");
   const [{ rows, total }, options] = await Promise.all([searchCandidates(filters, { page, sort }), loadCandidateFilterOptions()]);
@@ -123,6 +111,7 @@ export default async function CandidatesPage({ searchParams }: { searchParams: P
           ))}
         </Table>
         <Pager action={ACTION} values={{ ...values, sort: sort.key, dir: sort.dir }} page={page} pageSize={PAGE_SIZE} total={total} />
+        {total ? <CopyContacts query={new URLSearchParams(Object.entries(values).filter(([, v]) => v)).toString()} total={total} /> : null}
       </Card>
     </>
   );

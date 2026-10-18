@@ -2,13 +2,13 @@ import { sql, type SQL } from "drizzle-orm";
 import { RECORD_TYPES } from "@/lib/metrics/candidates";
 import { CANDIDATE_ACCOUNT_PATTERN } from "@/lib/metrics/marketing";
 import { salesforceConfigured, sf } from "@/lib/sf/client";
-import { asDate, containsPattern, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
+import { asDate, choice, containsPattern, dayBounds, dayParam, isSfId, isTrue, num, PAGE_SIZE, param, phoneDigits, run, str, type SearchParams } from "./search";
 import { orderBy, type Sort, type SortColumn } from "./sort";
-import { placeFilterSql, placeLabel, type PlaceLabel } from "@/lib/geo/filters";
+import { AREA_VALUES, NAPA_VALUES, placeFilterSql, placeLabel, type PlaceLabel } from "@/lib/geo/filters";
 import { GEO_CTES } from "@/lib/geo/localities";
 import { logError } from "@/lib/log";
 import { candidatePlaceSql } from "@/lib/metrics/geo";
-import { skillNames, skillRowsSql } from "@/lib/skills";
+import { SKILLS, skillNames, skillRowsSql } from "@/lib/skills";
 
 /**
  * Candidates: Contacts in the candidate Accounts, and any Contact that applied.
@@ -111,10 +111,26 @@ export const CANDIDATE_SORTS: readonly SortColumn[] = [
   { key: "last", kind: "date", by: sql`c.last_at` },
 ];
 
-export async function searchCandidates(
-  f: CandidateFilters,
-  { page = 1, pageSize = PAGE_SIZE, sort }: { page?: number; pageSize?: number; sort?: Sort } = {},
-): Promise<{ rows: CandidateRow[]; total: number }> {
+/** The list's filters as the URL carries them — read here so the page and the contact export agree. */
+export function candidateFilters(search: SearchParams): CandidateFilters {
+  return {
+    q: param(search, "q"),
+    district: param(search, "district"),
+    area: choice(search, "area", AREA_VALUES),
+    napa: choice(search, "napa", NAPA_VALUES),
+    skill: choice(search, "skill", SKILLS.map((s) => s.label)),
+    city: param(search, "city"),
+    account: param(search, "account"),
+    cv: choice(search, "cv", ["yes", "no"] as const),
+    fast: choice(search, "fast", ["yes", "no"] as const),
+    applied: choice(search, "applied", ["yes", "no"] as const),
+    fromDay: dayParam(search, "from"),
+    toDay: dayParam(search, "to"),
+  };
+}
+
+/** Every filter of the list as one WHERE, shared by the list and by the contact export. */
+function whereOf(f: CandidateFilters): SQL {
   const parts: SQL[] = [sql`true`];
   if (f.q) {
     const p = containsPattern(f.q);
@@ -136,7 +152,14 @@ export async function searchCandidates(
   const { from, to } = dayBounds(f.fromDay, f.toDay);
   if (from) parts.push(sql`c.created_date >= ${from}`);
   if (to) parts.push(sql`c.created_date < ${to}`);
-  const where = sql.join(parts, sql` AND `);
+  return sql.join(parts, sql` AND `);
+}
+
+export async function searchCandidates(
+  f: CandidateFilters,
+  { page = 1, pageSize = PAGE_SIZE, sort }: { page?: number; pageSize?: number; sort?: Sort } = {},
+): Promise<{ rows: CandidateRow[]; total: number }> {
+  const where = whereOf(f);
 
   const [rows, count] = await Promise.all([
     run(sql`${CANDIDATES} SELECT c.* FROM cand c WHERE ${where}
@@ -145,6 +168,43 @@ export async function searchCandidates(
     run(sql`${CANDIDATES} SELECT count(*) AS n FROM cand c WHERE ${where}`),
   ]);
   return { rows: rows.map(toCandidate), total: num(count[0]?.n) };
+}
+
+/** What the list can hand over for a mailing or a phone round. */
+export const CONTACT_FIELDS = { email: "מיילים", phone: "טלפונים" } as const;
+export type ContactField = keyof typeof CONTACT_FIELDS;
+
+/** A guard, not a quota: more addresses than this is a mailing-list job, not a copy-paste. */
+export const MAX_CONTACTS = 5_000;
+
+/**
+ * Every address (or phone) behind the current filter, not only the page on
+ * screen — what "copy the 300 candidates with this skill" needs. Values come
+ * back once each, newest candidate first.
+ */
+export async function loadCandidateContacts(
+  f: CandidateFilters,
+  field: ContactField,
+): Promise<{ values: string[]; candidates: number; truncated: boolean }> {
+  const where = whereOf(f);
+  const column = field === "email" ? sql`c.email` : sql`c.phone`;
+  const rows = await run(sql`${CANDIDATES}
+    SELECT ${column} AS v, max(c.created_date) AS at FROM cand c
+     WHERE ${where} AND ${column} IS NOT NULL AND btrim(${column}) <> ''
+     GROUP BY 1 ORDER BY 2 DESC NULLS LAST
+     LIMIT ${MAX_CONTACTS + 1}`);
+
+  // Phones are typed by hand in every shape there is; the digits decide what is the same number.
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const r of rows) {
+    const value = String(r.v).trim();
+    const key = field === "phone" ? value.replace(/\D/g, "") : value.toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    values.push(field === "email" ? key : value);
+  }
+  return { values: values.slice(0, MAX_CONTACTS), candidates: values.length, truncated: values.length > MAX_CONTACTS };
 }
 
 export async function loadCandidateFilterOptions(): Promise<{ accounts: string[] }> {
