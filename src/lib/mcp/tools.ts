@@ -13,6 +13,8 @@ import { CANDIDATE_SORTS, loadCandidate, searchCandidates } from "@/lib/entities
 import { COMPANY_SORTS, loadCompany, loadJobDetails, searchCompanies } from "@/lib/entities/companies";
 import { startDir, type Sort, type SortColumn } from "@/lib/entities/sort";
 import { casePath, loadEmailCases, loadEmailContacts, normEmail } from "@/lib/entities/emails";
+import { CV_SORTS, CV_SOURCES, cvSummary, searchCvs, type CvFilters } from "@/lib/entities/cvs";
+import { LEAD_SORTS, searchLeads } from "@/lib/entities/leads";
 import { AREA_VALUES, NAPA_VALUES } from "@/lib/geo/filters";
 import { SKILLS } from "@/lib/skills";
 import { loadPayments } from "@/lib/entities/payments";
@@ -105,6 +107,28 @@ function dayRange(a: Record<string, ArgValue>, defaultDays: number): { fromDay: 
     throw new ArgError(`the range may span at most ${API_LIMITS.maxRangeDays} days`);
   }
   return { fromDay, toDay };
+}
+
+/** The CV filters from tool arguments, as the /cvs screen reads them from its URL. */
+function cvArgs(a: Record<string, ArgValue>): CvFilters {
+  const source = s(a.source);
+  const unhandled = s(a.unhandled);
+  return {
+    q: s(a.q),
+    text: s(a.text),
+    unhandled: unhandled === "yes" || unhandled === "no" ? unhandled : "",
+    source: (CV_SOURCES as readonly string[]).includes(source) ? (source as CvFilters["source"]) : "",
+    kind: a.all_files === true ? "all" : "",
+    fromDay: s(a.from),
+    toDay: s(a.to),
+  };
+}
+
+/** The same filters as a /cvs query string, so the answer can link to the list. */
+function cvQuery(a: Record<string, ArgValue>): string {
+  const f = cvArgs(a);
+  const q = new URLSearchParams({ q: f.q, text: f.text, unhandled: f.unhandled, source: f.source, kind: f.kind, from: f.fromDay, to: f.toDay });
+  return new URLSearchParams([...q].filter(([, v]) => v)).toString();
 }
 
 const scopeField: Fields[string] = {
@@ -456,6 +480,88 @@ const TOOLS: Tool[] = [
       if (!candidate) throw new NotFound("no candidate with this id");
       const apps = await searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", contactId: id }, { pageSize: 50 });
       return { ...candidate, applications: apps.rows, applications_total: apps.total, admin_url: link(ctx, `/candidates/${id}`) };
+    },
+  },
+  /* ------------------------------------------------------------- CVs */
+  {
+    name: "search_cvs",
+    title: "Search CVs",
+    description:
+      "Candidate files (CVs) wherever they sit in Salesforce — on the Contact, on a CV (קורות חיים) or application Case, or on an email of one — newest first, one row per file, with the person and the Case. " +
+      "`text` searches inside the files (Salesforce's full-text index): use it to find candidates by experience, tools or roles written in their CV. " +
+      "`unhandled` marks CVs whose Case nobody on the staff ever touched and that were closed in the bulk closure of 14.10.2026. " +
+      "Returns metadata only — never the file or its text; each row links to the person's page on the site, where the file opens (and is logged).",
+    minRole: "viewer",
+    fields: {
+      q: { type: "string", description: "Name or email of the person, file name or Case number (contains).", maxLength: 100 },
+      text: { type: "string", description: "Words to find inside the files, e.g. 'הנהלת חשבונות' or 'Excel'.", maxLength: 100 },
+      unhandled: { type: "string", enum: ["yes", "no"], description: "yes: only CVs whose Case was never handled; no: all the others." },
+      source: { type: "string", enum: [...CV_SOURCES], description: "Where the file hangs: contact, case or email." },
+      all_files: { type: "boolean", description: "Include files that are not documents (images and the like). Default false: pdf/doc/docx/rtf/odt/txt only.", default: false },
+      from: dayField("Arrived on or after"),
+      to: dayField("Arrived on or before"),
+      ...sortFields(CV_SORTS, "received"),
+      ...pageFields,
+    },
+    run: async (a, ctx) => {
+      const { page, pageSize } = paging(a);
+      const result = await searchCvs(cvArgs(a), { page, pageSize, sort: mcpSort(a, CV_SORTS, "received") });
+      return {
+        total: result.total,
+        unhandled_in_result: result.unhandled,
+        text_search: result.textSearch,
+        page,
+        cvs: result.rows.map(({ openPath: _openPath, ...r }) => ({
+          ...r,
+          admin_url: r.email ? link(ctx, `/emails/${encodeURIComponent(r.email)}`) : r.contactId ? link(ctx, `/candidates/${r.contactId}`) : null,
+        })),
+        list_url: link(ctx, `/cvs?${cvQuery(a)}`),
+      };
+    },
+  },
+  {
+    name: "cv_summary",
+    title: "CV figures",
+    description:
+      "Counts behind the CV list, under the same filters as search_cvs: files, distinct people, how many were never handled (files, and CV Cases), where the files hang, and files per month of arrival with the unhandled share. " +
+      "Use it for questions like 'how many CVs came in each month', 'how many were never handled', or, with `text`, 'how many CVs mention X'.",
+    minRole: "viewer",
+    fields: {
+      q: { type: "string", description: "Name or email of the person, file name or Case number (contains).", maxLength: 100 },
+      text: { type: "string", description: "Words to find inside the files.", maxLength: 100 },
+      unhandled: { type: "string", enum: ["yes", "no"], description: "Only never-handled CVs, or only the others." },
+      source: { type: "string", enum: [...CV_SOURCES], description: "Where the file hangs: contact, case or email." },
+      all_files: { type: "boolean", description: "Include files that are not documents.", default: false },
+      from: dayField("Arrived on or after"),
+      to: dayField("Arrived on or before"),
+    },
+    run: async (a, ctx) => ({ ...(await cvSummary(cvArgs(a))), list_url: link(ctx, `/cvs?${cvQuery(a)}`) }),
+  },
+
+  /* ---------------------------------------------------------- employer leads */
+  {
+    name: "search_employer_leads",
+    title: "Search employer lead Cases",
+    description:
+      "Employer lead Cases (Case type ליד מעסיק), newest first: the employer (Account) and its employer status, the contact, the Case status, owner, when it opened and when its status last changed. " +
+      "(The employers dashboard counts leads by the Account's employer status; these are the Cases themselves.)",
+    minRole: "viewer",
+    fields: {
+      q: { type: "string", description: "Employer, subject, contact name or email, or Case number (contains).", maxLength: 100 },
+      status: { type: "string", description: "Case status, exactly as in Salesforce (e.g. פנייה ראשונה, נחתם חוזה).", maxLength: 100 },
+      owner: { type: "string", description: "Owner's full name, exactly.", maxLength: 100 },
+      from: dayField("Opened on or after"),
+      to: dayField("Opened on or before"),
+      ...sortFields(LEAD_SORTS, "created"),
+      ...pageFields,
+    },
+    run: async (a, ctx) => {
+      const { page, pageSize } = paging(a);
+      const result = await searchLeads(
+        { q: s(a.q), status: s(a.status), owner: s(a.owner), fromDay: s(a.from), toDay: s(a.to) },
+        { page, pageSize, sort: mcpSort(a, LEAD_SORTS, "created") },
+      );
+      return { total: result.total, page, leads: result.rows.map((r) => ({ ...r, admin_url: link(ctx, `/leads/${r.id}`) })) };
     },
   },
   {

@@ -198,6 +198,30 @@ export const sfAccountHistory = pgTable(
   (t) => [index("sf_account_history_account_field_idx").on(t.accountId, t.field, t.createdDate)],
 );
 
+/**
+ * Where candidate files hang in Salesforce (ContentDocumentLink): one row per file per record it is
+ * linked to — a Contact, a CV or application Case, or an email of one. Metadata only: the files
+ * themselves are never copied, and open only through the file routes (lib/entities/serve-file.ts).
+ */
+export const sfFileLink = pgTable(
+  "sf_file_link",
+  {
+    id: sfId("id").primaryKey(),
+    documentId: sfId("document_id").notNull(),
+    linkedEntityId: sfId("linked_entity_id").notNull(),
+    /** "contact" | "case" | "email" */
+    entityType: text("entity_type").notNull(),
+    title: text("title"),
+    extension: text("extension"),
+    size: integer("size"),
+    versionId: sfId("version_id"),
+    documentCreatedAt: ts("document_created_at"),
+    systemModstamp: ts("system_modstamp"),
+    syncedAt: syncedAt(),
+  },
+  (t) => [index("sf_file_link_document_idx").on(t.documentId), index("sf_file_link_entity_idx").on(t.linkedEntityId)],
+);
+
 /** Email metadata only — bodies are never copied. */
 export const sfEmailMessage = pgTable(
   "sf_email_message",

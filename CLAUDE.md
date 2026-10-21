@@ -41,7 +41,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   call, ceiling). Every tool in `src/lib/mcp/tools.ts` declares the `minRole` its screen/action uses; `tools/list` and
   `tools/call` both filter by it. Tokens are opaque, sha256-stored in `mcp_grants`; users disconnect at `/connectors`,
   admins at `/admin/mcp`. Every call is audited (`mcp.call`). Never expose Salesforce writes, candidate files or admin
-  write operations over MCP.
+  write operations over MCP. CVs are searchable over MCP (`search_cvs`, `cv_summary`) as metadata and matches only — never the file or its text.
 - **Roles:** viewer < editor (dashboard config) < admin (users, integrations, API keys, connections, sync). Admins can "view as" a lower
   role (cookie `skeelz_view_as`, honoured only when `realRole` is admin); `user.role` is the effective role that every
   check uses — only the preview switch itself checks `realRole`.
@@ -70,7 +70,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   cases, `/pipeline/metrics` counts by status (`src/lib/metrics/statuses.ts`, application/event date basis) + `ApplicationPipeline` · `/employers` · `/marketing` · `/analytics` Google Analytics (every
   mirrored GA report through `src/lib/metrics/ga-report.ts`, shared with the MCP `ga_report`) · `/campaigns` (with campaigns from send to apply, `CampaignFunnel`, SMOOV + GA). A job has two pages: `/jobs/[id]`
   (dashboard analytics) and `/positions/[id]` (the entity card, under מעסיקים) — entity pages link to `/positions`.
-- **Entities** (`/applications`, `/companies`, `/positions` (jobs list), `/candidates`, `/emails`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
+- **Entities** (`/applications`, `/companies`, `/positions` (jobs list), `/candidates`, `/emails`, `/cvs`, `/leads`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
   GET search forms, 50 per page, each sortable by column (`?sort=&dir=`, `src/lib/entities/sort.ts`: a list declares its
   `SortColumn[]`, `Table` turns the headings into links and shows the same choices as pills on phones, where the headings are hidden). A company is jobs grouped by normalized `company_cambium__c` (`src/lib/metrics/company.ts`).
   Candidate files are never mirrored: listed live via `ContentDocumentLink` and served only through
@@ -85,6 +85,11 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   on one of the person's Cases (an application, or a `cv_message` "קורות חיים" Case), or attached to an **email of such a Case**,
   where a CV that arrived by mail actually lands (the file hangs off the EmailMessage). All three are searched, a file is
   counted in every place it is linked, and when nothing is found the box says what was checked.
+  **All CVs** (`/cvs`, `src/lib/entities/cvs.ts`): one row per file, from the mirrored file links (`sf_file_link`, filled by
+  `src/lib/sf/sync-files.ts` after the other objects — metadata only, never the files). "Never handled" = a CV Case touched by
+  nobody but the 14.10.2026 bulk closure (`BULK_CLOSURE`). Words inside files are searched live with SOSL (`sf.search`).
+  **Employer lead Cases** (`/leads`, `src/lib/entities/leads.ts`): Cases of type `lead_employer`, listed as records (the
+  employers tab still counts leads by the Account's employer status).
   `/emails` treats one address as one person: every Contact with that email, and every Case on them plus Contact-less
   Cases whose `SuppliedEmail` is it (`src/lib/entities/emails.ts`).
   The record pages' timeline (`loadFullCaseTimeline`) adds, live from Salesforce and never mirrored, the case's Chatter

@@ -178,6 +178,9 @@ export const sf = {
     return result.totalSize;
   },
 
+  /** A SOSL search (read-only): Salesforce's full-text index, which also covers the text inside files. */
+  search: <T>(sosl: string) => get<{ searchRecords: T[] }>(`${versionPath()}/search?q=${encodeURIComponent(sosl)}`),
+
   describeGlobal: () => get<SfGlobalDescribe>(`${versionPath()}/sobjects`),
 
   describe: (objectName: string) => get<SfDescribe>(`${versionPath()}/sobjects/${encodeURIComponent(objectName)}/describe`),

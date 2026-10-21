@@ -2,6 +2,7 @@ import { eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { connectDirect, getDb } from "@/lib/db/client";
 import { syncRuns, syncState } from "@/lib/db/schema";
 import { sf, SalesforceError } from "./client";
+import { syncFiles } from "./sync-files";
 import { SYNC_OBJECTS, toDate, type SfRecord, type SyncObjectDef } from "./sync-objects";
 import type { SfDescribe } from "./types";
 import { logError, safeErrorMessage } from "@/lib/log";
@@ -206,6 +207,10 @@ export async function runSync(mode: SyncMode, trigger: string): Promise<SyncSumm
         const note = result.error ? ` ERROR ${result.error}` : result.skipped ? ` skipped (${result.skipped})` : "";
         console.log(`[sync] ${mode} ${def.name}: +${result.upserted} -${result.deleted} in ${result.ms}ms${note}`);
       }
+      // Where candidate files hang (metadata only), after the Contacts, Cases and emails they hang on.
+      const files = await syncFiles(mode, trigger);
+      results.push(files);
+      console.log(`[sync] ${mode} ${files.object}: +${files.upserted} -${files.deleted} in ${files.ms}ms${files.error ? ` ERROR ${files.error}` : ""}`);
       if (mode === "reconcile") {
         // History rows of Cases that no longer exist.
         await getDb().execute(

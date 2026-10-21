@@ -23,7 +23,7 @@ site**. Users find the address and their own connections at `/connectors`; admin
 
 | Role | Tools |
 |---|---|
-| viewer | `whoami`, `dashboard_summary`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `get_application`, `search_candidates`, `get_candidate`, `lookup_email`, `search_companies`, `get_company`, `search_payments` |
+| viewer | `whoami`, `dashboard_summary`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `get_application`, `search_candidates`, `get_candidate`, `lookup_email`, `search_cvs`, `cv_summary`, `search_employer_leads`, `search_companies`, `get_company`, `search_payments` |
 | editor | + `update_campaign`, `link_campaign_job`, `unlink_campaign_job` (same code as the campaign page, `src/lib/campaigns/edit.ts`) |
 | admin | + `list_users`, `query_audit_log`, `sync_status` (read only) |
 
@@ -39,7 +39,7 @@ tab, `get_campaign` the campaign page, and `get_job` carries the job's GA (total
 users per day, so summed users are not unique users over a range. GTM container snapshots are not exposed.
 
 This mirrors the site: viewers read every dashboard and record screen, editors also edit campaign
-settings, admins also manage. Nothing writes to Salesforce. Candidate files are not served over MCP.
+settings, admins also manage. Nothing writes to Salesforce. Candidate files are not served over MCP: `search_cvs` and `cv_summary` search and count CVs (including the words inside them, through Salesforce's full-text index) and return metadata and links to the site, never a file or its text.
 Admin *write* operations (inviting users, keys, sync) are deliberately not exposed.
 
 ## 2. OAuth 2.1 (what the clients see)
