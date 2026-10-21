@@ -97,12 +97,12 @@ export default async function CvPage({ params }: { params: Promise<{ documentId:
               <td className="px-3 py-2 text-xs" dir="auto">
                 {e.via ? (e.via.includes("@") ? `דף הכתובת ${e.via}` : "דף המועמד") : "—"}
               </td>
-              <td className="px-3 py-2">{e.opened ? <Badge tone="success">נפתח</Badge> : <Badge tone="brand">נחסם (מגבלת שעה)</Badge>}</td>
+              <td className="px-3 py-2">{e.opened ? <Badge tone="success">נפתח</Badge> : <Badge tone="brand">נחסם (מגבלה יומית)</Badge>}</td>
             </tr>
           ))}
         </Table>
         <p className="mt-3 text-xs text-muted">
-          כל פתיחה של קובץ מועמד דרך המערכת נרשמת ביומן הפעילות (מי, מתי, איזה קובץ ודרך איזה דף), וכך גם ניסיון שנחסם במגבלת 60 קבצים לשעה. פתיחה ישירות
+          כל פתיחה של קובץ מועמד דרך המערכת נרשמת ביומן הפעילות (מי, מתי, איזה קובץ ודרך איזה דף), וכך גם ניסיון שנחסם במגבלה היומית (20 קבצים ליום, ועוד 30 בכל אישור של מנהל). פתיחה ישירות
           ב-Salesforce לא עוברת דרך המערכת ולא מופיעה כאן.
         </p>
       </Card>

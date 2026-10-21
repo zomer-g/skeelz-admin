@@ -4,6 +4,7 @@ import { setPreviewRole } from "@/app/(app)/preview-actions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import type { SessionUser } from "@/lib/auth/session";
 import { logoutUrl } from "@/lib/auth/urls";
+import { AdminAlerts } from "./AdminAlerts";
 import { NavLinks } from "./NavLinks";
 import { PreviewSwitcher } from "./PreviewSwitcher";
 import { PublicDocLinks } from "./PublicDoc";
@@ -41,6 +42,8 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
           </div>
         </div>
       ) : null}
+
+      {user.role === "admin" ? <AdminAlerts /> : null}
 
       <header className="border-b-2 border-black bg-white">
         {/* Phones: logo and account on top, the nav as its own scrolling row below. From `lg` all three share one row. */}

@@ -7,6 +7,7 @@ import { isRole } from "@/lib/auth/roles";
 import { envAdmins, requireUser } from "@/lib/auth/session";
 import { getDb, type Db } from "@/lib/db/client";
 import { accessRequests, invites, users } from "@/lib/db/schema";
+import { confirmAccess } from "@/lib/security/reviews";
 
 // Every action re-checks the caller: a server action is a public endpoint,
 // whatever the page that renders its form happens to show.
@@ -50,6 +51,15 @@ export async function inviteUser(_prev: ActionState, form: FormData): Promise<Ac
     ok: true,
     message: `ההזמנה ל-${email} נוצרה (בתוקף ${INVITE_DAYS} יום). היא תמומש כשהכתובת תתחבר לראשונה עם Google. לא נשלח מייל, צריך להעביר את כתובת המערכת.`,
   };
+}
+
+/** The monthly review: an admin confirms one user's access and role (lib/security/reviews.ts). */
+export async function confirmUserAccess(form: FormData): Promise<void> {
+  const admin = await requireUser("admin");
+  const id = String(form.get("id") ?? "");
+  if (!UUID_RE.test(id)) throw new Error("invalid id");
+  await confirmAccess(admin.email, id);
+  revalidatePath(PATH);
 }
 
 export async function changeRole(form: FormData): Promise<void> {

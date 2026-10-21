@@ -7,7 +7,8 @@ import { envAdmins } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { accessRequests, invites, users } from "@/lib/db/schema";
 import { AdminTabs } from "../AdminTabs";
-import { approveRequest, changeRole, dismissRequest, revokeInvite, setActive } from "./actions";
+import { loadReviewStatus, reviewMonth } from "@/lib/security/reviews";
+import { approveRequest, changeRole, confirmUserAccess, dismissRequest, revokeInvite, setActive } from "./actions";
 import { InviteForm } from "./InviteForm";
 
 export const metadata: Metadata = { title: "משתמשים והרשאות" };
@@ -17,7 +18,7 @@ export default async function UsersPage() {
   if (!auth.ok) return auth.render;
 
   const db = getDb();
-  const [userRows, inviteRows, requestRows] = await Promise.all([
+  const [userRows, inviteRows, requestRows, reviews] = await Promise.all([
     db.select().from(users).orderBy(desc(users.lastLoginAt)),
     db
       .select()
@@ -25,7 +26,10 @@ export default async function UsersPage() {
       .where(and(isNull(invites.acceptedAt), isNull(invites.revokedAt), gt(invites.expiresAt, new Date())))
       .orderBy(desc(invites.createdAt)),
     db.select().from(accessRequests).orderBy(desc(accessRequests.lastAt)).limit(100),
+    loadReviewStatus(),
   ]);
+  const due = [...reviews.values()].filter((r) => r.due).length;
+  const [year, month] = reviewMonth().split("-");
   const configuredAdmins = envAdmins();
 
   return (
@@ -76,7 +80,15 @@ export default async function UsersPage() {
         ) : null}
 
         <Card title={`משתמשים (${userRows.length})`}>
-          <Table head={["משתמש", "תפקיד", "סטטוס", "כניסה אחרונה", ""]}>
+          <p
+            className={`mb-4 rounded-card px-4 py-3 text-sm ring-1 ${due ? "bg-hot/20 ring-hot" : "bg-success-soft ring-success/30"}`}
+            role="status"
+          >
+            {due
+              ? `אישור ההרשאות של ${month}/${year}: נותרו ${due} משתמשים פעילים לאשר. עברו על כל משתמש, וודאו שהוא עדיין צריך גישה ושהתפקיד שלו נכון, ולחצו "אישור". משתמש שלא צריך גישה — השביתו אותו.`
+              : `כל ההרשאות אושרו לחודש ${month}/${year}.`}
+          </p>
+          <Table head={["משתמש", "תפקיד", "סטטוס", "כניסה אחרונה", "אישור חודשי", ""]}>
             {userRows.map((u) => {
               const isSelf = u.id === auth.user.id;
               const isConfigured = configuredAdmins.includes(u.email);
@@ -111,6 +123,28 @@ export default async function UsersPage() {
                     {!u.sub ? <span className="ms-2 text-xs text-muted">טרם התחבר</span> : null}
                   </td>
                   <td className="px-3 py-3">{formatDateTime(u.lastLoginAt)}</td>
+                  <td className="px-3 py-3">
+                    {u.active ? (
+                      reviews.get(u.id)?.due ? (
+                        <form action={confirmUserAccess} className="flex flex-col items-start gap-1">
+                          <input type="hidden" name="id" value={u.id} />
+                          <button className={buttonClass("primary", "sm")}>
+                            אישור<span className="sr-only"> ההרשאה של {u.email} לחודש הזה</span>
+                          </button>
+                          <span className="text-xs text-muted">
+                            {reviews.get(u.id)?.lastReviewedAt ? `אחרון: ${formatDateTime(reviews.get(u.id)!.lastReviewedAt)}` : "לא אושר עדיין"}
+                          </span>
+                        </form>
+                      ) : (
+                        <span className="text-xs">
+                          <Badge tone="success">אושר</Badge>
+                          <span className="ms-1 text-muted">{formatDateTime(reviews.get(u.id)?.lastReviewedAt ?? null)}</span>
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-xs text-muted">—</span>
+                    )}
+                  </td>
                   <td className="px-3 py-3 text-end">
                     {locked ? null : (
                       <form action={setActive}>

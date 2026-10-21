@@ -1,14 +1,16 @@
-import { and, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, eq, gte, sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
+import { israelMidnight } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { auditLog } from "@/lib/db/schema";
+import { afterOpen, atLimit, dailyQuota, FILE_LIMITS, FILE_OPENED, FILE_REFUSED } from "@/lib/security/files";
 import { sf } from "@/lib/sf/client";
 
 /**
  * Serving one candidate file out of Salesforce. The routes decide *which* files
  * a request may reach (a candidate's own, or those of an email address's
  * person); everything after that decision is here, so both go through the same
- * rate limit, the same audit entry and the same sandboxing headers.
+ * daily limit (lib/security/files.ts), the same audit entry and the same sandboxing headers.
  */
 
 /** Types a browser may show in a tab; anything else is downloaded, never rendered. */
@@ -27,34 +29,12 @@ const DOWNLOAD: Record<string, string> = {
 const FILE_CSP = "sandbox; default-src 'none'; object-src 'self'";
 const PDF_CSP = "default-src 'none'; object-src 'self'";
 
-const OPENED = "candidate.file_opened";
-const THROTTLED = "candidate.file_rate_limited";
-// Plenty for screening by hand; a script pulling every CV hits it within minutes.
-const FILES_PER_HOUR = 60;
-
 /** The document id shape; the only one ever put into a Salesforce path. */
 export const isDocumentId = (v: string) => /^069[a-zA-Z0-9]{12,15}$/.test(v);
 
 /** A file name for display and download: the title, with the extension added only if the title lacks it. */
 export const fileName = (f: { title: string; extension: string | null }) =>
   f.extension && !f.title.toLowerCase().endsWith(`.${f.extension}`) ? `${f.title}.${f.extension}` : f.title;
-
-/**
- * How many files this user opened in the last hour, counted from the audit log
- * (indexed on actor, at), so the limit holds across restarts.
- */
-export async function fileQuota(email: string): Promise<{ ok: boolean; opened: number; refused: number }> {
-  const [row] = (await getDb()
-    .select({
-      opened: sql<number>`(count(*) filter (where ${auditLog.action} = ${OPENED}))::int`,
-      refused: sql<number>`(count(*) filter (where ${auditLog.action} = ${THROTTLED}))::int`,
-    })
-    .from(auditLog)
-    .where(
-      and(eq(auditLog.actor, email), inArray(auditLog.action, [OPENED, THROTTLED]), gt(auditLog.at, new Date(Date.now() - 3600_000))),
-    )) as [{ opened: number; refused: number }];
-  return { ok: row.opened < FILES_PER_HOUR, opened: row.opened, refused: row.refused };
-}
 
 export interface ServableFile {
   documentId: string;
@@ -64,22 +44,38 @@ export interface ServableFile {
 }
 
 /**
- * Streams the file, writes the audit entry and refuses once the hourly limit is
- * reached. `subject` is what the audit entry records it under — the candidate's
+ * Streams the file and writes the audit entry — or refuses once the day's limit is reached and
+ * asks the admins for more. `subject` is what the audit entry records it under — the candidate's
  * id, or the email address the file was found through.
  */
 export async function serveFile(userEmail: string, file: ServableFile, subject: string): Promise<Response> {
-  const quota = await fileQuota(userEmail);
-  if (!quota.ok) {
-    // One refusal entry an hour is the signal; a script retrying in a loop must not flood the log.
-    if (!quota.refused) await writeAudit(userEmail, THROTTLED, subject, { documentId: file.documentId, opened: quota.opened });
-    return new Response("נפתחו יותר מדי קבצים בשעה האחרונה. אפשר לנסות שוב מאוחר יותר.", { status: 429 });
+  const quota = await dailyQuota(userEmail);
+  if (quota.opened >= quota.allowed) {
+    // One refusal entry per file a day: a script retrying in a loop must not flood the log.
+    const [seen] = await getDb()
+      .select({ n: sql<number>`count(*)::int` })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.actor, userEmail),
+          eq(auditLog.action, FILE_REFUSED),
+          gte(auditLog.at, israelMidnight(quota.day)),
+          sql`${auditLog.details}->>'documentId' = ${file.documentId}`,
+        ),
+      );
+    if (!seen?.n) await writeAudit(userEmail, FILE_REFUSED, subject, { documentId: file.documentId, opened: quota.opened, allowed: quota.allowed });
+    await atLimit(userEmail, quota);
+    return new Response(
+      `הגעת למגבלה של ${quota.allowed} קבצי מועמדים להיום. מנהל המערכת קיבל הודעה, והוא יכול לאשר לך עוד ${FILE_LIMITS.grant} קבצים להיום.`,
+      { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8" } },
+    );
   }
 
   const upstream = await sf.downloadVersion(file.versionId);
   if (!upstream.ok || !upstream.body) return new Response("הקובץ לא זמין כרגע", { status: 502 });
 
-  await writeAudit(userEmail, OPENED, subject, { documentId: file.documentId });
+  await writeAudit(userEmail, FILE_OPENED, subject, { documentId: file.documentId });
+  await afterOpen(userEmail, quota);
 
   const ext = file.extension ?? "";
   const inline = INLINE[ext];

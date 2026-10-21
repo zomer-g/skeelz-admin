@@ -30,7 +30,11 @@ const ACTION_LABELS: Record<string, string> = {
   "smoov.campaign_removed": "קמפיין SMOOV הוסר ממעקב",
   "campaign.updated": "עדכון הגדרות קמפיין",
   "candidate.file_opened": "פתיחת קובץ של מועמד",
-  "candidate.file_rate_limited": "פתיחת קובץ נחסמה (מגבלת שעה)",
+  "candidate.file_rate_limited": "פתיחת קובץ נחסמה (מגבלה יומית)",
+  "files.quota_granted": "אושרו עוד קבצים להיום",
+  "security.alert_handled": "התראת אבטחה טופלה",
+  "access.reviewed": "אישור הרשאה חודשי",
+  "cvs.text_search": "חיפוש בתוך קורות חיים",
   "candidates.contacts_copied": "העתקת פרטי קשר של מועמדים",
   "text.updated": "עדכון טקסט",
   "text.restored": "שחזור גרסת טקסט",
@@ -77,6 +81,7 @@ function describeMcp(action: string, target: string | null, details: unknown): {
 
 const SCREEN_LABELS: [prefix: string, label: string][] = [
   ["/admin/users", "ניהול · משתמשים והרשאות"],
+  ["/admin/security", "ניהול · אבטחה"],
   ["/admin/integrations", "ניהול · מקורות נתונים"],
   ["/admin/api", "ניהול · API ומפתחות"],
   ["/admin/connections", "ניהול · חיבורים"],

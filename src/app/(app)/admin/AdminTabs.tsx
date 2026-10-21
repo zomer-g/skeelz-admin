@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 
 const TABS = [
   { href: "/admin/users", label: "משתמשים והרשאות" },
+  { href: "/admin/security", label: "אבטחה" },
   { href: "/admin/api", label: "API ומפתחות" },
   { href: "/admin/connections", label: "חיבורים" },
   { href: "/admin/mcp", label: "חיבורי MCP" },

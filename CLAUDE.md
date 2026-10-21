@@ -20,7 +20,13 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   The only pages without it hold no data: `/accessibility` and `/privacy` (public by law, framed by `PublicDoc`) and `not-found.tsx`.
 - **Security headers:** CSP and friends in `next.config.ts`. The browser loads nothing cross-origin (fonts self-hosted,
   GA/SMOOV/SF server-side only) — keep it that way or extend the CSP. The candidate file route sends its own sandboxing
-  CSP and is rate-limited (60 opens/hour per user, counted from the audit log).
+  CSP and is limited per Israel day (`src/lib/security/files.ts`): 20 files a user, an admin alert at the 10th, and an admin
+  grants 30 more at a time at `/admin/security`; counted from the audit log.
+- **Security & privacy duties** (`docs/cv-security.md`): every candidate-file open and every search inside CVs (with its
+  results, `cvs.text_search`) is logged; logs are kept 24 months and purged nightly (`purgeOldLogs`, `LOG_RETENTION_MONTHS`).
+  Admins confirm every active user's access each Israel month at `/admin/users` (`src/lib/security/reviews.ts`); open alerts and
+  due reviews show on every page for admins (`AdminAlerts`). `/privacy` renders the policy plus three admin-editable chapters:
+  `privacy-logs`, `database-definition`, `security-procedure` — keep them true when logging, limits or retention change.
 - **External API = SKEELZ Connect** (`docs/connect-api.md`, shared with the crm and site apps; contract, scopes and limits in
   `src/lib/api/spec.ts`, which also generates `/api/v1/openapi.json` (public) and the docs page `/api-docs`). Inbound
   `GET /api/v1/{ping,jobs,jobs/:id,metrics,site/jobs}` through `withApiKey(path, scope, handler)`: Bearer header only,

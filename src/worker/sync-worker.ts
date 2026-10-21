@@ -12,6 +12,7 @@
  */
 import { asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { deliverPending, detectCaseChanges, enqueueSyncFailures, maybeDailySummary } from "@/lib/api/outbound";
+import { LOG_RETENTION_MONTHS, purgeOldLogs } from "@/lib/audit";
 import { getDb } from "@/lib/db/client";
 import { syncRequests, syncRuns, syncState } from "@/lib/db/schema";
 import { ga4Configured } from "@/lib/google/ga4";
@@ -96,6 +97,13 @@ async function run(mode: JobMode, trigger: string): Promise<void> {
     return;
   }
   if (mode !== "reconcile") lastIncrementalAt = Date.now();
+  if (mode === "reconcile") {
+    // Nightly: the logs are kept for LOG_RETENTION_MONTHS (stated in the privacy policy), then deleted.
+    await safely("log retention", async () => {
+      const removed = await purgeOldLogs();
+      if (removed) log(`log retention: removed ${removed} entries older than ${LOG_RETENTION_MONTHS} months`);
+    });
+  }
   const summary = await runSync(mode, trigger);
   if (summary.locked) {
     log(`${mode} skipped: another sync holds the lock`);

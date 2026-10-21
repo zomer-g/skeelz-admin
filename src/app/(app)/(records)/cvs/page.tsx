@@ -35,7 +35,7 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
   };
   const page = pageParam(search);
   const sort = sortParam(search, CV_SORTS, "received");
-  const { rows, total, unhandled, textSearch } = await searchCvs(filters, { page, sort });
+  const { rows, total, unhandled, textSearch } = await searchCvs(filters, { page, sort, who: { actor: auth.user.email, via: "screen" } });
   const access = await loadFileAccess(rows.map((r) => r.documentId));
   const values: Record<string, string> = {
     q: filters.q,

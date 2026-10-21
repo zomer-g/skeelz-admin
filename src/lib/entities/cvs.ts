@@ -1,4 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
+import { writeAudit } from "@/lib/audit";
 import { logError } from "@/lib/log";
 import { RECORD_TYPES } from "@/lib/metrics/candidates";
 import { salesforceConfigured, sf } from "@/lib/sf/client";
@@ -170,6 +171,30 @@ export async function findInFiles(text: string): Promise<Set<string> | null> {
   }
 }
 
+/** Who is searching, so a search inside the files is logged in full: what was asked and what came back. */
+export interface SearchActor {
+  actor: string;
+  via: "screen" | "mcp";
+}
+
+/** How many of the results a log entry lists by name. */
+const LOGGED_RESULTS = 200;
+
+async function logTextSearch(f: CvFilters, found: Set<string> | null, where: SQL, total: number, who: SearchActor): Promise<void> {
+  const rows = found
+    ? await run(sql`${CVS} SELECT v.document_id, v.title, v.name, v.email FROM cv v WHERE ${where} ORDER BY v.received_at DESC NULLS LAST LIMIT ${LOGGED_RESULTS}`)
+    : [];
+  const { text, ...filters } = f;
+  await writeAudit(who.actor, "cvs.text_search", text, {
+    via: who.via,
+    filters: Object.fromEntries(Object.entries(filters).filter(([, v]) => v)),
+    // How many files Salesforce's index matched, and how many of them passed the other filters.
+    matched: found?.size ?? null,
+    results: total,
+    files: rows.map((r) => ({ documentId: String(r.document_id), title: str(r.title), name: str(r.name), email: str(r.email) })),
+  });
+}
+
 function whereOf(f: CvFilters, found: Set<string> | null): SQL {
   const parts: SQL[] = [sql`true`];
   if (f.q) {
@@ -192,7 +217,7 @@ function whereOf(f: CvFilters, found: Set<string> | null): SQL {
 
 export async function searchCvs(
   f: CvFilters,
-  { page = 1, pageSize = PAGE_SIZE, sort }: { page?: number; pageSize?: number; sort?: Sort } = {},
+  { page = 1, pageSize = PAGE_SIZE, sort, who }: { page?: number; pageSize?: number; sort?: Sort; who?: SearchActor } = {},
 ): Promise<{ rows: CvRow[]; total: number; unhandled: number; textSearch: "ok" | "unavailable" | null }> {
   const found = f.text ? await findInFiles(f.text) : null;
   const where = whereOf(f, found);
@@ -202,6 +227,7 @@ export async function searchCvs(
              LIMIT ${pageSize} OFFSET ${(page - 1) * pageSize}`),
     run(sql`${CVS} SELECT count(*) AS n, count(*) FILTER (WHERE v.unhandled) AS unhandled FROM cv v WHERE ${where}`),
   ]);
+  if (f.text && who) await logTextSearch(f, found, where, num(count[0]?.n), who);
   return {
     rows: rows.map(toRow),
     total: num(count[0]?.n),
@@ -252,7 +278,7 @@ export interface CvSummary {
 }
 
 /** The figures behind the list, for the MCP and the page header: under the same filters. */
-export async function cvSummary(f: CvFilters): Promise<CvSummary & { textSearch: "ok" | "unavailable" | null }> {
+export async function cvSummary(f: CvFilters, who?: SearchActor): Promise<CvSummary & { textSearch: "ok" | "unavailable" | null }> {
   const found = f.text ? await findInFiles(f.text) : null;
   const where = whereOf(f, found);
   const [totals, months, cases] = await Promise.all([
@@ -269,6 +295,7 @@ export async function cvSummary(f: CvFilters): Promise<CvSummary & { textSearch:
     run(sql`WITH ${UNHANDLED} SELECT count(*) AS n FROM unhandled`),
   ]);
   const t = totals[0] ?? {};
+  if (f.text && who) await logTextSearch(f, found, where, num(t.files), who);
   return {
     files: num(t.files),
     people: num(t.people),

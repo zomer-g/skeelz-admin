@@ -505,7 +505,7 @@ const TOOLS: Tool[] = [
     },
     run: async (a, ctx) => {
       const { page, pageSize } = paging(a);
-      const result = await searchCvs(cvArgs(a), { page, pageSize, sort: mcpSort(a, CV_SORTS, "received") });
+      const result = await searchCvs(cvArgs(a), { page, pageSize, sort: mcpSort(a, CV_SORTS, "received"), who: { actor: ctx.principal.person.email, via: "mcp" } });
       return {
         total: result.total,
         unhandled_in_result: result.unhandled,
@@ -535,7 +535,10 @@ const TOOLS: Tool[] = [
       from: dayField("Arrived on or after"),
       to: dayField("Arrived on or before"),
     },
-    run: async (a, ctx) => ({ ...(await cvSummary(cvArgs(a))), list_url: link(ctx, `/cvs?${cvQuery(a)}`) }),
+    run: async (a, ctx) => ({
+      ...(await cvSummary(cvArgs(a), { actor: ctx.principal.person.email, via: "mcp" })),
+      list_url: link(ctx, `/cvs?${cvQuery(a)}`),
+    }),
   },
 
   /* ---------------------------------------------------------- employer leads */

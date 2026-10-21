@@ -59,6 +59,52 @@ export const invites = pgTable(
   ],
 );
 
+/** Extra candidate files an admin let one user open on one Israel day, on top of the daily limit (lib/security/files.ts). */
+export const fileQuotaGrants = pgTable(
+  "file_quota_grants",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userEmail: text("user_email").notNull(),
+    day: date("day").notNull(),
+    extra: integer("extra").notNull(),
+    grantedBy: text("granted_by").notNull(),
+    grantedAt: ts("granted_at").notNull().defaultNow(),
+  },
+  (t) => [index("file_quota_grants_user_day_idx").on(t.userEmail, t.day)],
+);
+
+/**
+ * Alerts for the admins: a user opened many candidate files today, or reached the day's limit and
+ * waits for more. One per kind, user, day and threshold; handled when an admin acts on it.
+ */
+export const securityAlerts = pgTable(
+  "security_alerts",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    kind: text("kind").notNull(),
+    userEmail: text("user_email").notNull(),
+    day: date("day").notNull(),
+    threshold: integer("threshold").notNull(),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    handledAt: ts("handled_at"),
+    handledBy: text("handled_by"),
+  },
+  (t) => [uniqueIndex("security_alerts_once_idx").on(t.kind, t.userEmail, t.day, t.threshold)],
+);
+
+/** An admin confirmed a user's access and role, as the monthly review requires (lib/security/reviews.ts). */
+export const accessReviews = pgTable(
+  "access_reviews",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id").notNull(),
+    role: text("role").notNull(),
+    reviewedBy: text("reviewed_by").notNull(),
+    reviewedAt: ts("reviewed_at").notNull().defaultNow(),
+  },
+  (t) => [index("access_reviews_user_idx").on(t.userId, t.reviewedAt)],
+);
+
 /** Sign-ins that were refused, so an admin can approve them with one click. */
 export const accessRequests = pgTable("access_requests", {
   email: text("email").primaryKey(),
