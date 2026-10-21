@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "קורות חיים" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/cvs";
-const KEYS = ["q", "text", "unhandled", "source", "kind", "from", "to", "sort", "dir", "page"];
+const KEYS = ["q", "text", "source", "kind", "from", "to", "sort", "dir", "page"];
 
 /** Every CV in one list: on Contacts, on CV and application Cases, and on their emails (lib/entities/cvs.ts). */
 export default async function CvsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
@@ -27,7 +27,8 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
   const filters: CvFilters = {
     q: param(search, "q"),
     text: param(search, "text", 100),
-    unhandled: choice(search, "unhandled", ["yes", "no"] as const),
+    // "Never handled" is kept for the data and the MCP only; the screen does not show it.
+    unhandled: "",
     source: choice(search, "source", CV_SOURCES),
     kind: param(search, "kind") === "all" ? "all" : "",
     fromDay: dayParam(search, "from"),
@@ -35,18 +36,16 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
   };
   const page = pageParam(search);
   const sort = sortParam(search, CV_SORTS, "received");
-  const { rows, total, unhandled, textSearch } = await searchCvs(filters, { page, sort, who: { actor: auth.user.email, via: "screen" } });
+  const { rows, total, textSearch } = await searchCvs(filters, { page, sort, who: { actor: auth.user.email, via: "screen" } });
   const access = await loadFileAccess(rows.map((r) => r.documentId));
   const values: Record<string, string> = {
     q: filters.q,
     text: filters.text,
-    unhandled: filters.unhandled,
     source: filters.source,
     kind: filters.kind,
     from: filters.fromDay,
     to: filters.toDay,
   };
-  const unhandledHref = `${ACTION}?${new URLSearchParams(Object.entries({ ...values, unhandled: "yes" }).filter(([, v]) => v)).toString()}`;
 
   return (
     <>
@@ -56,16 +55,7 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
         values={values}
         fields={[
           { kind: "text", name: "q", label: "חיפוש", placeholder: "שם, מייל, שם הקובץ או מספר Case", wide: true },
-          { kind: "text", name: "text", label: "חיפוש בתוך הקבצים", placeholder: 'למשל: אקסל, הנהלת חשבונות, "שירות לקוחות"', wide: true },
-          {
-            kind: "select",
-            name: "unhandled",
-            label: "טיפול",
-            options: [
-              { value: "yes", label: "לא טופלו (נסגרו בסגירה הגורפת)" },
-              { value: "no", label: "כל השאר" },
-            ],
-          },
+          { kind: "text", name: "text", label: "חיפוש בתוך הקבצים", placeholder: "למשל: אקסל, הנהלת חשבונות", wide: true },
           { kind: "select", name: "source", label: "איפה הקובץ", options: CV_SOURCES.map((s) => ({ value: s, label: CV_SOURCE_LABELS[s] })) },
           { kind: "date", name: "from", label: "הגיעו מתאריך" },
           { kind: "date", name: "to", label: "עד תאריך" },
@@ -78,17 +68,6 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
         </p>
       ) : null}
       <Card title={`קורות חיים · ${fmtInt(total)}`}>
-        <p className="mb-4 flex flex-wrap items-center gap-2 text-sm">
-          <span className="inline-block h-3 w-5 rounded-e-[4px] bg-hot" aria-hidden />
-          <span>
-            {fmtInt(unhandled)} מהם הגיעו ב-Case שלא טופל: אף אחד לא שייך אותו לאיש קשר, שינה את סוגו או את הסטטוס שלו, והוא נסגר בסגירה הגורפת של 14.10.2026.
-          </span>
-          {filters.unhandled !== "yes" && unhandled ? (
-            <Link href={unhandledHref} className="font-medium text-accent-dark underline underline-offset-4">
-              להציג רק אותם
-            </Link>
-          ) : null}
-        </p>
         <Table
           head={[
             { label: "הגיע", sort: "received" },
@@ -103,15 +82,8 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
           empty={rows.length === 0 ? (filters.text ? "לא נמצאו קבצים שמכילים את זה" : "לא נמצאו קבצים") : undefined}
         >
           {rows.map((r) => (
-            <tr key={r.documentId} className={r.unhandled ? "bg-hot/25" : undefined}>
-              <td className="whitespace-nowrap px-3 py-2 tabular-nums">
-                {r.receivedAt ? fmtDate(r.receivedAt) : "—"}
-                {r.unhandled ? (
-                  <p className="mt-1">
-                    <Badge tone="warning">לא טופל</Badge>
-                  </p>
-                ) : null}
-              </td>
+            <tr key={r.documentId}>
+              <td className="whitespace-nowrap px-3 py-2 tabular-nums">{r.receivedAt ? fmtDate(r.receivedAt) : "—"}</td>
               <td className="px-3 py-2">
                 {r.email ? (
                   <Link href={emailPath(r.email)} className="font-medium underline-offset-4 hover:underline" dir="auto">

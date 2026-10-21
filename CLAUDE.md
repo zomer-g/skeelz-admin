@@ -93,7 +93,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   counted in every place it is linked, and when nothing is found the box says what was checked.
   **All CVs** (`/cvs`, `src/lib/entities/cvs.ts`): one row per file, from the mirrored file links (`sf_file_link`, filled by
   `src/lib/sf/sync-files.ts` after the other objects — metadata only, never the files). "Never handled" = a CV Case touched by
-  nobody but the 14.10.2026 bulk closure (`BULK_CLOSURE`; what that user's automation sets in the first 10 minutes is not
+  nobody but the 14.10.2026 bulk closure — internal: in the data and MCP only, never shown on screen (`BULK_CLOSURE`; what that user's automation sets in the first 10 minutes is not
   handling). Words inside files are searched live with SOSL (`sf.search`). Who opened each file is read back from the audit
   log (`src/lib/entities/file-access.ts`, partial index `audit_log_file_idx`): the "פתיחות" column and `/cvs/[documentId]`.
   Security plan for the CV data: `docs/cv-security.md`.

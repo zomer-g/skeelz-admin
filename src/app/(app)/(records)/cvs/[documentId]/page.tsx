@@ -35,7 +35,6 @@ export default async function CvPage({ params }: { params: Promise<{ documentId:
         subtitle={<span>{cv.name ?? cv.email ?? "—"}</span>}
         badges={
           <>
-            {cv.unhandled ? <Badge tone="warning">לא טופל</Badge> : null}
             <Badge>{fmtInt(opens.length)} פתיחות</Badge>
             {cv.extension ? <span className="text-muted">{cv.extension.toUpperCase()} · {fileSize(cv.size)}</span> : null}
           </>
@@ -55,7 +54,6 @@ export default async function CvPage({ params }: { params: Promise<{ documentId:
               ["מייל", cv.email ? <span dir="ltr">{cv.email}</span> : null],
               ["הגיע", cv.receivedAt ? fmtDate(cv.receivedAt) : null],
               ["Case", cv.caseNumber ? `${cv.caseNumber}${cv.caseType ? ` · ${cv.caseType}` : ""}${cv.caseStatus ? ` · ${cv.caseStatus}` : ""}` : null],
-              ["טופל", cv.caseId ? (cv.unhandled ? "לא: ה-Case נסגר בסגירה הגורפת בלי שאיש טיפל בו" : "כן") : null],
             ]}
           />
         </Card>
