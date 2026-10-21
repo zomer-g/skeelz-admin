@@ -7,6 +7,7 @@ import { viewPath } from "@/lib/dashboard/params";
 import { fileSize } from "@/lib/entities/cv";
 import { CV_SORTS, CV_SOURCE_LABELS, CV_SOURCES, searchCvs, type CvFilters } from "@/lib/entities/cvs";
 import { emailPath } from "@/lib/entities/emails";
+import { loadFileAccess } from "@/lib/entities/file-access";
 import { choice, dayParam, PAGE_SIZE, pageParam, param, sfRecordUrl, type SearchParams } from "@/lib/entities/search";
 import { sortParam, tableSort } from "@/lib/entities/sort";
 import { fmtDate, fmtInt } from "@/lib/format";
@@ -35,6 +36,7 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
   const page = pageParam(search);
   const sort = sortParam(search, CV_SORTS, "received");
   const { rows, total, unhandled, textSearch } = await searchCvs(filters, { page, sort });
+  const access = await loadFileAccess(rows.map((r) => r.documentId));
   const values: Record<string, string> = {
     q: filters.q,
     text: filters.text,
@@ -95,6 +97,7 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
             "איפה",
             "Case",
             { label: "גודל", sort: "size" },
+            "פתיחות",
           ]}
           sort={tableSort(CV_SORTS, sort, ACTION, values)}
           empty={rows.length === 0 ? (filters.text ? "לא נמצאו קבצים שמכילים את זה" : "לא נמצאו קבצים") : undefined}
@@ -159,13 +162,20 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
                 )}
               </td>
               <td className="whitespace-nowrap px-3 py-2 tabular-nums text-xs">{fileSize(r.size)}</td>
+              <td className="whitespace-nowrap px-3 py-2 text-xs">
+                <Link href={`/cvs/${r.documentId}`} className="underline underline-offset-2">
+                  {access.get(r.documentId) ? `${fmtInt(access.get(r.documentId)!.opens)} · ${fmtDate(access.get(r.documentId)!.lastAt)}` : "לא נפתח"}
+                  <span className="sr-only"> · יומן הגישה ל{r.title ?? "קובץ"}</span>
+                </Link>
+                {access.get(r.documentId)?.lastBy ? <p className="text-muted" dir="ltr">{access.get(r.documentId)!.lastBy}</p> : null}
+              </td>
             </tr>
           ))}
         </Table>
         <Pager action={ACTION} values={{ ...values, sort: sort.key, dir: sort.dir }} page={page} pageSize={PAGE_SIZE} total={total} />
         <p className="mt-3 text-xs text-muted">
-          רשימת הקבצים מסונכרנת מ-Salesforce (רק הפרטים, לא הקבצים עצמם). קובץ נפתח דרך דף המועמד או הכתובת, וכל פתיחה נרשמת ביומן הפעילות. החיפוש בתוך הקבצים
-          נעשה באינדקס של Salesforce.
+          רשימת הקבצים מסונכרנת מ-Salesforce (רק הפרטים, לא הקבצים עצמם). כל פתיחה של קובץ נרשמת: &quot;פתיחות&quot; מראה כמה פעמים נפתח, מתי לאחרונה ועל ידי מי,
+          ולחיצה עליה פותחת את יומן הגישה המלא של הקובץ. החיפוש בתוך הקבצים נעשה באינדקס של Salesforce.
         </p>
       </Card>
     </>

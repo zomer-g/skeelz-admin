@@ -79,7 +79,14 @@ export const auditLog = pgTable(
     target: text("target"),
     details: jsonb("details"),
   },
-  (t) => [index("audit_log_at_idx").on(t.at), index("audit_log_actor_at_idx").on(t.actor, t.at)],
+  (t) => [
+    index("audit_log_at_idx").on(t.at),
+    index("audit_log_actor_at_idx").on(t.actor, t.at),
+    // Who opened each candidate file: read per file on /cvs and /cvs/[documentId].
+    index("audit_log_file_idx")
+      .on(sql`(${t.details}->>'documentId')`, t.at)
+      .where(sql`${t.action} IN ('candidate.file_opened', 'candidate.file_rate_limited')`),
+  ],
 );
 
 /* -------------------------------------------------------------- salesforce */

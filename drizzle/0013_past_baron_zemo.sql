@@ -1,0 +1,1 @@
+CREATE INDEX "audit_log_file_idx" ON "audit_log" USING btree (("details"->>'documentId'),"at") WHERE "audit_log"."action" IN ('candidate.file_opened', 'candidate.file_rate_limited');

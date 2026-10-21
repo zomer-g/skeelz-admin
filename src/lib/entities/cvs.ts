@@ -14,11 +14,14 @@ import { orderBy, type Sort, type SortColumn } from "./sort";
  * "Never handled": a stretch of CVs went unanswered. Those are CV Cases that the staff never
  * touched — nobody set their Contact, changed their type or owner, or moved their status — and
  * that were closed in the bulk closure of 14.10.2026. Their history holds only their creation and
- * that closure (and any other status change by the same user).
+ * that closure (and any other status change by the same user), apart from what the automation set on arrival.
  */
 
 /** The bulk closure of untouched CV Cases: who did it, and on which Israel day. */
 export const BULK_CLOSURE = { userId: "0058d000006jfKjAAI", day: "2026-10-14" } as const;
+
+/** Changes that user's automation makes this soon after a Case is created are not handling. */
+const AUTOMATION_MINUTES = 10;
 
 /** Document types a CV comes in. Anything else (images, archives, mail parts) shows only under "all files". */
 export const CV_EXTENSIONS = ["pdf", "doc", "docx", "rtf", "odt", "txt", "pages"];
@@ -73,7 +76,11 @@ const UNHANDLED = sql`
        AND NOT EXISTS (
          SELECT 1 FROM sf_case_history h
           WHERE h.case_id = a.id AND h.field <> 'created'
-            AND NOT (h.field = 'Status' AND h.created_by_id = ${BULK_CLOSURE.userId}))
+            -- The same user's status changes are the closure itself.
+            AND NOT (h.field = 'Status' AND h.created_by_id = ${BULK_CLOSURE.userId})
+            -- Email-to-Case and its flows run as that user too: what they set on arrival (the type
+            -- "קורות חיים", the owner, the Contact) is automation, not handling.
+            AND NOT (h.created_by_id = ${BULK_CLOSURE.userId} AND h.created_date <= a.created_date + interval '${sql.raw(String(AUTOMATION_MINUTES))} minutes'))
   )`;
 
 /** One row per file, with its person and its Case (a CV Case first). */
@@ -200,6 +207,38 @@ export async function searchCvs(
     total: num(count[0]?.n),
     unhandled: num(count[0]?.unhandled),
     textSearch: f.text ? (found ? "ok" : "unavailable") : null,
+  };
+}
+
+export interface CvLink {
+  type: CvSourceKind;
+  /** The Contact, Case or email the file hangs on. */
+  entityId: string;
+  /** For an email: its Case, subject and date. */
+  caseId: string | null;
+  subject: string | null;
+  at: Date | null;
+}
+
+/** One file, with every place it hangs. null when the mirror does not know it. */
+export async function loadCv(documentId: string): Promise<{ cv: CvRow; links: CvLink[] } | null> {
+  if (!/^069[a-zA-Z0-9]{12,15}$/.test(documentId)) return null;
+  const [row] = await run(sql`${CVS} SELECT v.* FROM cv v WHERE v.document_id = ${documentId}`);
+  if (!row) return null;
+  const links = await run(sql`
+    SELECT l.entity_type, l.linked_entity_id, m.parent_id, m.subject, m.message_date
+      FROM sf_file_link l LEFT JOIN sf_email_message m ON l.entity_type = 'email' AND m.id = l.linked_entity_id
+     WHERE l.document_id = ${documentId}
+     ORDER BY m.message_date NULLS FIRST`);
+  return {
+    cv: toRow(row),
+    links: links.map((l) => ({
+      type: String(l.entity_type) as CvSourceKind,
+      entityId: String(l.linked_entity_id),
+      caseId: l.entity_type === "case" ? String(l.linked_entity_id) : str(l.parent_id),
+      subject: str(l.subject),
+      at: asDate(l.message_date),
+    })),
   };
 }
 

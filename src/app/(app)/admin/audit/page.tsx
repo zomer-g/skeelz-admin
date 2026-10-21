@@ -30,6 +30,8 @@ const ACTION_LABELS: Record<string, string> = {
   "smoov.campaign_removed": "קמפיין SMOOV הוסר ממעקב",
   "campaign.updated": "עדכון הגדרות קמפיין",
   "candidate.file_opened": "פתיחת קובץ של מועמד",
+  "candidate.file_rate_limited": "פתיחת קובץ נחסמה (מגבלת שעה)",
+  "candidates.contacts_copied": "העתקת פרטי קשר של מועמדים",
   "text.updated": "עדכון טקסט",
   "text.restored": "שחזור גרסת טקסט",
   "preview.started": "צפייה בהרשאה נמוכה",
