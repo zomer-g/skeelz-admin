@@ -16,3 +16,6 @@ docs/sf-schema-report.md
 
 # Local credential files (Google service-account key)
 .secrets/
+
+# Throwaway research scripts (they print Salesforce data)
+scripts/tmp-*

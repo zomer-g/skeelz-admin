@@ -118,7 +118,7 @@ async function resolveUser(identity: Identity): Promise<SessionUser | null> {
 
   // An email is bound to the Google account that first used it.
   if (row.sub && row.sub !== identity.sub && identity.sub !== "dev-local") {
-    console.warn(`[auth] ${email} presented a different Google subject; refusing`);
+    console.warn(`[auth] user ${row.id} presented a different Google subject; refusing`);
     await auditSubjectMismatch(email, identity.sub);
     return null;
   }

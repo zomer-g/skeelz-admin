@@ -6,6 +6,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { Pool } from "pg";
+import { errorCode } from "../src/lib/log";
 
 async function main() {
   const url = process.env.DATABASE_URL;
@@ -21,7 +22,8 @@ async function main() {
   }
 }
 
-main().catch((err: Error) => {
-  console.error("[migrate] FAILED:", err.stack ?? err.message);
+main().catch((err: unknown) => {
+  // Only a code: a database error's message carries the SQL and its values.
+  console.error(`[migrate] FAILED: ${errorCode(err)}`);
   process.exit(1);
 });

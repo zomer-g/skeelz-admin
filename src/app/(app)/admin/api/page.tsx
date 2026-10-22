@@ -1,4 +1,4 @@
-import { desc } from "drizzle-orm";
+import { desc, getTableColumns } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { McpConnectInfo } from "@/components/McpConnectInfo";
@@ -30,7 +30,9 @@ export default async function ApiKeysPage() {
   const auth = await pageAuth("admin", "/admin/api");
   if (!auth.ok) return auth.render;
 
-  const keys = await getDb().select().from(apiKeys).orderBy(desc(apiKeys.createdAt));
+  // Every column but the hash: it is never shown, so it is never read.
+  const { hash: _hash, ...shown } = getTableColumns(apiKeys);
+  const keys = await getDb().select(shown).from(apiKeys).orderBy(desc(apiKeys.createdAt));
   const configured = new Set(legacyKeys().map((k) => k.env));
   const now = Date.now();
 

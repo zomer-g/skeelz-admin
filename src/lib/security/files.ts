@@ -14,11 +14,16 @@ export const FILE_LIMITS = { daily: 20, alertAt: 10, grant: 30 } as const;
 export const FILE_OPENED = "candidate.file_opened";
 export const FILE_REFUSED = "candidate.file_rate_limited";
 
-export type AlertKind = "files_many" | "files_limit";
+/** files_*: candidate files (this module); export_*: people's contact details taken out in bulk (lib/security/exports.ts). */
+export type AlertKind = "files_many" | "files_limit" | "export_many" | "export_limit";
 export const ALERT_LABELS: Record<AlertKind, string> = {
   files_many: `פתח ${FILE_LIMITS.alertAt} קבצי מועמדים היום`,
   files_limit: "הגיע למגבלת הקבצים היומית ומבקש עוד",
+  export_many: "ייצא היום פרטי קשר של מועמדים רבים",
+  export_limit: "הגיע למגבלת הייצוא היומית ומבקש עוד",
 };
+/** Which limit an alert belongs to, so the admin screen offers the right grant. */
+export const alertFamily = (kind: AlertKind): "files" | "exports" => (kind.startsWith("export") ? "exports" : "files");
 
 export interface DailyQuota {
   day: string;

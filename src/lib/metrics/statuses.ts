@@ -89,6 +89,12 @@ const ORDER = [
   STATUS.rejectedByUs,
 ];
 
+/** Where a status sorts: pipeline order for the known ones, then the rest. */
+export function statusRank(s: string): number {
+  const i = ORDER.indexOf(s);
+  return i === -1 ? ORDER.length : i;
+}
+
 export function statusSummary(
   facts: ApplicationFacts[],
   histories: Map<string, StatusHistory>,
@@ -119,9 +125,5 @@ export function statusSummary(
       row(now).current++;
     }
   }
-  const rank = (s: string) => {
-    const i = ORDER.indexOf(s);
-    return i === -1 ? ORDER.length : i;
-  };
-  return { rows: [...rows.values()].sort((a, b) => rank(a.status) - rank(b.status) || b.entered - a.entered), total };
+  return { rows: [...rows.values()].sort((a, b) => statusRank(a.status) - statusRank(b.status) || b.entered - a.entered), total };
 }

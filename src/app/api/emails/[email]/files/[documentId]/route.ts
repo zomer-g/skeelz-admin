@@ -21,7 +21,12 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ema
   }
 
   const { email, documentId } = await params;
-  const address = normEmail(decodeURIComponent(email));
+  let address: string | null = null;
+  try {
+    address = normEmail(decodeURIComponent(email));
+  } catch {
+    // A malformed percent-sequence is no address.
+  }
   if (!address || !isDocumentId(documentId)) return new Response("Not found", { status: 404 });
 
   const { files } = await loadEmailCvs(address);

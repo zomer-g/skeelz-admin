@@ -74,6 +74,23 @@ export const fileQuotaGrants = pgTable(
 );
 
 /**
+ * An admin let a user hand over another batch of people's contact details today (the copy
+ * buttons on /candidates and /cvs, and the MCP tools that list people) — lib/security/exports.ts.
+ */
+export const exportQuotaGrants = pgTable(
+  "export_quota_grants",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userEmail: text("user_email").notNull(),
+    day: date("day").notNull(),
+    extra: integer("extra").notNull(),
+    grantedBy: text("granted_by").notNull(),
+    grantedAt: ts("granted_at").notNull().defaultNow(),
+  },
+  (t) => [index("export_quota_grants_user_day_idx").on(t.userEmail, t.day)],
+);
+
+/**
  * Alerts for the admins: a user opened many candidate files today, or reached the day's limit and
  * waits for more. One per kind, user, day and threshold; handled when an admin acts on it.
  */
@@ -274,6 +291,28 @@ export const sfFileLink = pgTable(
   },
   (t) => [index("sf_file_link_document_idx").on(t.documentId), index("sf_file_link_entity_idx").on(t.linkedEntityId)],
 );
+
+/**
+ * Which topics (lib/cv-topics.ts) each file matches, by Salesforce's full-text index: the topic or
+ * group, and the phrases found. Replaced whole on every refresh (lib/sf/sync-topics.ts). Holds ids
+ * and phrases only — never text from the files.
+ */
+export const cvTopics = pgTable(
+  "cv_topics",
+  {
+    documentId: sfId("document_id").notNull(),
+    topicId: text("topic_id").notNull(),
+    phrases: text("phrases").array().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.documentId, t.topicId] }), index("cv_topics_topic_idx").on(t.topicId)],
+);
+
+/** Which files the topics were searched in, and under which version of the topic list — so each file is searched once. */
+export const cvTopicScans = pgTable("cv_topic_scans", {
+  documentId: sfId("document_id").primaryKey(),
+  version: text("version").notNull(),
+  scannedAt: ts("scanned_at").notNull().defaultNow(),
+});
 
 /** Email metadata only — bodies are never copied. */
 export const sfEmailMessage = pgTable(

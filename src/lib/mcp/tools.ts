@@ -13,7 +13,8 @@ import { CANDIDATE_SORTS, loadCandidate, searchCandidates } from "@/lib/entities
 import { COMPANY_SORTS, loadCompany, loadJobDetails, searchCompanies } from "@/lib/entities/companies";
 import { startDir, type Sort, type SortColumn } from "@/lib/entities/sort";
 import { casePath, loadEmailCases, loadEmailContacts, normEmail } from "@/lib/entities/emails";
-import { CV_SORTS, CV_SOURCES, cvSummary, searchCvs, type CvFilters } from "@/lib/entities/cvs";
+import { ALL_TOPIC_IDS, isTopicId, TOPIC_GROUPS, TOPICS } from "@/lib/cv-topics";
+import { CV_SORTS, CV_SOURCES, cvSummary, cvTopicCounts, searchCvs, type CvFilters } from "@/lib/entities/cvs";
 import { LEAD_SORTS, searchLeads } from "@/lib/entities/leads";
 import { AREA_VALUES, NAPA_VALUES } from "@/lib/geo/filters";
 import { SKILLS } from "@/lib/skills";
@@ -65,6 +66,11 @@ interface Tool {
   writes?: boolean;
   /** Loads every application or job: counted against a tighter per-person limit. */
   heavy?: boolean;
+  /**
+   * How many people's details (name, email, phone…) a result carries. Counted against the
+   * person's daily export budget (lib/security/exports.ts) and logged as mcp.people_listed.
+   */
+  people?: (result: unknown) => number;
   fields: Fields;
   required?: readonly string[];
   run: (a: Record<string, ArgValue>, ctx: ToolContext) => Promise<unknown>;
@@ -113,12 +119,17 @@ function dayRange(a: Record<string, ArgValue>, defaultDays: number): { fromDay: 
 function cvArgs(a: Record<string, ArgValue>): CvFilters {
   const source = s(a.source);
   const unhandled = s(a.unhandled);
+  const topic = s(a.topic);
+  if (topic && !isTopicId(topic)) throw new ArgError("unknown topic; cv_topics lists them");
   return {
     q: s(a.q),
     text: s(a.text),
+    topic,
     unhandled: unhandled === "yes" || unhandled === "no" ? unhandled : "",
     source: (CV_SOURCES as readonly string[]).includes(source) ? (source as CvFilters["source"]) : "",
     kind: a.all_files === true ? "all" : "",
+    area: (AREA_VALUES as readonly string[]).includes(s(a.area)) ? s(a.area) : "",
+    napa: NAPA_VALUES.includes(s(a.napa)) ? s(a.napa) : "",
     fromDay: s(a.from),
     toDay: s(a.to),
   };
@@ -127,9 +138,21 @@ function cvArgs(a: Record<string, ArgValue>): CvFilters {
 /** The same filters as a /cvs query string, so the answer can link to the list. */
 function cvQuery(a: Record<string, ArgValue>): string {
   const f = cvArgs(a);
-  const q = new URLSearchParams({ q: f.q, text: f.text, unhandled: f.unhandled, source: f.source, kind: f.kind, from: f.fromDay, to: f.toDay });
+  const q = new URLSearchParams({ q: f.q, text: f.text, topic: f.topic, unhandled: f.unhandled, source: f.source, kind: f.kind, area: f.area, napa: f.napa, from: f.fromDay, to: f.toDay });
   return new URLSearchParams([...q].filter(([, v]) => v)).toString();
 }
+
+const cvPlaceFields: Fields = {
+  area: { type: "string", enum: [...AREA_VALUES], description: "Where the person lives (their Contact), CBS district: 1 ירושלים, 2 הצפון, 3 חיפה, 4 המרכז, 5 תל אביב, 6 הדרום, 7 יהודה ושומרון; or unknown." },
+  napa: { type: "string", enum: NAPA_VALUES, description: "Where the person lives, CBS sub-district (נפה) code, e.g. 51 תל אביב, 52 רמת גן, 42 פתח תקווה." },
+};
+
+const topicField: Fields[string] = {
+  type: "string",
+  enum: ALL_TOPIC_IDS,
+  description:
+    "A profession or skill topic: files whose text holds one of its phrases (every Hebrew prefix and spelling), e.g. social.work, law.lawyer, finance.cpa, or a whole group such as eng. cv_topics lists them with their phrases and counts.",
+};
 
 const scopeField: Fields[string] = {
   type: "string",
@@ -406,6 +429,7 @@ const TOOLS: Tool[] = [
       );
       return { total: result.total, page, applications: result.rows.map((r) => ({ ...r, admin_url: link(ctx, `/applications/${r.id}`) })) };
     },
+    people: (r) => (r as { applications: unknown[] }).applications.length,
   },
   {
     name: "get_application",
@@ -421,6 +445,7 @@ const TOOLS: Tool[] = [
       if (!application) throw new NotFound("no application with this id");
       return { ...application, timeline: await loadCaseTimeline(id), admin_url: link(ctx, `/applications/${id}`) };
     },
+    people: () => 1,
   },
 
   /* ---------------------------------------------------------- candidates */
@@ -466,6 +491,7 @@ const TOOLS: Tool[] = [
       );
       return { total: result.total, page, candidates: result.rows.map((r) => ({ ...r, admin_url: link(ctx, `/candidates/${r.id}`) })) };
     },
+    people: (r) => (r as { candidates: unknown[] }).candidates.length,
   },
   {
     name: "get_candidate",
@@ -481,6 +507,7 @@ const TOOLS: Tool[] = [
       const apps = await searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", contactId: id }, { pageSize: 50 });
       return { ...candidate, applications: apps.rows, applications_total: apps.total, admin_url: link(ctx, `/candidates/${id}`) };
     },
+    people: () => 1,
   },
   /* ------------------------------------------------------------- CVs */
   {
@@ -489,14 +516,17 @@ const TOOLS: Tool[] = [
     description:
       "Candidate files (CVs) wherever they sit in Salesforce — on the Contact, on a CV (קורות חיים) or application Case, or on an email of one — newest first, one row per file, with the person and the Case. " +
       "`text` searches inside the files (Salesforce's full-text index): use it to find candidates by experience, tools or roles written in their CV. " +
+      "`topic` finds a whole profession or skill at once (a set of phrases behind it — social workers of both genders, lawyers, engineers by field, CPAs, finance, tech…); each row then says which phrases were found. " +
       "`unhandled` marks CVs whose Case nobody on the staff ever touched and that were closed in the bulk closure of 14.10.2026. " +
       "Returns metadata only — never the file or its text; each row links to the person's page on the site, where the file opens (and is logged).",
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Name or email of the person, file name or Case number (contains).", maxLength: 100 },
       text: { type: "string", description: "Words to find inside the files, e.g. 'הנהלת חשבונות' or 'Excel'.", maxLength: 100 },
+      topic: topicField,
       unhandled: { type: "string", enum: ["yes", "no"], description: "yes: only CVs whose Case was never handled; no: all the others." },
       source: { type: "string", enum: [...CV_SOURCES], description: "Where the file hangs: contact, case or email." },
+      ...cvPlaceFields,
       all_files: { type: "boolean", description: "Include files that are not documents (images and the like). Default false: pdf/doc/docx/rtf/odt/txt only.", default: false },
       from: dayField("Arrived on or after"),
       to: dayField("Arrived on or before"),
@@ -511,13 +541,15 @@ const TOOLS: Tool[] = [
         unhandled_in_result: result.unhandled,
         text_search: result.textSearch,
         page,
-        cvs: result.rows.map(({ openPath: _openPath, ...r }) => ({
+        cvs: result.rows.map(({ openPath: _openPath, topicPhrases, ...r }) => ({
+          ...(topicPhrases.length ? { topic_phrases_found: topicPhrases } : {}),
           ...r,
           admin_url: r.email ? link(ctx, `/emails/${encodeURIComponent(r.email)}`) : r.contactId ? link(ctx, `/candidates/${r.contactId}`) : null,
         })),
         list_url: link(ctx, `/cvs?${cvQuery(a)}`),
       };
     },
+    people: (r) => (r as { cvs: unknown[] }).cvs.length,
   },
   {
     name: "cv_summary",
@@ -529,8 +561,10 @@ const TOOLS: Tool[] = [
     fields: {
       q: { type: "string", description: "Name or email of the person, file name or Case number (contains).", maxLength: 100 },
       text: { type: "string", description: "Words to find inside the files.", maxLength: 100 },
+      topic: topicField,
       unhandled: { type: "string", enum: ["yes", "no"], description: "Only never-handled CVs, or only the others." },
       source: { type: "string", enum: [...CV_SOURCES], description: "Where the file hangs: contact, case or email." },
+      ...cvPlaceFields,
       all_files: { type: "boolean", description: "Include files that are not documents.", default: false },
       from: dayField("Arrived on or after"),
       to: dayField("Arrived on or before"),
@@ -539,6 +573,37 @@ const TOOLS: Tool[] = [
       ...(await cvSummary(cvArgs(a), { actor: ctx.principal.person.email, via: "mcp" })),
       list_url: link(ctx, `/cvs?${cvQuery(a)}`),
     }),
+  },
+  {
+    name: "cv_topics",
+    title: "CV topics",
+    description:
+      "The topics CVs can be searched by — professions (social work, law, finance, engineering by field…) and broad skills (tech, sales, languages…), in groups — with the phrases behind each and how many CV files match, under optional filters. " +
+      "Use the id as `topic` in search_cvs or cv_summary. Each file is tagged once from Salesforce's full-text index; new files are tagged within about two hours of arriving.",
+    minRole: "viewer",
+    fields: {
+      q: { type: "string", description: "Name or email of the person, file name or Case number (contains).", maxLength: 100 },
+      source: { type: "string", enum: [...CV_SOURCES], description: "Where the file hangs: contact, case or email." },
+      ...cvPlaceFields,
+      all_files: { type: "boolean", description: "Include files that are not documents.", default: false },
+      from: dayField("Arrived on or after"),
+      to: dayField("Arrived on or before"),
+    },
+    run: async (a, ctx) => {
+      const { counts, refreshedAt } = await cvTopicCounts({ ...cvArgs(a), text: "", topic: "" });
+      return {
+        refreshed_at: refreshedAt,
+        groups: TOPIC_GROUPS.map((g) => ({
+          id: g.id,
+          label: g.label,
+          kind: g.kind,
+          files: counts.get(g.id) ?? 0,
+          phrases: g.phrases,
+          topics: TOPICS.filter((t) => t.group === g.id).map((t) => ({ id: t.id, label: t.label, files: counts.get(t.id) ?? 0, phrases: t.phrases })),
+        })),
+        list_url: link(ctx, "/cvs"),
+      };
+    },
   },
 
   /* ---------------------------------------------------------- employer leads */
@@ -566,6 +631,7 @@ const TOOLS: Tool[] = [
       );
       return { total: result.total, page, leads: result.rows.map((r) => ({ ...r, admin_url: link(ctx, `/leads/${r.id}`) })) };
     },
+    people: (r) => (r as { leads: unknown[] }).leads.length,
   },
   {
     name: "lookup_email",
@@ -589,6 +655,8 @@ const TOOLS: Tool[] = [
         admin_url: link(ctx, `/emails/${encodeURIComponent(email)}`),
       };
     },
+    // One address is one person, whatever it is linked to.
+    people: () => 1,
   },
 
   /* ----------------------------------------------------------- companies */
@@ -651,6 +719,7 @@ const TOOLS: Tool[] = [
       const { page, pageSize } = paging(a);
       return { total: rows.length, page, payments: rows.slice((page - 1) * pageSize, page * pageSize) };
     },
+    people: (r) => (r as { payments: unknown[] }).payments.length,
   },
 
   /* ------------------------------------------------------ editor: campaigns */

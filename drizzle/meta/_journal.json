@@ -106,6 +106,27 @@
       "when": 1792604595296,
       "tag": "0014_sweet_jetstream",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1792614390160,
+      "tag": "0015_fresh_ender_wiggin",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1792618849230,
+      "tag": "0016_thick_hiroim",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1792649667545,
+      "tag": "0017_chubby_black_cat",
+      "breakpoints": true
     }
   ]
 }

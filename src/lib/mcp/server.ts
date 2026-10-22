@@ -1,8 +1,9 @@
-import { hit } from "@/lib/api/rate-limit";
+import { firstInWindow, hit } from "@/lib/api/rate-limit";
 import { writeAudit } from "@/lib/audit";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { appVersion } from "@/lib/connect/version";
 import { logError } from "@/lib/log";
+import { afterExport, atExportLimit, dailyExportUsage, EXPORT_LIMITS, MCP_PEOPLE_LISTED } from "@/lib/security/exports";
 import { ArgError, parseArgs } from "./args";
 import { MCP_LIMITS, PROTOCOL_VERSIONS, SERVER_NAME, SERVER_TITLE } from "./config";
 import { mcpJson } from "./http";
@@ -23,6 +24,8 @@ interface RpcRequest {
 }
 
 const MIN = 60_000;
+/** Messages one POST may carry: clients send one, or a handful; thousands is a flood. */
+const MAX_BATCH = 20;
 
 const INSTRUCTIONS = `SKEELZ Admin: the back office of jobs.skeelz.co.il, an Israeli job board, read from its Salesforce mirror and Google Analytics.
 Data is in Hebrew. Jobs and applications are Salesforce Cases; candidates are Contacts; companies are jobs grouped by company name.
@@ -41,6 +44,7 @@ export async function handleRpc(body: unknown, ctx: ToolContext, ip: string): Pr
   const batch = Array.isArray(body);
   const messages = batch ? body : [body];
   if (!messages.length) return mcpJson(rpcError(null, -32600, "Empty batch"), 400);
+  if (messages.length > MAX_BATCH) return mcpJson(rpcError(null, -32600, `Batch too large (at most ${MAX_BATCH} messages)`), 400);
 
   const replies: unknown[] = [];
   for (const m of messages) {
@@ -59,17 +63,25 @@ export async function handleRpc(body: unknown, ctx: ToolContext, ip: string): Pr
 
 async function dispatch(m: RpcRequest, ctx: ToolContext, ip: string) {
   const params = m.params && typeof m.params === "object" ? m.params : {};
+  // Every request counts against the connection's budget — before anything is written to the
+  // activity log, so a client cannot fill it with denied calls or handshakes.
+  if (!hit(`mcp:${ctx.principal.grantId}`, MCP_LIMITS.callsPerMinute, MIN).ok) {
+    return rpcError(m.id, -32000, "Rate limit reached; wait a minute and try again.");
+  }
   switch (m.method) {
     case "initialize": {
       const asked = typeof params.protocolVersion === "string" ? params.protocolVersion : "";
       const protocolVersion = (PROTOCOL_VERSIONS as readonly string[]).includes(asked) ? asked : PROTOCOL_VERSIONS[0];
       const client = (params.clientInfo as { name?: unknown } | undefined)?.name;
-      void writeAudit(ctx.principal.person.email, "mcp.initialize", ctx.principal.clientName, {
-        grantId: ctx.principal.grantId,
-        role: ctx.principal.role,
-        clientInfo: typeof client === "string" ? client.slice(0, 100) : null,
-        ip,
-      });
+      // A handshake per session is worth a line; one every request is not.
+      if (firstInWindow(`mcp-init:${ctx.principal.grantId}`, MIN)) {
+        void writeAudit(ctx.principal.person.email, "mcp.initialize", ctx.principal.clientName, {
+          grantId: ctx.principal.grantId,
+          role: ctx.principal.role,
+          clientInfo: typeof client === "string" ? client.slice(0, 100) : null,
+          ip,
+        });
+      }
       return rpcResult(m.id, {
         protocolVersion,
         capabilities: { tools: { listChanged: false } },
@@ -110,8 +122,10 @@ async function callTool(params: Record<string, unknown>, ctx: ToolContext, ip: s
   }
   const { tool } = found;
 
-  const limits = [hit(`mcp:${principal.grantId}`, MCP_LIMITS.callsPerMinute, MIN), ...(tool.heavy ? [hit(`mcp-heavy:${principal.person.id}`, MCP_LIMITS.heavyPerMinute, MIN)] : [])];
-  if (limits.some((l) => !l.ok)) return toolText("Rate limit reached; wait a minute and try again.", true);
+  // The per-connection budget was counted in dispatch(); the heavy tools have one more, per person.
+  if (tool.heavy && !hit(`mcp-heavy:${principal.person.id}`, MCP_LIMITS.heavyPerMinute, MIN).ok) {
+    return toolText("Rate limit reached; wait a minute and try again.", true);
+  }
 
   let args;
   try {
@@ -125,7 +139,23 @@ async function callTool(params: Record<string, unknown>, ctx: ToolContext, ip: s
   void touchGrant(principal.grantId, ip).catch((err: unknown) => logError("mcp touch", err));
 
   try {
+    // A tool that returns people counts against the person's daily export budget, like the copy buttons.
+    const usage = tool.people ? await dailyExportUsage(actor) : null;
+    if (usage && usage.exported >= usage.allowed) {
+      await atExportLimit(actor, usage, `mcp:${tool.name}`);
+      return toolText(
+        `Daily export limit reached: ${usage.allowed.toLocaleString("en-US")} people's details a day per person, across the site's copy buttons and these tools. The admins were notified and can allow another ${EXPORT_LIMITS.grant.toLocaleString("en-US")} today at /admin/security.`,
+        true,
+      );
+    }
     const data = await tool.run(args, ctx);
+    if (usage && tool.people) {
+      const count = tool.people(data);
+      if (count > 0) {
+        await writeAudit(actor, MCP_PEOPLE_LISTED, tool.name, { grantId: principal.grantId, count });
+        await afterExport(actor, usage, count);
+      }
+    }
     return toolText(JSON.stringify(data, null, 1));
   } catch (err) {
     if (err instanceof ArgError) return toolText(err.message, true);

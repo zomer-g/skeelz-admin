@@ -47,7 +47,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   call, ceiling). Every tool in `src/lib/mcp/tools.ts` declares the `minRole` its screen/action uses; `tools/list` and
   `tools/call` both filter by it. Tokens are opaque, sha256-stored in `mcp_grants`; users disconnect at `/connectors`,
   admins at `/admin/mcp`. Every call is audited (`mcp.call`). Never expose Salesforce writes, candidate files or admin
-  write operations over MCP. CVs are searchable over MCP (`search_cvs`, `cv_summary`) as metadata and matches only — never the file or its text.
+  write operations over MCP. CVs are searchable over MCP (`search_cvs`, `cv_summary`, by words or `topic`; `cv_topics` lists the
+  topics) as metadata and matches only — never the file or its text.
 - **Roles:** viewer < editor (dashboard config) < admin (users, integrations, API keys, connections, sync). Admins can "view as" a lower
   role (cookie `skeelz_view_as`, honoured only when `realRole` is admin); `user.role` is the effective role that every
   check uses — only the preview switch itself checks `realRole`.
@@ -72,8 +73,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 - **Dashboard tabs** (`docs/dashboard-tabs.md`): `/` executive summary · `/talent` candidate pool · `/jobs` jobs ·
   `/matching` demand (open jobs) vs supply (candidates) by CBS district / sub-district and skill (`src/lib/metrics/geo.ts`) ·
   `/pipeline` applications in three views sharing one filter box (`pipeline/shared.tsx`, `docs/applications-tab.md`): the
-  anchored funnel + leaks + a side-by-side period comparison (`?cmp=1&cfrom=&cto=`, `CompareFunnels`), `/pipeline/active` open
-  cases, `/pipeline/metrics` counts by status (`src/lib/metrics/statuses.ts`, application/event date basis) + `ApplicationPipeline` · `/employers` · `/marketing` · `/analytics` Google Analytics (every
+  anchored funnel + leaks + a side-by-side period comparison (`?cmp=1&cfrom=&cto=`, `CompareFunnels`), `/pipeline/active` the
+  applications list (application/event date basis, `now` status and `moved` = status entered in the range, from `statusEvents`), `/pipeline/metrics` counts by status (`src/lib/metrics/statuses.ts`, application/event date basis) + `ApplicationPipeline` · `/employers` · `/marketing` · `/analytics` Google Analytics (every
   mirrored GA report through `src/lib/metrics/ga-report.ts`, shared with the MCP `ga_report`) · `/campaigns` (with campaigns from send to apply, `CampaignFunnel`, SMOOV + GA). A job has two pages: `/jobs/[id]`
   (dashboard analytics) and `/positions/[id]` (the entity card, under מעסיקים) — entity pages link to `/positions`.
 - **Entities** (`/applications`, `/companies`, `/positions` (jobs list), `/candidates`, `/emails`, `/cvs`, `/leads`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
@@ -81,12 +82,15 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `SortColumn[]`, `Table` turns the headings into links and shows the same choices as pills on phones, where the headings are hidden). A company is jobs grouped by normalized `company_cambium__c` (`src/lib/metrics/company.ts`).
   Candidate files are never mirrored: listed live via `ContentDocumentLink` and served only through
   `/api/candidates/[id]/files/[documentId]` or `/api/emails/[email]/files/[documentId]`, which check the file really is that
-  person's, write an audit entry and share one 60-opens-an-hour limit (`src/lib/entities/serve-file.ts`; both routes are left
+  person's, write an audit entry and share the per-Israel-day limit of `src/lib/security/files.ts` (`src/lib/entities/serve-file.ts`; both routes are left
   out of the config CSP in `next.config.ts` so their sandboxing policy survives).
   **Copying contact details:** `/candidates` hands over the emails or phones behind the *whole* filter (not the page) through
   `/api/candidates/contacts` + `CopyContacts` — `candidateFilters()` parses the URL once for both the page and that route, each
   value appears once (phones compared by digits), it stops at 5,000, and every copy writes `candidates.contacts_copied` with the
-  filter and the count.
+  filter and the count. **Daily export budget** (`src/lib/security/exports.ts`): those counts, `cvs.contacts_copied` and
+  `mcp.people_listed` (every MCP tool that returns people declares `people(result)`) are summed per user per Israel day:
+  10,000 a day, admin alert at 5,000, past it a copy is cut then refused and a tool call refused, until an admin grants
+  10,000 more at `/admin/security` (`export_quota_grants`). Any new route or tool that hands out names/emails/phones must count there.
   **Finding a CV** (`src/lib/entities/cv.ts`, the box on `/emails/<address>`): it sits in one of three places — on the Contact,
   on one of the person's Cases (an application, or a `cv_message` "קורות חיים" Case), or attached to an **email of such a Case**,
   where a CV that arrived by mail actually lands (the file hangs off the EmailMessage). All three are searched, a file is
@@ -94,7 +98,17 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   **All CVs** (`/cvs`, `src/lib/entities/cvs.ts`): one row per file, from the mirrored file links (`sf_file_link`, filled by
   `src/lib/sf/sync-files.ts` after the other objects — metadata only, never the files). "Never handled" = a CV Case touched by
   nobody but the 14.10.2026 bulk closure — internal: in the data and MCP only, never shown on screen (`BULK_CLOSURE`; what that user's automation sets in the first 10 minutes is not
-  handling). Words inside files are searched live with SOSL (`sf.search`). Who opened each file is read back from the audit
+  handling). Words inside files are searched live with SOSL (`sf.search`). **Topics** (`src/lib/cv-topics.ts`): professions and
+  broad skills in groups (עבודה סוציאלית, עריכת דין, הנדסה › חשמל…), each a set of phrases searched with every Hebrew prefix
+  (ו/ה/ב/ל/מ/ש/כ…) and both gershayim forms; `src/lib/sf/sync-topics.ts` tags each file once into `cv_topics` (document, topic
+  or group, phrases found): hourly it searches only files not in `cv_topic_scans` at the list's current `TOPICS_VERSION` and at
+  least an hour old (SOSL filtered to their ids; none → no calls). Editing the list re-tags everything once; a manual full sync
+  rebuilds; reconcile skips it. Many files at once use one SOSL per phrase over the whole index, split by file date past 2,000.
+  `/cvs?topic=` filters by it — a grouped select in the filter box (`SearchForm` `groups` + `note`), with counts; topic searches are logged like word searches. To add a topic or phrase,
+  edit the list — prefer what a person *is or studied*, singular (plurals mostly name colleagues). District/sub-district filters
+  use the file's Contact's place (`candidatePlaceSql`); `cvFilters()` parses the URL once for the page and
+  `/api/cvs/contacts`, which hands `CopyContacts` the emails or phones behind the whole filter (5,000 max, logged as
+  `cvs.contacts_copied`). Who opened each file is read back from the audit
   log (`src/lib/entities/file-access.ts`, partial index `audit_log_file_idx`): the "פתיחות" column and `/cvs/[documentId]`.
   Security plan for the CV data: `docs/cv-security.md`.
   **Employer lead Cases** (`/leads`, `src/lib/entities/leads.ts`): Cases of type `lead_employer`, listed as records (the

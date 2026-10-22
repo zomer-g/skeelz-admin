@@ -55,7 +55,7 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
   if (endpoint.auth !== auth) throw new Error(`${path}: spec.ts says ${endpoint.auth}, the route says ${auth}`);
   const route = `${endpoint.method} ${path}`;
 
-  return async (req, ctx) => {
+  const gate = async (req: Request, ctx: C): Promise<Response> => {
     const ip = clientIp(req);
     const knownIp = ip !== "unknown";
 
@@ -95,7 +95,8 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
     const limits = [
       ...(knownIp ? [hit(`ip:${ip}`, API_LIMITS.perIpPerMinute, MIN)] : []),
       hit(`key:${key.id}`, API_LIMITS.perTokenPerHour, 60 * MIN),
-      ...(endpoint.heavy ? [hit("heavy", API_LIMITS.metricsPerMinute, MIN)] : []),
+      // The heavy endpoints: a shared budget for the database's sake, and one per key so no key starves the others.
+      ...(endpoint.heavy ? [hit("heavy", API_LIMITS.metricsPerMinute, MIN), hit(`heavy:${key.id}`, API_LIMITS.metricsPerMinute, MIN)] : []),
     ];
     const tightest = limits.reduce((a, b) => (b.remaining < a.remaining ? b : a));
     const rateHeaders = {
@@ -121,6 +122,17 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
       // Never the message: a database error's message holds the SQL and its values.
       logError(`api ${route}`, err);
       return apiError(500, "internal_error", "Something went wrong.", rateHeaders);
+    }
+  };
+
+  // The gate itself reads the database (the key, the audit log); a failure there is the same
+  // documented error, never Next's default page.
+  return async (req, ctx) => {
+    try {
+      return await gate(req, ctx);
+    } catch (err) {
+      logError(`api ${route} gate`, err);
+      return apiError(500, "internal_error", "Something went wrong.");
     }
   };
 }

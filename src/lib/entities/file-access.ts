@@ -4,7 +4,7 @@ import { asDate, num, run, str } from "./search";
 /**
  * Who opened each candidate file, read back from the audit log: every open through the file
  * routes writes `candidate.file_opened` with the document id (lib/entities/serve-file.ts), and a
- * refusal at the hourly limit writes `candidate.file_rate_limited`. Indexed per document.
+ * refusal at the daily limit writes `candidate.file_rate_limited`. Indexed per document.
  */
 
 const OPENED = "candidate.file_opened";

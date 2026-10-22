@@ -8,6 +8,7 @@
  *   npm run sync:once -- marketing    # Google Analytics, Tag Manager, SMOOV
  */
 import { getPool } from "../src/lib/db/client";
+import { errorCode } from "../src/lib/log";
 import { runMarketingSync } from "../src/lib/integrations/marketing-sync";
 import { runSync, type SyncMode } from "../src/lib/sf/sync";
 
@@ -36,8 +37,8 @@ async function main() {
 }
 
 main()
-  .catch((err: Error) => {
-    console.error("[sync-once] FAILED:", err.stack ?? err.message);
+  .catch((err: unknown) => {
+    console.error(`[sync-once] FAILED: ${errorCode(err)}`);
     process.exitCode = 1;
   })
   .finally(() => getPool().end());

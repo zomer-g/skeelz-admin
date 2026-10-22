@@ -134,6 +134,7 @@ export function PipelineFilters({
   anchorIsSite,
   hidden,
   children,
+  fields,
 }: {
   path: string;
   current: URLSearchParams;
@@ -147,6 +148,8 @@ export function PipelineFilters({
   hidden: string[];
   /** Extra controls under the filters (e.g. the date basis). */
   children?: ReactNode;
+  /** Extra form fields, after the shared ones (e.g. the status filters of the cases view). */
+  fields?: ReactNode;
 }) {
   const withoutRange = new URLSearchParams(current);
   for (const k of ["range", "from", "to"]) withoutRange.delete(k);
@@ -232,6 +235,7 @@ export function PipelineFilters({
               <option value="no">לא</option>
             </select>
           </Field>
+          {fields}
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" className="rounded-full bg-brand px-5 py-2 text-sm font-medium text-white hover:bg-brand-hover">

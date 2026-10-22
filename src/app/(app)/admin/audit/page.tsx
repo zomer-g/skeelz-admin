@@ -36,6 +36,7 @@ const ACTION_LABELS: Record<string, string> = {
   "access.reviewed": "אישור הרשאה חודשי",
   "cvs.text_search": "חיפוש בתוך קורות חיים",
   "candidates.contacts_copied": "העתקת פרטי קשר של מועמדים",
+  "cvs.contacts_copied": "העתקת פרטי קשר מרשימת קורות החיים",
   "text.updated": "עדכון טקסט",
   "text.restored": "שחזור גרסת טקסט",
   "preview.started": "צפייה בהרשאה נמוכה",

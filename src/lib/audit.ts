@@ -35,6 +35,7 @@ export async function purgeOldLogs(): Promise<number> {
   const removed = await db.execute(sql`DELETE FROM audit_log WHERE at < ${cutoff}`);
   await db.execute(sql`DELETE FROM security_alerts WHERE created_at < ${cutoff}`);
   await db.execute(sql`DELETE FROM file_quota_grants WHERE granted_at < ${cutoff}`);
+  await db.execute(sql`DELETE FROM export_quota_grants WHERE granted_at < ${cutoff}`);
   await db.execute(sql`DELETE FROM access_reviews WHERE reviewed_at < ${cutoff}`);
   return removed.rowCount ?? 0;
 }

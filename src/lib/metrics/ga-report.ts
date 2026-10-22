@@ -98,15 +98,16 @@ export async function runGaReport(q: GaQuery) {
   if (!def) throw new ArgError(`report must be one of: ${GA_REPORT_NAMES.join(", ")}`);
 
   const groups = q.groupBy.map((g) => {
-    const col = TIME_GRAINS[g] ?? def.dims[g];
+    // Own keys only: "constructor" or "__proto__" must not resolve to an inherited member.
+    const col = Object.hasOwn(TIME_GRAINS, g) ? TIME_GRAINS[g] : Object.hasOwn(def.dims, g) ? def.dims[g] : undefined;
     if (!col) throw new ArgError(`${q.report} can be grouped by: ${[...Object.keys(TIME_GRAINS), ...Object.keys(def.dims)].join(", ")}`);
     return { name: g, col };
   });
-  if (q.groupBy.filter((g) => g in TIME_GRAINS).length > 1) throw new ArgError("group by at most one of date, week, month");
+  if (q.groupBy.filter((g) => Object.hasOwn(TIME_GRAINS, g)).length > 1) throw new ArgError("group by at most one of date, week, month");
 
   const where: SQL[] = [sql`date >= ${q.fromDay}::date`, sql`date <= ${q.toDay}::date`];
   for (const [name, value] of Object.entries(q.filters)) {
-    const col = def.dims[name];
+    const col = Object.hasOwn(def.dims, name) ? def.dims[name] : undefined;
     if (!col) throw new ArgError(`${q.report} has no ${name} to filter on; its dimensions: ${Object.keys(def.dims).join(", ")}`);
     where.push(def.contains?.includes(name) ? sql`${sql.raw(col)} ILIKE ${containsPattern(value)}` : sql`${sql.raw(col)} = ${value}`);
   }
@@ -117,9 +118,9 @@ export async function runGaReport(q: GaQuery) {
   const whereSql = sql.join(where, sql` AND `);
   const metricSql = sql.raw(Object.entries(def.metrics).map(([m, agg]) => `coalesce(${agg}, 0)::bigint AS ${m}`).join(", "));
   const metricNames = Object.keys(def.metrics);
-  const order = q.orderBy ?? (groups.some((g) => g.name in TIME_GRAINS) ? groups.find((g) => g.name in TIME_GRAINS)!.name : metricNames[0]!);
+  const order = q.orderBy ?? (groups.some((g) => Object.hasOwn(TIME_GRAINS, g.name)) ? groups.find((g) => Object.hasOwn(TIME_GRAINS, g.name))!.name : metricNames[0]!);
   if (![...metricNames, ...q.groupBy].includes(order)) throw new ArgError(`order_by must be one of: ${[...metricNames, ...q.groupBy].join(", ")}`);
-  const direction = order in TIME_GRAINS ? "ASC" : "DESC";
+  const direction = Object.hasOwn(TIME_GRAINS, order) ? "ASC" : "DESC";
   const table = sql.raw(def.table);
 
   const [rows, [totals], [count], freshness] = await Promise.all([

@@ -23,7 +23,7 @@ site**. Users find the address and their own connections at `/connectors`; admin
 
 | Role | Tools |
 |---|---|
-| viewer | `whoami`, `dashboard_summary`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `get_application`, `search_candidates`, `get_candidate`, `lookup_email`, `search_cvs`, `cv_summary`, `search_employer_leads`, `search_companies`, `get_company`, `search_payments` |
+| viewer | `whoami`, `dashboard_summary`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `get_application`, `search_candidates`, `get_candidate`, `lookup_email`, `search_cvs`, `cv_summary`, `cv_topics`, `search_employer_leads`, `search_companies`, `get_company`, `search_payments` |
 | editor | + `update_campaign`, `link_campaign_job`, `unlink_campaign_job` (same code as the campaign page, `src/lib/campaigns/edit.ts`) |
 | admin | + `list_users`, `query_audit_log`, `sync_status` (read only) |
 
@@ -39,7 +39,7 @@ tab, `get_campaign` the campaign page, and `get_job` carries the job's GA (total
 users per day, so summed users are not unique users over a range. GTM container snapshots are not exposed.
 
 This mirrors the site: viewers read every dashboard and record screen, editors also edit campaign
-settings, admins also manage. Nothing writes to Salesforce. Candidate files are not served over MCP: `search_cvs` and `cv_summary` search and count CVs (including the words inside them, through Salesforce's full-text index) and return metadata and links to the site, never a file or its text.
+settings, admins also manage. Nothing writes to Salesforce. Candidate files are not served over MCP: `search_cvs` and `cv_summary` search and count CVs (including the words inside them, through Salesforce's full-text index, or a `topic` — a profession or skill backed by a set of phrases, listed with counts by `cv_topics`) and return metadata, the phrases found and links to the site, never a file or its text.
 Admin *write* operations (inviting users, keys, sync) are deliberately not exposed.
 
 ## 2. OAuth 2.1 (what the clients see)
@@ -68,6 +68,12 @@ a plain form post that redirects off-site would be blocked by the CSP's `form-ac
 - `mcp_grants` keeps last use, address and a call count, shown on both screens.
 - 60 calls/min per connection; `dashboard_summary` and `list_campaigns` 10/min per person; 30 wrong
   tokens per address per 10 min → 10 min lockout. In memory, like the API limits.
+- A daily export budget per person (`src/lib/security/exports.ts`, shared with the site's copy buttons):
+  every tool that returns people's details (`search_candidates`, `search_applications`, `search_cvs`,
+  `search_employer_leads`, `search_payments`, `lookup_email`, `get_candidate`, `get_application`)
+  declares `people(result)`, the count is logged as `mcp.people_listed` and summed per Israel day from
+  the audit log: 10,000 a day, an admin alert at 5,000, refused past the limit (`export.rate_limited`)
+  until an admin grants another 10,000 at `/admin/security`.
 
 ## 4. Connecting
 

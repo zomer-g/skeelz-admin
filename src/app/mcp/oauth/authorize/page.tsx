@@ -41,6 +41,11 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
     if (value) params[k] = value;
   }
 
+  // Sign-in first: which client ids are registered is nobody's business before it.
+  const auth = await pageAuth("viewer", `/mcp/oauth/authorize?${new URLSearchParams(params).toString()}`);
+  if (!auth.ok) return auth.render;
+  const { user } = auth;
+
   const origin = publicOrigin(await headers());
   const check = await checkAuthorizeRequest(params, origin);
   if (!check.ok) {
@@ -52,10 +57,6 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
       </Frame>
     );
   }
-
-  const auth = await pageAuth("viewer", `/mcp/oauth/authorize?${new URLSearchParams(params).toString()}`);
-  if (!auth.ok) return auth.render;
-  const { user } = auth;
   const req = check.request;
   const roles = ROLES.filter((r) => hasRole(user.role, r));
 

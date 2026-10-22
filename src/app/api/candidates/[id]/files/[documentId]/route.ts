@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 /**
  * Opens a candidate's file. Only a file linked to this candidate, or to one of
  * their applications, is served — the document id alone opens nothing. The
- * streaming, the hourly limit and the audit entry live in `serve-file.ts`.
+ * streaming, the daily limit and the audit entry live in `serve-file.ts`.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string; documentId: string }> }) {
   let user;

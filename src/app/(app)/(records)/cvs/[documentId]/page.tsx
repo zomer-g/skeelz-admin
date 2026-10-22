@@ -4,8 +4,9 @@ import { notFound } from "next/navigation";
 import { EntityHeader, FieldList } from "@/components/entities/EntityParts";
 import { Badge, Card, formatDateTime, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
+import { TOPICS } from "@/lib/cv-topics";
 import { fileSize } from "@/lib/entities/cv";
-import { CV_SOURCE_LABELS, loadCv } from "@/lib/entities/cvs";
+import { CV_SOURCE_LABELS, loadCv, loadCvTopics } from "@/lib/entities/cvs";
 import { emailPath } from "@/lib/entities/emails";
 import { loadFileAccessLog } from "@/lib/entities/file-access";
 import { sfRecordUrl } from "@/lib/entities/search";
@@ -23,7 +24,12 @@ export default async function CvPage({ params }: { params: Promise<{ documentId:
   const found = await loadCv(documentId);
   if (!found) notFound();
   const { cv, links } = found;
-  const log = await loadFileAccessLog(documentId);
+  const [log, tagged] = await Promise.all([loadFileAccessLog(documentId), loadCvTopics(documentId)]);
+  // The topics themselves; a group only repeats them.
+  const topics = tagged.flatMap((t) => {
+    const topic = TOPICS.find((x) => x.id === t.topicId);
+    return topic ? [{ ...topic, found: t.phrases }] : [];
+  });
   const opens = log.filter((e) => e.opened);
   const people = new Set(opens.map((e) => e.actor)).size;
 
@@ -54,6 +60,21 @@ export default async function CvPage({ params }: { params: Promise<{ documentId:
               ["מייל", cv.email ? <span dir="ltr">{cv.email}</span> : null],
               ["הגיע", cv.receivedAt ? fmtDate(cv.receivedAt) : null],
               ["Case", cv.caseNumber ? `${cv.caseNumber}${cv.caseType ? ` · ${cv.caseType}` : ""}${cv.caseStatus ? ` · ${cv.caseStatus}` : ""}` : null],
+              [
+                "תחומים",
+                topics.length ? (
+                  <ul className="flex flex-col gap-1">
+                    {topics.map((t) => (
+                      <li key={t.id}>
+                        <Link href={`/cvs?topic=${t.id}`} className="font-medium underline underline-offset-2">
+                          {t.label}
+                        </Link>
+                        <span className="text-xs text-muted"> · נמצא: {t.found.join(" · ")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null,
+              ],
             ]}
           />
         </Card>

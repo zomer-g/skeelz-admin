@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth/session";
+import { grantMoreExports } from "@/lib/security/exports";
 import { dismissAlert, grantMoreFiles } from "@/lib/security/files";
 
 // Every action re-checks the caller: a server action is a public endpoint.
@@ -14,6 +15,15 @@ export async function grantFiles(form: FormData): Promise<void> {
   const email = String(form.get("email") ?? "").trim();
   if (!EMAIL_RE.test(email)) throw new Error("invalid email");
   await grantMoreFiles(admin.email, email);
+  revalidatePath("/admin/security");
+}
+
+/** Lets one user export another batch of people's contact details today (copy buttons and MCP). */
+export async function grantExports(form: FormData): Promise<void> {
+  const admin = await requireUser("admin");
+  const email = String(form.get("email") ?? "").trim();
+  if (!EMAIL_RE.test(email)) throw new Error("invalid email");
+  await grantMoreExports(admin.email, email);
   revalidatePath("/admin/security");
 }
 

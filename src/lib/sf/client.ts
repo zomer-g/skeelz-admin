@@ -187,6 +187,8 @@ export const sf = {
 
   /** Latest published bytes of a file (ContentVersion), as a raw GET response to stream on. */
   async downloadVersion(versionId: string): Promise<Response> {
+    // Only a ContentVersion id shape ever reaches the path, whatever the caller was handed.
+    if (!/^068[a-zA-Z0-9]{12,15}$/.test(versionId)) throw new SalesforceError("Not a ContentVersion id", 400, "INVALID_ID");
     const { accessToken, instanceUrl } = await getToken(false);
     return fetch(`${instanceUrl}${versionPath()}/sobjects/ContentVersion/${encodeURIComponent(versionId)}/VersionData`, {
       method: "GET",

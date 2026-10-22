@@ -3,6 +3,7 @@ import { connectDirect, getDb } from "@/lib/db/client";
 import { syncRuns, syncState } from "@/lib/db/schema";
 import { sf, SalesforceError } from "./client";
 import { syncFiles } from "./sync-files";
+import { syncTopics } from "./sync-topics";
 import { SYNC_OBJECTS, toDate, type SfRecord, type SyncObjectDef } from "./sync-objects";
 import type { SfDescribe } from "./types";
 import { logError, safeErrorMessage } from "@/lib/log";
@@ -211,6 +212,12 @@ export async function runSync(mode: SyncMode, trigger: string): Promise<SyncSumm
       const files = await syncFiles(mode, trigger);
       results.push(files);
       console.log(`[sync] ${mode} ${files.object}: +${files.upserted} -${files.deleted} in ${files.ms}ms${files.error ? ` ERROR ${files.error}` : ""}`);
+      // The CV topics of files not searched yet (lib/sf/sync-topics.ts): checked once an hour.
+      const topics = await syncTopics(mode, trigger);
+      if (topics) {
+        results.push(topics);
+        console.log(`[sync] ${mode} ${topics.object}: ${topics.upserted} files searched in ${topics.ms}ms${topics.error ? ` ERROR ${topics.error}` : ""}`);
+      }
       if (mode === "reconcile") {
         // History rows of Cases that no longer exist.
         await getDb().execute(

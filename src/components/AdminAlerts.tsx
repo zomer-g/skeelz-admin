@@ -4,8 +4,9 @@ import { countOpenAlerts } from "@/lib/security/files";
 import { countDueReviews } from "@/lib/security/reviews";
 
 /**
- * What waits for an admin, on every page: open file-access alerts (many files today, or a user
- * waiting for more) and this month's access review. Nothing shows when nothing waits.
+ * What waits for an admin, on every page: open security alerts (many candidate files or many
+ * people's details exported today, or a user waiting for more) and this month's access review.
+ * Nothing shows when nothing waits.
  */
 export async function AdminAlerts() {
   let alerts = 0;
@@ -24,7 +25,7 @@ export async function AdminAlerts() {
         <span className="font-bold">לטיפול האדמין:</span>
         {alerts ? (
           <Link href="/admin/security" className="font-medium underline underline-offset-4">
-            {alerts === 1 ? "התראת אבטחה פתוחה" : `${alerts} התראות אבטחה פתוחות`} (פתיחת קבצי מועמדים)
+            {alerts === 1 ? "התראת אבטחה פתוחה" : `${alerts} התראות אבטחה פתוחות`} (קבצי מועמדים וייצוא פרטי קשר)
           </Link>
         ) : null}
         {reviews ? (

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { buttonClass, smallFieldClass } from "@/components/ui";
 import { fmtInt } from "@/lib/format";
 
@@ -8,9 +9,19 @@ import { fmtInt } from "@/lib/format";
  * Submitting drops the page number, so a new search starts at page one.
  */
 
+type Option = string | { value: string; label: string };
+
 export type FilterField =
   | { kind: "text"; name: string; label: string; placeholder?: string; wide?: boolean }
-  | { kind: "select"; name: string; label: string; options: (string | { value: string; label: string })[]; any?: string }
+  | {
+      kind: "select";
+      name: string;
+      label: string;
+      options: Option[];
+      /** Options under headings (`<optgroup>`), after the plain ones. */
+      groups?: { label: string; options: Option[] }[];
+      any?: string;
+    }
   | { kind: "date"; name: string; label: string }
   | { kind: "check"; name: string; label: string };
 
@@ -19,12 +30,15 @@ export function SearchForm({
   fields,
   values,
   hidden = {},
+  note,
 }: {
   action: string;
   fields: FilterField[];
   values: Record<string, string>;
   /** Parameters kept across searches without being form fields (a job, a candidate …). */
   hidden?: Record<string, string>;
+  /** A line under the fields, e.g. what a chosen filter searches for. */
+  note?: ReactNode;
 }) {
   const active = fields.some((f) => values[f.name]);
   const clearQuery = new URLSearchParams(Object.entries(hidden).filter(([, v]) => v)).toString();
@@ -59,20 +73,19 @@ export function SearchForm({
               ) : (
                 <select id={id} name={f.name} defaultValue={values[f.name] ?? ""} className={smallFieldClass}>
                   <option value="">{f.any ?? "הכל"}</option>
-                  {f.options.map((o) => {
-                    const opt = typeof o === "string" ? { value: o, label: o } : o;
-                    return (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    );
-                  })}
+                  {f.options.map(optionOf)}
+                  {f.groups?.map((g) => (
+                    <optgroup key={g.label} label={g.label}>
+                      {g.options.map(optionOf)}
+                    </optgroup>
+                  ))}
                 </select>
               )}
             </div>
           );
         })}
       </div>
+      {note ? <div className="mt-3 text-xs text-muted">{note}</div> : null}
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <button type="submit" className={buttonClass("primary", "sm")}>
           חיפוש
@@ -84,6 +97,15 @@ export function SearchForm({
         ) : null}
       </div>
     </form>
+  );
+}
+
+function optionOf(o: Option) {
+  const opt = typeof o === "string" ? { value: o, label: o } : o;
+  return (
+    <option key={opt.value} value={opt.value}>
+      {opt.label}
+    </option>
   );
 }
 

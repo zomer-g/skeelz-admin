@@ -12,7 +12,8 @@ import { NewTabNote } from "./ui";
 
 type Block = { kind: "h2" | "h3" | "p"; text: string } | { kind: "ul"; items: string[] };
 
-const SAFE_HREF = /^(https?:\/\/|mailto:|\/(?!\/))/i;
+// Same-site paths may not start with "//" or "/\" (a browser reads "\" as "/", making it another host).
+const SAFE_HREF = /^(https?:\/\/|mailto:|\/(?![\/\\]))/i;
 const INLINE = /\*\*(.+?)\*\*|\[([^\]]+)\]\(([^)\s]+)\)/g;
 
 export function parseBlocks(body: string): Block[] {
