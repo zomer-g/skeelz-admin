@@ -119,8 +119,8 @@ const UNHANDLED = sql`
 
 const PLACE = candidatePlaceSql("ct");
 
-/** One row per file, with its person and its Case (a CV Case first). */
-const CVS = sql`
+/** One row per file, with its person and its Case (a CV Case first). Read as `cv`; also by outreach (./outreach.ts). */
+export const CVS = sql`
   WITH ${GEO_CTES}, ${UNHANDLED},
   links AS (
     SELECT l.document_id, l.entity_type, l.title, l.extension, l.size, l.document_created_at,

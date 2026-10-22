@@ -10,6 +10,7 @@ const TABS = [
   { key: "candidates", label: "מועמדים", href: "/candidates" },
   { key: "emails", label: "כתובות דוא״ל", href: "/emails" },
   { key: "cvs", label: "קורות חיים", href: "/cvs" },
+  { key: "outreach", label: "פעילות יזומה", href: "/outreach" },
   { key: "leads", label: "לידי מעסיקים", href: "/leads" },
   { key: "payments", label: "מעקב תשלומים", href: "/payments" },
 ] as const;
@@ -22,6 +23,7 @@ function activeTab(pathname: string): string {
   if (pathname.startsWith("/emails")) return "emails";
   if (pathname.startsWith("/payments")) return "payments";
   if (pathname.startsWith("/cvs")) return "cvs";
+  if (pathname.startsWith("/outreach")) return "outreach";
   if (pathname.startsWith("/leads")) return "leads";
   return "applications";
 }

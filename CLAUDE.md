@@ -77,7 +77,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   applications list (application/event date basis, `now` status and `moved` = status entered in the range, from `statusEvents`), `/pipeline/metrics` counts by status (`src/lib/metrics/statuses.ts`, application/event date basis) + `ApplicationPipeline` · `/employers` · `/marketing` · `/analytics` Google Analytics (every
   mirrored GA report through `src/lib/metrics/ga-report.ts`, shared with the MCP `ga_report`) · `/campaigns` (with campaigns from send to apply, `CampaignFunnel`, SMOOV + GA). A job has two pages: `/jobs/[id]`
   (dashboard analytics) and `/positions/[id]` (the entity card, under מעסיקים) — entity pages link to `/positions`.
-- **Entities** (`/applications`, `/companies`, `/positions` (jobs list), `/candidates`, `/emails`, `/cvs`, `/leads`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
+- **Entities** (`/applications`, `/companies`, `/positions` (jobs list), `/candidates`, `/emails`, `/cvs`, `/outreach` (פעילות יזומה), `/leads`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven
   GET search forms, 50 per page, each sortable by column (`?sort=&dir=`, `src/lib/entities/sort.ts`: a list declares its
   `SortColumn[]`, `Table` turns the headings into links and shows the same choices as pills on phones, where the headings are hidden). A company is jobs grouped by normalized `company_cambium__c` (`src/lib/metrics/company.ts`).
   Candidate files are never mirrored: listed live via `ContentDocumentLink` and served only through
@@ -111,6 +111,11 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `cvs.contacts_copied`). Who opened each file is read back from the audit
   log (`src/lib/entities/file-access.ts`, partial index `audit_log_file_idx`): the "פתיחות" column and `/cvs/[documentId]`.
   Security plan for the CV data: `docs/cv-security.md`.
+  **Outreach** ("פעילות יזומה", `/outreach` + `/outreach/[id]`, `src/lib/entities/outreach.ts`): for a job, the people whose CVs fit
+  it, to approach before they apply. The job's field = the same `cv-topics` phrases matched in code against its title (×3),
+  description and skills (`src/lib/job-topics.ts`, gender forms like "מנהל/ת", "רכז.ת" folded first); with no topic, the title's
+  words are searched in the files live (SOSL). Ranked per person (best file): topic/word match + same sub-district/district as
+  the job + recent file; people who applied are hidden unless asked. Every search writes `cvs.text_search` with its results.
   **Employer lead Cases** (`/leads`, `src/lib/entities/leads.ts`): Cases of type `lead_employer`, listed as records (the
   employers tab still counts leads by the Account's employer status).
   `/emails` treats one address as one person: every Contact with that email, and every Case on them plus Contact-less

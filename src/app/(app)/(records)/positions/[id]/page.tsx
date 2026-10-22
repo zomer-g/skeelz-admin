@@ -67,6 +67,7 @@ export default async function PositionPage({ params }: { params: Promise<{ id: s
           { href: position.siteJobKey ? siteJobUrl(position.siteJobKey) : null, label: "דף המשרה באתר", external: true },
           { href: sfRecordUrl(position.id), label: "Salesforce", external: true },
           { href: `/jobs/${position.id}`, label: "ניתוח המשרה בדשבורד" },
+          { href: `/outreach/${position.id}`, label: "פעילות יזומה: מועמדים מתאימים" },
         ]}
       />
 
