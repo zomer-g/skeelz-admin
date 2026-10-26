@@ -615,7 +615,7 @@ const TOOLS: Tool[] = [
       "(The employers dashboard counts leads by the Account's employer status; these are the Cases themselves.)",
     minRole: "viewer",
     fields: {
-      q: { type: "string", description: "Employer, subject, contact name or email, or Case number (contains).", maxLength: 100 },
+      q: { type: "string", description: "Employer, subject, contact name or email (the Case's contact or any contact of the employer), or Case number (contains).", maxLength: 100 },
       status: { type: "string", description: "Case status, exactly as in Salesforce (e.g. פנייה ראשונה, נחתם חוזה).", maxLength: 100 },
       owner: { type: "string", description: "Owner's full name, exactly.", maxLength: 100 },
       from: dayField("Opened on or after"),

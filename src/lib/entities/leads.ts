@@ -90,7 +90,10 @@ export async function searchLeads(
   const parts: SQL[] = [sql`true`];
   if (f.q) {
     const p = containsPattern(f.q);
-    parts.push(sql`(l.account_name ILIKE ${p} OR l.subject ILIKE ${p} OR l.contact_name ILIKE ${p} OR l.contact_email ILIKE ${p} OR l.case_number ILIKE ${p})`);
+    // The person is often another Contact of the employer, not the one on the Case: match the Account's contacts too.
+    parts.push(sql`(l.account_name ILIKE ${p} OR l.subject ILIKE ${p} OR l.contact_name ILIKE ${p} OR l.contact_email ILIKE ${p} OR l.case_number ILIKE ${p}
+      OR EXISTS (SELECT 1 FROM sf_contact ac WHERE ac.account_id = l.account_id AND NOT ac.is_deleted
+                  AND (ac.name ILIKE ${p} OR ac.email ILIKE ${p})))`);
   }
   if (f.status) parts.push(sql`l.status = ${f.status}`);
   if (f.owner) parts.push(sql`l.owner_name = ${f.owner}`);
