@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { normStatus, RECORD_TYPES, STATUS } from "@/lib/metrics/candidates";
+import { normStatus, normStatusSql, RECORD_TYPES, STATUS } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { applicationPaidSql } from "@/lib/metrics/paid";
 import { ageInDays, asDate, containsPattern, dayOf, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
@@ -14,7 +14,10 @@ import { orderBy, type Sort, type SortColumn } from "./sort";
 
 export interface ApplicationFilters {
   q: string;
+  /** Current status, compared after normStatus on both sides. */
   status: string;
+  /** More statuses, any of which matches (with `status`, if set). */
+  statuses?: readonly string[];
   paid: "paid" | "unpaid" | "";
   fromDay: string;
   toDay: string;
@@ -53,7 +56,7 @@ export interface ApplicationRow {
   startDate: string | null;
 }
 
-const NORM_STATUS = sql.raw(`btrim(regexp_replace(replace(a.status, chr(160), ' '), ' +', ' ', 'g'))`);
+const NORM_STATUS = normStatusSql("a.status");
 
 /** הגשה מהירה on the application, and the candidate's קו"ח checkbox — both unset means false. */
 const FAST_APPLIED = sql`coalesce(a.data->>'fast_applied__c', 'false') = 'true'`;
@@ -63,7 +66,7 @@ const HAS_CV = sql`coalesce(ct.data->>'CV__c', 'false') = 'true'`;
 const ACCEPTED_AT = sql`coalesce(
     (SELECT min(h.created_date) FROM sf_case_history h
       WHERE h.case_id = a.id AND h.field = 'Status'
-        AND btrim(regexp_replace(replace(h.new_value, chr(160), ' '), ' +', ' ', 'g')) = ${STATUS.accepted}),
+        AND ${normStatusSql("h.new_value")} = ${STATUS.accepted}),
     CASE WHEN ${NORM_STATUS} = ${STATUS.accepted} THEN a.closed_date END
   )`;
 
@@ -110,7 +113,8 @@ function whereOf(f: ApplicationFilters): SQL {
       ${phone}
     )`);
   }
-  if (f.status) parts.push(sql`${NORM_STATUS} = ${normStatus(f.status)}`);
+  const statuses = [...new Set([f.status, ...(f.statuses ?? [])].map((v) => normStatus(v)).filter((v): v is string => Boolean(v)))];
+  if (statuses.length) parts.push(sql`${NORM_STATUS} IN ${statuses}`);
   if (f.paid === "paid") parts.push(applicationPaidSql("a", "j"));
   if (f.paid === "unpaid") parts.push(sql`NOT ${applicationPaidSql("a", "j")}`);
   if (f.fast === "fast") parts.push(FAST_APPLIED);
@@ -179,6 +183,42 @@ export async function searchApplications(
     run(sql`SELECT count(*) AS n ${FROM} WHERE ${where}`),
   ]);
   return { rows: rows.map(toRow), total: num(count[0]?.n) };
+}
+
+/** What application_status_counts groups and filters by: one small row per application matching the filters. */
+export interface ApplicationStatusRow {
+  id: string;
+  status: string | null;
+  createdAt: Date;
+  paid: boolean;
+  fast: boolean;
+  ownerName: string | null;
+  contactId: string | null;
+  jobId: string | null;
+  candidateEmail: string | null;
+  candidateName: string | null;
+}
+
+/** Every application under the filters, in the same WHERE as searchApplications, so the counts add up to its total. */
+export async function loadApplicationStatusRows(f: ApplicationFilters): Promise<ApplicationStatusRow[]> {
+  const rows = await run(sql`
+    SELECT a.id, a.status, a.created_date, ${applicationPaidSql("a", "j")} AS paid, ${FAST_APPLIED} AS fast, u.name AS owner_name,
+           a.contact_id, a.parent_id,
+           coalesce(nullif(lower(a.data->>'ContactEmail'), ''), lower(ct.email), lower(nullif(a.data->>'SuppliedEmail', ''))) AS candidate_email,
+           coalesce(ct.name, nullif(a.data->>'full_name__c', ''), nullif(a.data->>'A_Name_Cam__c', ''), nullif(a.data->>'SuppliedName', '')) AS candidate_name
+      ${FROM} WHERE ${whereOf(f)}`);
+  return rows.map((r) => ({
+    id: String(r.id),
+    status: normStatus(str(r.status)),
+    createdAt: asDate(r.created_date)!,
+    paid: isTrue(r.paid),
+    fast: isTrue(r.fast),
+    ownerName: str(r.owner_name),
+    contactId: str(r.contact_id),
+    jobId: str(r.parent_id),
+    candidateEmail: str(r.candidate_email),
+    candidateName: str(r.candidate_name),
+  }));
 }
 
 /** Statuses and owners in use, most common first, for the filter menus. */

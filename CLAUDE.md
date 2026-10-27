@@ -49,6 +49,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   admins at `/admin/mcp`. Every call is audited (`mcp.call`). Never expose Salesforce writes, candidate files or admin
   write operations over MCP. CVs are searchable over MCP (`search_cvs`, `cv_summary`, by words or `topic`; `cv_topics` lists the
   topics) as metadata and matches only — never the file or its text.
+  Registered vs. quick-apply analysis (`application_status_counts`, `registration_cohorts`, `dashboard_summary` `segment`) is
+  aggregates only; exclusions (internal/test, duplicates within 60 s) and CV-arrival rules live once in `src/lib/metrics/segments.ts`
+  (definitions: `docs/candidates-tab-metrics.md`, "רשומים מול הגשה מהירה"). History funnel ≠ current-status counts — keep both.
 - **Roles:** viewer < editor (dashboard config) < admin (users, integrations, API keys, connections, sync). Admins can "view as" a lower
   role (cookie `skeelz_view_as`, honoured only when `realRole` is admin); `user.role` is the effective role that every
   check uses — only the preview switch itself checks `realRole`.

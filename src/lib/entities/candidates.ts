@@ -50,6 +50,8 @@ export interface CandidateRow {
   /** הגשה מהירה (`Field6__c`): the candidate came in through the site's one-click apply. */
   fastApply: boolean;
   applications: number;
+  /** The person's first application: when someone who applied more than once actually first did. */
+  firstApplicationAt: Date | null;
   lastApplicationAt: Date | null;
   createdAt: Date | null;
 }
@@ -59,7 +61,7 @@ const PLACE = candidatePlaceSql("ct");
 export const CANDIDATES = sql`
   WITH ${GEO_CTES},
   apps AS (
-    SELECT a.contact_id, count(*) AS n, max(a.created_date) AS last_at
+    SELECT a.contact_id, count(*) AS n, min(a.created_date) AS first_at, max(a.created_date) AS last_at
       FROM sf_case a JOIN sf_record_type rt ON rt.id = a.record_type_id
      WHERE rt.developer_name IN (${RECORD_TYPES.application}, ${RECORD_TYPES.accepted}) AND NOT a.is_deleted AND a.contact_id IS NOT NULL
      GROUP BY a.contact_id
@@ -72,7 +74,7 @@ export const CANDIDATES = sql`
            nullif(ct.data->>'district_index__c', '') AS district,
            coalesce(ct.data->>'CV__c', 'false') = 'true' AS has_cv,
            coalesce(ct.data->>'Field6__c', 'false') = 'true' AS fast_applied,
-           coalesce(apps.n, 0) AS applications, apps.last_at,
+           coalesce(apps.n, 0) AS applications, apps.first_at, apps.last_at,
            ${PLACE.kind} AS place_kind, ${PLACE.napa} AS napa, ${PLACE.locality} AS locality
       FROM sf_contact ct
       LEFT JOIN sf_account acc ON acc.id = ct.account_id
@@ -94,6 +96,7 @@ function toCandidate(r: Record<string, unknown>): CandidateRow {
     hasCv: isTrue(r.has_cv),
     fastApply: isTrue(r.fast_applied),
     applications: num(r.applications),
+    firstApplicationAt: asDate(r.first_at),
     lastApplicationAt: asDate(r.last_at),
     createdAt: asDate(r.created_date),
   };
@@ -108,6 +111,7 @@ export const CANDIDATE_SORTS: readonly SortColumn[] = [
   { key: "cv", kind: "number", by: sql`c.has_cv` },
   { key: "fast", kind: "number", by: sql`c.fast_applied` },
   { key: "applications", kind: "number", by: sql`c.applications` },
+  { key: "first", kind: "date", by: sql`c.first_at` },
   { key: "last", kind: "date", by: sql`c.last_at` },
 ];
 

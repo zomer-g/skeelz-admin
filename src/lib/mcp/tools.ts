@@ -8,7 +8,7 @@ import { addDays, ALL_FROM_DAY, eachDay, israelDay, parseDashboardParams } from 
 import { getDb } from "@/lib/db/client";
 import { accessRequests, auditLog, invites, syncRuns, syncState, users } from "@/lib/db/schema";
 import { loadCaseTimeline } from "@/lib/entities/activity";
-import { APPLICATION_SORTS, loadApplication, searchApplications } from "@/lib/entities/applications";
+import { APPLICATION_SORTS, loadApplication, loadApplicationStatusRows, searchApplications, type ApplicationFilters } from "@/lib/entities/applications";
 import { CANDIDATE_SORTS, loadCandidate, searchCandidates } from "@/lib/entities/candidates";
 import { COMPANY_SORTS, loadCompany, loadJobDetails, searchCompanies } from "@/lib/entities/companies";
 import { startDir, type Sort, type SortColumn } from "@/lib/entities/sort";
@@ -40,6 +40,8 @@ import {
   loadPositionsByJobKeys,
 } from "@/lib/metrics/jobs";
 import { CHANNEL_LABELS, loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
+import { registrationCohorts } from "@/lib/metrics/registrations";
+import { applyExclusions, countByStatus, DEDUPE_SECONDS, REGISTRATION_WINDOW_MINUTES, STATUS_GROUPS, TIME_BUCKETS, type ExclusionOptions, type StatusGroup } from "@/lib/metrics/segments";
 import { ArgError, inputSchema, type ArgValue, type Fields } from "./args";
 import { GA_FILTER_DIMS, GA_REPORT_NAMES, GA_REPORTS, JOB_SCOPES, runGaReport, type JobScope } from "@/lib/metrics/ga-report";
 import type { McpPrincipal } from "./oauth";
@@ -79,6 +81,7 @@ interface Tool {
 /* ---------------------------------------------------------------- helpers */
 
 const s = (v: ArgValue) => (typeof v === "string" ? v : "");
+const list = (v: ArgValue) => (Array.isArray(v) ? v : []);
 const n = (v: ArgValue, fallback: number) => (typeof v === "number" ? v : fallback);
 const link = (ctx: ToolContext, path: string) => `${ctx.origin}${path}`;
 
@@ -105,11 +108,11 @@ const sortFields = (columns: readonly SortColumn[], fallback: string): Fields =>
   dir: { type: "string", enum: ["asc", "desc"], description: "Order direction; the column's own default when absent (text a→z, dates newest first, numbers largest first)." },
 });
 
-function dayRange(a: Record<string, ArgValue>, defaultDays: number): { fromDay: string; toDay: string } {
+function dayRange(a: Record<string, ArgValue>, defaultDays: number, { anyLength = false } = {}): { fromDay: string; toDay: string } {
   const toDay = s(a.to) || israelDay();
   const fromDay = s(a.from) || addDays(toDay, -(defaultDays - 1));
   if (fromDay > toDay) throw new ArgError("from must not be after to");
-  if ((Date.parse(toDay) - Date.parse(fromDay)) / 86_400_000 + 1 > API_LIMITS.maxRangeDays) {
+  if (!anyLength && (Date.parse(toDay) - Date.parse(fromDay)) / 86_400_000 + 1 > API_LIMITS.maxRangeDays) {
     throw new ArgError(`the range may span at most ${API_LIMITS.maxRangeDays} days`);
   }
   return { fromDay, toDay };
@@ -154,6 +157,21 @@ const topicField: Fields[string] = {
     "A profession or skill topic: files whose text holds one of its phrases (every Hebrew prefix and spelling), e.g. social.work, law.lawyer, finance.cpa, or a whole group such as eng. cv_topics lists them with their phrases and counts.",
 };
 
+/** What the aggregate tools leave out (lib/metrics/segments.ts); each answer says how many of each. */
+const exclusionFields: Fields = {
+  exclude_internal: {
+    type: "boolean",
+    default: true,
+    description: "Leave out internal and test records: @skeelz.co.il addresses (and their +variants), addresses like test1@ or me+test@, names with test / טסט / בדיקה. Default true.",
+  },
+  dedupe: {
+    type: "boolean",
+    default: true,
+    description: `Count once the applications of one person (Contact, else address) to one job made within ${DEDUPE_SECONDS} seconds of each other — one submit sent twice; the earliest is kept. Default true.`,
+  },
+};
+const exclusionArgs = (a: Record<string, ArgValue>): ExclusionOptions => ({ internal: a.exclude_internal !== false, dedupe: a.dedupe !== false });
+
 const scopeField: Fields[string] = {
   type: "string",
   enum: ["paid", "all"],
@@ -186,7 +204,9 @@ const TOOLS: Tool[] = [
     name: "dashboard_summary",
     title: "Dashboard summary",
     description:
-      "The applications funnel and site totals for a date range (default: the last 30 days): new and active jobs, applications by stage (received, CV requested/received, sent to employer, employer responded, interviews, accepted, rejected), median handling times, reject reasons, site sessions and job events. Aggregates only.",
+      "The applications funnel and site totals for a date range (default: the last 30 days): new and active jobs, applications by stage (received, CV requested/received, sent to employer, employer responded, interviews, accepted, rejected), median handling times, reject reasons, site sessions and job events. " +
+      "`funnel` holds the stages as ever reached in the status history (not where applications stand now — application_status_counts gives that), the drop-outs (rejected by us; candidate dropped = לא שלח קו\"ח / נדחה על ידי מועמד; job closed = משרה נסגרה על ידי מעסיק / ליד סגור) and stage-to-stage rates. " +
+      "`segment` narrows to הגשה מהירה (fast) or ordinary (regular) applications; compare returns the whole summary for each, same range and scope (site and job totals are not split by segment). Aggregates only.",
     minRole: "viewer",
     heavy: true,
     fields: {
@@ -196,12 +216,29 @@ const TOOLS: Tool[] = [
       basis: {
         type: "string",
         enum: ["application", "event"],
-        description: "application (default) = applications created in the range and how far they got; event = stage events that happened in the range.",
+        description: "application (default) = applications created in the range and how far they got (any length of range); event = stage events that happened in the range (at most 366 days).",
       },
+      segment: {
+        type: "string",
+        enum: ["all", "fast", "regular", "compare"],
+        description: "all (default); fast = הגשה מהירה applications only (fast_applied__c); regular = the others; compare = both, side by side.",
+      },
+      ...exclusionFields,
     },
     run: async (a) => {
-      const { fromDay, toDay } = dayRange(a, 30);
-      return metricsSummary(fromDay, toDay, s(a.scope) === "all" ? "all" : "paid", s(a.basis) === "event" ? "event" : "application");
+      const basis = s(a.basis) === "event" ? "event" : "application";
+      const { fromDay, toDay } = dayRange(a, 30, { anyLength: basis === "application" });
+      const scope = s(a.scope) === "all" ? "all" : "paid";
+      const exclusions = exclusionArgs(a);
+      const segment = s(a.segment) || "all";
+      if (segment === "compare") {
+        const [fast, regular] = await Promise.all([
+          metricsSummary(fromDay, toDay, scope, basis, { segment: "fast", exclusions }),
+          metricsSummary(fromDay, toDay, scope, basis, { segment: "regular", exclusions }),
+        ]);
+        return { range: { from: fromDay, to: toDay, scope, basis }, segment: "compare", fast, regular };
+      }
+      return metricsSummary(fromDay, toDay, scope, basis, { segment: segment as "all" | "fast" | "regular", exclusions });
     },
   },
   {
@@ -396,7 +433,11 @@ const TOOLS: Tool[] = [
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Free text.", maxLength: 100 },
-      status: { type: "string", description: "Exact current status, in Hebrew as in Salesforce (e.g. התקבל).", maxLength: 100 },
+      status: {
+        type: "strings",
+        maxLength: 100,
+        description: "Current status in Hebrew as in Salesforce (e.g. התקבל), or a list of them (any matches). Spaces are folded on both sides, so double and no-break spaces in Salesforce's values do not matter.",
+      },
       paid: { type: "string", enum: ["paid", "unpaid"], description: "Paid or unpaid applications only." },
       fast: { type: "string", enum: ["fast", "regular"], description: "הגשה מהירה (the site's one-click apply) only, or only ordinary applications." },
       cv: { type: "string", enum: ["yes", "no"], description: "Only candidates whose קו\"ח checkbox (CV__c) is set, or only those without it." },
@@ -414,7 +455,8 @@ const TOOLS: Tool[] = [
       const result = await searchApplications(
         {
           q: s(a.q),
-          status: s(a.status),
+          status: "",
+          statuses: list(a.status),
           paid: (s(a.paid) as "paid" | "unpaid" | "") || "",
           fast: (s(a.fast) as "fast" | "regular" | "") || "",
           cv: (s(a.cv) as "yes" | "no" | "") || "",
@@ -430,6 +472,63 @@ const TOOLS: Tool[] = [
       return { total: result.total, page, applications: result.rows.map((r) => ({ ...r, admin_url: link(ctx, `/applications/${r.id}`) })) };
     },
     people: (r) => (r as { applications: unknown[] }).applications.length,
+  },
+  {
+    name: "application_status_counts",
+    title: "Applications by status",
+    description:
+      "How many applications are in each current status (after folding spaces, so every spelling of a status is one row), under the filters of search_applications, optionally grouped by fast (הגשה מהירה or regular), paid, owner or month of creation. " +
+      "One call instead of a search per status: rows of {status, group, count} and a total per group. Before exclusions, each group's total equals search_applications' total with the same filters; `excluded` says how many internal / duplicate records were left out. " +
+      "This is where applications stand now; dashboard_summary's funnel counts the stages they ever reached. Aggregates only.",
+    minRole: "viewer",
+    heavy: true,
+    fields: {
+      from: dayField("Created on or after"),
+      to: dayField("Created on or before"),
+      paid: { type: "string", enum: ["paid", "unpaid"], description: "Paid or unpaid applications only." },
+      fast: { type: "string", enum: ["fast", "regular"], description: "הגשה מהירה only, or only ordinary applications." },
+      owner: { type: "string", description: "Owner's full name, as in Salesforce.", maxLength: 100 },
+      company_key: { type: "string", description: "A company key from search_companies.", maxLength: 300 },
+      job_id: sfIdField("job"),
+      group_by: { type: "string", enum: STATUS_GROUPS, description: "fast, paid, owner or month (of creation, Israel time). Empty: one group, all." },
+      ...exclusionFields,
+    },
+    run: async (a, ctx) => {
+      const filters: ApplicationFilters = {
+        q: "",
+        status: "",
+        paid: (s(a.paid) as "paid" | "unpaid" | "") || "",
+        fast: (s(a.fast) as "fast" | "regular" | "") || "",
+        owner: s(a.owner),
+        fromDay: s(a.from),
+        toDay: s(a.to),
+        jobId: s(a.job_id) || undefined,
+        companyKey: s(a.company_key) || undefined,
+      };
+      if (filters.fromDay && filters.toDay && filters.fromDay > filters.toDay) throw new ArgError("from must not be after to");
+      const by = s(a.group_by) as StatusGroup | "";
+      const rows = await loadApplicationStatusRows(filters);
+      const ex = applyExclusions(rows, exclusionArgs(a), (r) => r.jobId);
+      const before = countByStatus(rows, by).totals;
+      const after = countByStatus(ex.kept, by);
+      const internal = countByStatus(rows.filter((r) => ex.internalIds.has(r.id)), by).totals;
+      const duplicate = countByStatus(rows.filter((r) => ex.duplicateIds.has(r.id)), by).totals;
+      const query = new URLSearchParams(
+        Object.entries({ paid: filters.paid, fast: filters.fast ?? "", owner: filters.owner, from: filters.fromDay, to: filters.toDay, job: filters.jobId ?? "", company: filters.companyKey ?? "" }).filter(([, v]) => v),
+      ).toString();
+      return {
+        group_by: by || null,
+        exclusions: exclusionArgs(a),
+        total: ex.kept.length,
+        total_before_exclusions: rows.length,
+        excluded: ex.excluded,
+        groups: Object.fromEntries(
+          Object.entries(before).map(([g, n]) => [g, { total: after.totals[g] ?? 0, before_exclusions: n, excluded: { internal: internal[g] ?? 0, duplicate: duplicate[g] ?? 0 } }]),
+        ),
+        rows: after.rows,
+        list_url: link(ctx, `/applications${query ? `?${query}` : ""}`),
+      };
+    },
   },
   {
     name: "get_application",
@@ -453,7 +552,7 @@ const TOOLS: Tool[] = [
     name: "search_candidates",
     title: "Search candidates",
     description:
-      "Candidates (Salesforce Contacts), most recently active first, with their city, Account, CV flag, הגשה מהירה flag, application count and creation date. Free text matches name, email or phone.",
+      "Candidates (Salesforce Contacts), most recently active first, with their city, Account, CV flag, הגשה מהירה flag, application count, first and last application (firstApplicationAt / lastApplicationAt) and creation date. Free text matches name, email or phone.",
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Free text.", maxLength: 100 },
@@ -496,7 +595,7 @@ const TOOLS: Tool[] = [
   {
     name: "get_candidate",
     title: "Candidate details",
-    description: "One candidate's profile and skills, and their latest applications. Files (CVs) are not available here; open them on the site.",
+    description: "One candidate's profile and skills, when they first and last applied (firstApplicationAt / lastApplicationAt), and their latest applications. Files (CVs) are not available here; open them on the site.",
     minRole: "viewer",
     fields: { id: sfIdField("candidate (Contact)") },
     required: ["id"],
@@ -509,6 +608,39 @@ const TOOLS: Tool[] = [
     },
     people: () => 1,
   },
+  {
+    name: "registration_cohorts",
+    title: "Registration cohorts",
+    description:
+      "People who signed up on the site (candidates with fast=no: Contacts without הגשה מהירה, Field6__c), in cohorts by the month or quarter their Contact was made. Per cohort: registered, with_cv (CV__c), applied (at least once, ever); " +
+      `time from sign-up to the first application in buckets (${TIME_BUCKETS.map((b) => b.key).join(", ")}) and its median in minutes; who applied to more than one job; who applied more than 24 hours after signing up; applied_within_days (the share who applied within N days, comparable between young and old cohorts — complete_for_within_days says whether the cohort has had N days); ` +
+      `when the first CV arrived (cv_arrival: at_registration = a file on the Contact within ${REGISTRATION_WINDOW_MINUTES} minutes, or CV__c alone with no file; later_on_site; later_by_email = on an incoming email or a קורות חיים Case of any Contact with the same address; before_registration; none); ` +
+      "applications made in the period by this cohort and by earlier registrants (coming back versus new sign-ups); and anomaly: a period with at least 3× the registrations of the surrounding periods' median and under half their CV share (a bulk import, not people signing up). Aggregates only.",
+    minRole: "viewer",
+    heavy: true,
+    fields: {
+      period: { type: "string", enum: ["month", "quarter"], description: "Cohort size: month (default) or quarter." },
+      from: dayField("Contacts made on or after (default: the start of the period 12 periods ago)"),
+      to: dayField("Contacts made on or before (default: today)"),
+      applied_within_days: { type: "integer", description: "N for applied_within_days (default 30).", minimum: 1, maximum: 365, default: 30 },
+      ...exclusionFields,
+    },
+    run: async (a, ctx) => {
+      const period = s(a.period) === "quarter" ? "quarter" : "month";
+      const toDay = s(a.to) || israelDay();
+      let fromDay = s(a.from);
+      if (!fromDay) {
+        const d = new Date(`${toDay.slice(0, 7)}-01T12:00:00Z`);
+        d.setUTCMonth(d.getUTCMonth() - (period === "quarter" ? 33 + ((d.getUTCMonth() % 3)) : 11));
+        fromDay = d.toISOString().slice(0, 10);
+      }
+      if (fromDay > toDay) throw new ArgError("from must not be after to");
+      if (fromDay < "2015-01-01") throw new ArgError("from must be 2015-01-01 or later");
+      const result = await registrationCohorts({ fromDay, toDay, period, withinDays: n(a.applied_within_days, 30), exclusions: exclusionArgs(a) });
+      return { ...result, list_url: link(ctx, `/candidates?fast=no&from=${fromDay}&to=${toDay}`) };
+    },
+  },
+
   /* ------------------------------------------------------------- CVs */
   {
     name: "search_cvs",

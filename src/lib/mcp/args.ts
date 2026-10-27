@@ -6,10 +6,12 @@
 export type Field =
   | { type: "string"; description: string; enum?: readonly string[]; maxLength?: number; pattern?: RegExp; format?: "date" }
   | { type: "integer"; description: string; minimum: number; maximum: number; default?: number }
-  | { type: "boolean"; description: string; default?: boolean };
+  | { type: "boolean"; description: string; default?: boolean }
+  /** One string or a list of them (each at most maxLength, at most maxItems); always a list once parsed. */
+  | { type: "strings"; description: string; maxLength?: number; maxItems?: number };
 
 export type Fields = Record<string, Field>;
-export type ArgValue = string | number | boolean | undefined;
+export type ArgValue = string | number | boolean | string[] | undefined;
 
 export class ArgError extends Error {}
 
@@ -18,6 +20,11 @@ const DAY = /^\d{4}-\d{2}-\d{2}$/;
 export function inputSchema(fields: Fields, required: readonly string[] = []) {
   const properties: Record<string, unknown> = {};
   for (const [name, f] of Object.entries(fields)) {
+    if (f.type === "strings") {
+      const item = { type: "string", maxLength: f.maxLength ?? 200 };
+      properties[name] = { description: f.description, anyOf: [item, { type: "array", items: item, maxItems: f.maxItems ?? 20 }] };
+      continue;
+    }
     const { pattern, ...rest } = f as Field & { pattern?: RegExp };
     properties[name] = { ...rest, ...(pattern ? { pattern: pattern.source } : {}) };
   }
@@ -39,7 +46,14 @@ export function parseArgs(fields: Fields, required: readonly string[], raw: unkn
       out[name] = "default" in f ? f.default : undefined;
       continue;
     }
-    if (f.type === "string") {
+    if (f.type === "strings") {
+      const list = typeof value === "string" ? [value] : value;
+      if (!Array.isArray(list) || !list.every((v) => typeof v === "string")) throw new ArgError(`${name} must be a string or a list of strings`);
+      if (list.length > (f.maxItems ?? 20)) throw new ArgError(`${name} may hold at most ${f.maxItems ?? 20} values`);
+      const clean = list.map((v: string) => v.trim()).filter(Boolean);
+      if (clean.some((v) => v.length > (f.maxLength ?? 200))) throw new ArgError(`${name} has a value longer than ${f.maxLength ?? 200} characters`);
+      out[name] = clean.length ? clean : undefined;
+    } else if (f.type === "string") {
       if (typeof value !== "string") throw new ArgError(`${name} must be a string`);
       const v = value.trim();
       if (v.length > (f.maxLength ?? 200)) throw new ArgError(`${name} is longer than ${f.maxLength ?? 200} characters`);

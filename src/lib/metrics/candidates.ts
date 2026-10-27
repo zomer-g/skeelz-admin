@@ -29,6 +29,14 @@ export function normStatus(value: string | null): string | null {
   return value == null ? null : value.replace(/[ \s]+/g, " ").trim();
 }
 
+/**
+ * normStatus in SQL, for a column or expression written in code (never user input): no-break
+ * spaces and every run of whitespace become one space, trimmed.
+ */
+export function normStatusSql(expr: string) {
+  return sql.raw(`btrim(regexp_replace(replace(${expr}, chr(160), ' '), '\\s+', ' ', 'g'))`);
+}
+
 export const STATUS = {
   new: normStatus("New")!,
   requestedCv: normStatus('ביקשנו קו"ח')!,
@@ -49,6 +57,12 @@ export const EMPLOYER_RESPONSE_STATUSES = [
   "Response Received",
 ].map((s) => normStatus(s)!);
 
+/** The candidate dropped out: never sent a CV, or turned the job down. */
+export const CANDIDATE_DROPPED_STATUSES = ['לא שלח קו"ח', "נדחה על ידי מועמד"].map((s) => normStatus(s)!);
+
+/** The job closed under the application: the employer closed it, or the lead was closed. */
+export const JOB_CLOSED_STATUSES = ["משרה נסגרה על ידי מעסיק", "ליד סגור"].map((s) => normStatus(s)!);
+
 /** After "asked for a CV", either of these means the candidate sent one. */
 export const CV_RECEIVED_STATUSES = [STATUS.inHandling, STATUS.sent];
 
@@ -68,6 +82,11 @@ export interface ApplicationFacts {
   recordType: string;
   /** An application to a paid job (see ./paid.ts). */
   paid: boolean;
+  /** הגשה מהירה: the site's one-click apply (`fast_applied__c` on the application). */
+  fast: boolean;
+  contactId: string | null;
+  /** The candidate's address, lower-cased: the application's, else the Contact's. */
+  candidateEmail: string | null;
   createdAt: Date;
   closedAt: Date | null;
   candidateName: string | null;
@@ -84,6 +103,9 @@ export interface ApplicationFacts {
   rejectedByUsAt: Date | null;
   interviewAt: Date | null;
   acceptedAt: Date | null;
+  /** First move into a CANDIDATE_DROPPED_STATUSES / JOB_CLOSED_STATUSES status. */
+  candidateDroppedAt: Date | null;
+  jobClosedAt: Date | null;
   candidateTouchesBeforeSent: number;
   employerTouchesAfterSent: number;
   candidateEmails: number;
@@ -98,6 +120,9 @@ interface FactsRow {
   status: string | null;
   record_type: string;
   paid: boolean;
+  fast: boolean;
+  contact_id: string | null;
+  candidate_email: string | null;
   created_at: Date;
   closed_at: Date | null;
   candidate_name: string | null;
@@ -114,6 +139,8 @@ interface FactsRow {
   rejected_by_us_at: Date | null;
   interview_at: Date | null;
   accepted_at: Date | null;
+  candidate_dropped_at: Date | null;
+  job_closed_at: Date | null;
   candidate_emails: number;
   candidate_calls: number;
   employer_emails: number;
@@ -138,7 +165,7 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
     ),
     sh AS (
       SELECT h.case_id,
-             btrim(regexp_replace(replace(h.new_value, chr(160), ' '), ' +', ' ', 'g')) AS new_value,
+             ${normStatusSql("h.new_value")} AS new_value,
              h.created_date
         FROM sf_case_history h
         JOIN apps a ON a.id = h.case_id
@@ -152,7 +179,9 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
              max(created_date) FILTER (WHERE new_value = ${STATUS.sent}) AS last_sent_at,
              min(created_date) FILTER (WHERE new_value = ${STATUS.rejectedByUs}) AS rejected_by_us_at,
              min(created_date) FILTER (WHERE new_value = ${STATUS.interview}) AS interview_at,
-             min(created_date) FILTER (WHERE new_value = ${STATUS.accepted}) AS accepted_status_at
+             min(created_date) FILTER (WHERE new_value = ${STATUS.accepted}) AS accepted_status_at,
+             min(created_date) FILTER (WHERE new_value IN ${CANDIDATE_DROPPED_STATUSES}) AS candidate_dropped_at,
+             min(created_date) FILTER (WHERE new_value IN ${JOB_CLOSED_STATUSES}) AS job_closed_at
         FROM sh
        GROUP BY case_id
     ),
@@ -195,6 +224,9 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
            a.record_type,
            -- Stamped "הגשה למשרה בתשלום" when made, or its job is paid (see paid.ts).
            (coalesce((a.data->>'A_Money__c') = 'true', false) OR coalesce(j.paid, false)) AS paid,
+           coalesce(a.data->>'fast_applied__c', 'false') = 'true' AS fast,
+           a.contact_id,
+           coalesce(a.candidate_email, lower(nullif(btrim(ct.email), '')), lower(nullif(btrim(a.data->>'SuppliedEmail'), ''))) AS candidate_email,
            a.created_date AS created_at,
            a.closed_date AS closed_at,
            coalesce(ct.name, nullif(a.data->>'full_name__c', ''), nullif(a.data->>'A_Name_Cam__c', ''), nullif(a.data->>'SuppliedName', '')) AS candidate_name,
@@ -212,6 +244,8 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
            st.interview_at,
            coalesce(st.accepted_status_at, rth.at,
                     CASE WHEN a.record_type = ${RECORD_TYPES.accepted} THEN a.created_date END) AS accepted_at,
+           st.candidate_dropped_at,
+           st.job_closed_at,
            coalesce(em.candidate_emails, 0)::int AS candidate_emails,
            coalesce(ca.candidate_calls, 0)::int AS candidate_calls,
            coalesce(em.employer_emails, 0)::int AS employer_emails,
@@ -278,6 +312,9 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
     status: normStatus(r.status),
     recordType: r.record_type,
     paid: r.paid === true,
+    fast: r.fast === true,
+    contactId: r.contact_id,
+    candidateEmail: r.candidate_email,
     createdAt: asDate(r.created_at)!,
     closedAt: asDate(r.closed_at),
     candidateName: r.candidate_name,
@@ -299,6 +336,8 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
     rejectedByUsAt: asDate(r.rejected_by_us_at),
     interviewAt: asDate(r.interview_at),
     acceptedAt: asDate(r.accepted_at),
+    candidateDroppedAt: asDate(r.candidate_dropped_at),
+    jobClosedAt: asDate(r.job_closed_at),
     candidateTouchesBeforeSent: Number(r.candidate_emails) + Number(r.candidate_calls),
     employerTouchesAfterSent: Number(r.employer_emails) + Number(r.employer_calls),
     candidateEmails: Number(r.candidate_emails),
@@ -380,6 +419,9 @@ export interface CandidateMetrics {
   touchesUntilResponse: { responded: Stats; notResponded: Stats };
   interviews: number;
   accepted: number;
+  /** Moved into CANDIDATE_DROPPED_STATUSES / JOB_CLOSED_STATUSES (application basis: or is in one now). */
+  candidateDropped: number;
+  jobClosed: number;
   waiting: WaitingRow[];
 }
 
@@ -425,6 +467,12 @@ export function computeCandidateMetrics(
     basis === "application"
       ? cohort.filter((f) => f.rejectedByUsAt || f.status === STATUS.rejectedByUs)
       : facts.filter((f) => inRange(f.rejectedByUsAt, from, to));
+  // Like "rejected by us": the move into the status, or (application basis) being in it now,
+  // which covers applications whose move predates the status history.
+  const endedIn = (at: (f: ApplicationFacts) => Date | null, statuses: readonly string[]) =>
+    basis === "application"
+      ? cohort.filter((f) => at(f) || (f.status !== null && statuses.includes(f.status))).length
+      : facts.filter((f) => inRange(at(f), from, to)).length;
   const reasons = new Map<string, number>();
   for (const f of rejected) {
     for (const r of f.rejectReasons.length ? f.rejectReasons : ["לא צוינה סיבה"]) reasons.set(r, (reasons.get(r) ?? 0) + 1);
@@ -473,6 +521,8 @@ export function computeCandidateMetrics(
     },
     interviews: reached((f) => f.interviewAt).length,
     accepted: reached((f) => f.acceptedAt).length,
+    candidateDropped: endedIn((f) => f.candidateDroppedAt, CANDIDATE_DROPPED_STATUSES),
+    jobClosed: endedIn((f) => f.jobClosedAt, JOB_CLOSED_STATUSES),
     waiting,
   };
 }

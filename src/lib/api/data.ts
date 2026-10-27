@@ -1,7 +1,19 @@
 import { sql } from "drizzle-orm";
 import { addDays, israelMidnight } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
-import { computeCandidateMetrics, countNewJobs, loadApplicationFacts, normStatus, RECORD_TYPES, syncFreshness, type ApplicationFacts, type Basis } from "@/lib/metrics/candidates";
+import {
+  computeCandidateMetrics,
+  countNewJobs,
+  loadApplicationFacts,
+  normStatus,
+  RECORD_TYPES,
+  STATUS_HISTORY_START,
+  syncFreshness,
+  type ApplicationFacts,
+  type Basis,
+  type CandidateMetrics,
+} from "@/lib/metrics/candidates";
+import { applyExclusions, rate, type ExclusionOptions } from "@/lib/metrics/segments";
 import { JOB_EVENTS, siteJobUrl, type Position } from "@/lib/metrics/jobs";
 import { applicationPaidSql, inScope, jobPaidSql, paidJobKeysSql, type Scope } from "@/lib/metrics/paid";
 
@@ -119,8 +131,31 @@ export async function dailySummary(day: string) {
 
 const round1 = (n: number | null) => (n == null ? null : Math.round(n * 10) / 10);
 
+/** The MCP's extra cut of the summary: one kind of application, and what to leave out. */
+export interface SummaryOptions {
+  /** fast = הגשה מהירה only (`fast_applied__c`), regular = the rest. */
+  segment: "all" | "fast" | "regular";
+  exclusions: ExclusionOptions;
+}
+
+/** Stage-to-stage rates of the funnel, from the history of statuses (application basis only). */
+function funnelRates(m: CandidateMetrics) {
+  return {
+    requested_cv_of_received: rate(m.requestedCv, m.applications),
+    cv_received_of_requested_cv: rate(m.cvReceived, m.requestedCv),
+    sent_of_received: rate(m.sentToEmployer, m.applications),
+    employer_responded_of_sent: rate(m.employerResponded, m.sentToEmployer),
+    interviews_of_sent: rate(m.interviews, m.sentToEmployer),
+    accepted_of_interviews: rate(m.accepted, m.interviews),
+    accepted_of_received: rate(m.accepted, m.applications),
+    rejected_by_us_of_received: rate(m.rejectedByUs, m.applications),
+    candidate_dropped_of_received: rate(m.candidateDropped, m.applications),
+    job_closed_of_received: rate(m.jobClosed, m.applications),
+  };
+}
+
 /** The candidates-tab funnel and site totals for inclusive Israel days: /api/v1/metrics and the MCP's dashboard_summary. */
-export async function metricsSummary(fromDay: string, toDay: string, scope: Scope, basis: Basis) {
+export async function metricsSummary(fromDay: string, toDay: string, scope: Scope, basis: Basis, opts?: SummaryOptions) {
   const from = israelMidnight(fromDay);
   const to = israelMidnight(addDays(toDay, 1));
   const [facts, newJobs, active, site, freshness] = await Promise.all([
@@ -130,7 +165,17 @@ export async function metricsSummary(fromDay: string, toDay: string, scope: Scop
     siteTotals(fromDay, toDay, scope),
     syncFreshness(),
   ]);
-  const m = computeCandidateMetrics(facts.filter(inScope(scope)), scope === "paid" ? newJobs.paid : newJobs.all, { from, to, basis });
+  let scoped = facts.filter(inScope(scope));
+  if (opts && opts.segment !== "all") scoped = scoped.filter((f) => f.fast === (opts.segment === "fast"));
+  const inRange = (f: ApplicationFacts) => f.createdAt >= from && f.createdAt < to;
+  let excluded: { internal: number; duplicate: number } | null = null;
+  if (opts) {
+    const ex = applyExclusions(scoped, opts.exclusions, (f) => f.parentId);
+    const created = scoped.filter(inRange);
+    excluded = { internal: created.filter((f) => ex.internalIds.has(f.id)).length, duplicate: created.filter((f) => ex.duplicateIds.has(f.id)).length };
+    scoped = ex.kept;
+  }
+  const m = computeCandidateMetrics(scoped, scope === "paid" ? newJobs.paid : newJobs.all, { from, to, basis });
 
   return {
     range: { from: fromDay, to: toDay, scope, basis },
@@ -154,5 +199,29 @@ export async function metricsSummary(fromDay: string, toDay: string, scope: Scop
     reject_reasons: m.rejectReasons,
     site,
     data_freshness: { salesforce_synced_at: freshness.casesSyncedAt?.toISOString() ?? null },
+    ...(opts && excluded
+      ? {
+          segment: opts.segment,
+          funnel: {
+            // Every stage is "ever moved into it" (status history), not where applications stand now.
+            stages: {
+              received: m.applications,
+              requested_cv: m.requestedCv,
+              cv_received: m.cvReceived,
+              sent_to_employer: m.sentToEmployer,
+              employer_responded: m.employerResponded,
+              interviews: m.interviews,
+              accepted: m.accepted,
+            },
+            dropouts: { rejected_by_us: m.rejectedByUs, candidate_dropped: m.candidateDropped, job_closed: m.jobClosed },
+            rates: basis === "application" ? funnelRates(m) : null,
+            ...(basis === "event" ? { rates_note: "Event basis counts what happened in the range to applications of any age, so stage-to-stage rates are not given; use basis=application." } : {}),
+            created_before_status_history: scoped.filter((f) => inRange(f) && f.createdAt < STATUS_HISTORY_START).length,
+          },
+          // Applications created in the range that were left out (internal / test records, and repeats within a minute).
+          excluded,
+          exclusions: opts.exclusions,
+        }
+      : {}),
   };
 }

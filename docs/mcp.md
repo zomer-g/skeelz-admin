@@ -23,13 +23,37 @@ site**. Users find the address and their own connections at `/connectors`; admin
 
 | Role | Tools |
 |---|---|
-| viewer | `whoami`, `dashboard_summary`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `get_application`, `search_candidates`, `get_candidate`, `lookup_email`, `search_cvs`, `cv_summary`, `cv_topics`, `search_employer_leads`, `search_companies`, `get_company`, `search_payments` |
+| viewer | `whoami`, `dashboard_summary`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `application_status_counts`, `get_application`, `search_candidates`, `get_candidate`, `registration_cohorts`, `lookup_email`, `search_cvs`, `cv_summary`, `cv_topics`, `search_employer_leads`, `search_companies`, `get_company`, `search_payments` |
 | editor | + `update_campaign`, `link_campaign_job`, `unlink_campaign_job` (same code as the campaign page, `src/lib/campaigns/edit.ts`) |
 | admin | + `list_users`, `query_audit_log`, `sync_status` (read only) |
 
 `search_jobs` filters combine (AND): `active_only` (default true), `paid_only`, `marked_only` (the site's crown /
 featured mark, `isMarked_cambium__c`), and `total` counts what matches all of them. `get_job` and `get_application`
 return every field of the Salesforce job / application card; `search_companies` counts marked jobs per company.
+
+**Registered vs. quick-apply candidates, and their funnel** (definitions in `docs/candidates-tab-metrics.md`, "רשומים
+מול הגשה מהירה"; arithmetic in `src/lib/metrics/segments.ts`, tested in `segments.test.ts`). All aggregates — no names,
+emails or phones — and audited as `mcp.call` like every tool:
+
+- `dashboard_summary` takes `segment` (`all` default, `fast` = `fast_applied__c` on the application, `regular`, `compare` =
+  the whole summary once per kind, same range and scope; site and job totals are not split). Its `funnel` block is the
+  **history funnel**: each stage counts the applications that ever moved into it (`requestedCvAt`, `sentAt`,
+  `employerResponseAt`, `interviewAt`, `acceptedAt`), plus the drop-outs `rejected_by_us`, `candidate_dropped`
+  (לא שלח קו"ח / נדחה על ידי מועמד) and `job_closed` (משרה נסגרה על ידי מעסיק / ליד סגור), and stage-to-stage `rates`
+  (application basis only). With `basis=application` the range may be longer than 366 days. The REST `/api/v1/metrics`
+  calls the same function without these options and is unchanged.
+- `application_status_counts` is the **current-status** view: applications by status now (after `normStatus`), under
+  `from`/`to`/`paid`/`fast`/`owner`/`company_key`/`job_id`, optionally `group_by` fast / paid / owner / month. Rows of
+  `{status, group, count}` and per-group totals; `before_exclusions` equals `search_applications`' total for the same filters
+  (it reads the same WHERE, `loadApplicationStatusRows`).
+- `search_applications`' `status` takes one status or a list, folded on both sides like the dashboard.
+- `search_candidates` / `get_candidate` carry `firstApplicationAt` next to `lastApplicationAt` (`sort=first`).
+- `registration_cohorts`: sign-ups (fast=no) by month or quarter of the Contact — registered, with CV, applied, time to the
+  first application in buckets and its median, more than one job, back after 24 hours, `applied_within_days` (N, default 30),
+  when the first CV arrived (`cv_arrival`), applications in the period by earlier registrants, and an `anomaly` flag for bulk
+  waves.
+- Every aggregate tool above takes `exclude_internal` and `dedupe` (both default true) and says in `excluded` how many records
+  each left out.
 
 Google Analytics: every figure the sync keeps (six GA4 reports, daily, `src/lib/integrations/marketing-sync.ts`) is
 reachable. `ga_report` groups and sums any of them (pages, events, channels, campaigns, campaign_events,
@@ -66,7 +90,7 @@ a plain form post that redirects off-site would be blocked by the CSP's `form-ac
   (token issued), `mcp.initialize`, `mcp.call` (every tool call with its arguments, like `page.view`),
   `mcp.denied`, `mcp.revoked`.
 - `mcp_grants` keeps last use, address and a call count, shown on both screens.
-- 60 calls/min per connection; `dashboard_summary` and `list_campaigns` 10/min per person; 30 wrong
+- 60 calls/min per connection; the heavy tools (`dashboard_summary`, `application_status_counts`, `registration_cohorts`, `marketing_summary`, `list_campaigns`, `get_campaign`) 10/min per person; 30 wrong
   tokens per address per 10 min → 10 min lockout. In memory, like the API limits.
 - A daily export budget per person (`src/lib/security/exports.ts`, shared with the site's copy buttons):
   every tool that returns people's details (`search_candidates`, `search_applications`, `search_cvs`,
