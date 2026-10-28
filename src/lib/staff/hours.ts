@@ -27,9 +27,14 @@ export const MONDAY_BOARD = {
 
 export interface WorkItem {
   externalId: string;
+  /** The board the task is on, so a second board's tasks stay told apart. */
+  boardId: string;
+  boardName: string | null;
   title: string | null;
   url: string | null;
   doneOn: string | null;
+  /** When the status last changed, i.e. when the task entered Done (it is Done now): the status value's changed_at. */
+  doneAt: Date | null;
   hours: number | null;
   notes: string | null;
   /** monday user ids of the people assigned. */
@@ -49,21 +54,36 @@ function personIds(value: string | null): string[] {
   }
 }
 
+/** changed_at of a status column's value: {"index":1,"post_id":null,"changed_at":"2026-10-22T19:25:15.348Z"}. */
+function changedAt(value: string | null): Date | null {
+  if (!value) return null;
+  try {
+    const at = (JSON.parse(value) as { changed_at?: unknown }).changed_at;
+    const d = typeof at === "string" ? new Date(at) : null;
+    return d && Number.isFinite(d.getTime()) ? d : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Hours from the choice's label ("1.5"); anything that is not a positive number is "no hours". */
 function parseHours(text: string | null): number | null {
   const n = Number((text ?? "").trim().replace(",", "."));
   return text && text.trim() && Number.isFinite(n) && n > 0 ? n : null;
 }
 
-export function parseMondayItem(item: MondayItem): WorkItem {
+export function parseMondayItem(item: MondayItem, board: { id: string; name: string | null } = { id: MONDAY_BOARD.id, name: null }): WorkItem {
   const col = new Map(item.column_values.map((c) => [c.id, c]));
   const doneOn = col.get(MONDAY_BOARD.doneOn)?.text?.trim() ?? "";
   const notes = col.get(MONDAY_BOARD.notes)?.text?.trim() ?? "";
   return {
     externalId: String(item.id),
+    boardId: board.id,
+    boardName: board.name,
     title: item.name?.trim() || null,
     url: item.url ?? null,
     doneOn: DAY.test(doneOn) ? doneOn : null,
+    doneAt: changedAt(col.get(MONDAY_BOARD.status)?.value ?? null),
     hours: parseHours(col.get(MONDAY_BOARD.hours)?.text ?? null),
     notes: notes || null,
     assigneeIds: personIds(col.get(MONDAY_BOARD.people)?.value ?? null),

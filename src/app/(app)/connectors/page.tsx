@@ -60,7 +60,13 @@ export default async function ConnectorsPage() {
         </Card>
 
         <Card title="החיבורים שלך">
-          <McpGrantsTable grants={grants} />
+          {user.staffManager ? (
+            <p className="mb-4 text-sm text-muted">
+              כמנהל/ת עובדים אפשר להפעיל בכל חיבור גם את כלי העובדים (<span dir="ltr">staff_monthly</span>, <span dir="ltr">staff_employee</span>): שעות ומשימות לפי עובד
+              ממאנדיי ומ-Salesforce. הם כבויים בכל חיבור עד שמפעילים אותם כאן, ופועלים רק כל עוד ההרשאה שלך כמנהל/ת עובדים בתוקף.
+            </p>
+          ) : null}
+          <McpGrantsTable grants={grants} staffToggle={user.staffManager} />
         </Card>
       </div>
     </>

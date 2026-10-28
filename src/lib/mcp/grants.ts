@@ -21,6 +21,8 @@ export interface GrantRow {
   expiresAt: Date;
   revokedAt: Date | null;
   revokedBy: string | null;
+  /** Staff tools turned on for this connection (they work only while the person is also a staff manager). */
+  staffData: boolean;
 }
 
 /** Connections, newest first: one person's, or everyone's for the admin screen. */
@@ -52,6 +54,7 @@ export async function listGrants(userId?: string): Promise<GrantRow[]> {
       expiresAt: g.refreshExpiresAt,
       revokedAt: g.revokedAt,
       revokedBy: g.revokedBy,
+      staffData: g.staffData,
     };
   });
 }

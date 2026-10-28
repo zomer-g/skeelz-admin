@@ -58,14 +58,16 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   עורך, אדמין ⊇ עורך; `src/lib/auth/permissions.ts`); adding a box asks for confirmation first.
 - **Staff data (מנהל עובדים, `docs/staff.md`) is the most sensitive data between employees.** A separate flag
   `users.staff_manager`, not a role: admin does not include it, only a staff manager grants it (ADMIN_EMAILS are staff managers
-  by configuration), invites never grant it, "view as" drops it (`user.staffManager` false), and MCP / `/api` never carry it —
-  `permissions.test.ts` fails if their code touches it. Pages use `pageAuthStaff`, actions `requireStaffManager`, never `hasRole`.
+  by configuration), invites never grant it, "view as" drops it (`user.staffManager` false), `/api` never carries it, and MCP only
+  through `src/lib/mcp/staff-tools.ts` (`staff_monthly`, `staff_employee`, `staff: true`) when `McpPrincipal.staffData`: a staff manager
+  now AND staff data turned on for that connection at `/connectors` (`mcp_grants.staff_data`) — `permissions.test.ts` fails otherwise. Pages use `pageAuthStaff`, actions `requireStaffManager`, never `hasRole`.
   Who is which Salesforce User / monday user (`users.sf_user_id`, `users.monday_user_id`, both unique) is set at `/admin/staff-links`
   (not on `/admin/users`); changing a link takes admin + staff manager. Follow the checklist in docs/staff.md for every step.
   `/staff` (one month, every linked employee) and `/staff/[id]` (month by month), code in `src/lib/staff/`: hours and done tasks of
   the monday.com board "משימות סיילספורס" (only linked employees' are stored, `staff_work_items`; synced hourly by the worker and on
   demand, `MONDAY_TOKEN` secret, queries only, state in `staff_source_state` — never `sync_runs`/`sync_state`), plus the `sf_task`
-  rows they own by Israel month: emails = TaskSubtype Email (Salesforce logs every sent email so), calls = Call. monday also shows
+  rows they own by Israel month: emails = TaskSubtype Email (Salesforce logs every sent email so), calls = Call, also by the type of
+  Case they sit on (`loadSfActivity`). monday tasks keep their board and when they entered Done (`done_at`, the status changed_at). monday also shows
   on `/admin/integrations` (board check only) and `/admin/sync`. Employees don't see their own.
 - **Salesforce is read-only in phase 1.** The SF client must expose no write methods. Candidates/employer
   contacts = Contact, companies = Account, jobs/applications/leads = Case by RecordType.

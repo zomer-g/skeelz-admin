@@ -92,7 +92,7 @@ async function dispatch(m: RpcRequest, ctx: ToolContext, ip: string) {
     case "ping":
       return rpcResult(m.id, {});
     case "tools/list":
-      return rpcResult(m.id, { tools: toolsFor(ctx.principal.role).map(describeTool) });
+      return rpcResult(m.id, { tools: toolsFor(ctx.principal.role, ctx.principal.staffData).map(describeTool) });
     case "tools/call":
       return rpcResult(m.id, await callTool(params, ctx, ip));
     case "resources/list":
@@ -112,7 +112,7 @@ async function callTool(params: Record<string, unknown>, ctx: ToolContext, ip: s
   const { principal } = ctx;
   const actor = principal.person.email;
   const name = typeof params.name === "string" ? params.name : "";
-  const found = findTool(name, principal.role);
+  const found = findTool(name, principal.role, principal.staffData);
   if (!found.ok) {
     if (found.reason === "forbidden") {
       void writeAudit(actor, "mcp.denied", name, { grantId: principal.grantId, role: principal.role, required: found.required });

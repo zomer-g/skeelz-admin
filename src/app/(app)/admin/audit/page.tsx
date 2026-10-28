@@ -25,6 +25,8 @@ const ACTION_LABELS: Record<string, string> = {
   "staff.monday_linked": "קישור עובד למשתמש מאנדיי",
   "staff.monday_unlinked": "ביטול קישור עובד למשתמש מאנדיי",
   "staff.sync_requested": "סנכרון שעות עובדים",
+  "mcp.staff_data_on": "הופעלו כלי עובדים בחיבור MCP",
+  "mcp.staff_data_off": "כובו כלי עובדים בחיבור MCP",
   "user.deactivated": "משתמש הושבת",
   "user.reactivated": "משתמש הופעל מחדש",
   "access_request.approved": "בקשת גישה אושרה",

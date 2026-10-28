@@ -30,6 +30,17 @@ describe("parseMondayItem", () => {
     );
   });
 
+  it("keeps the board and when the task entered Done (the status value's changed_at)", () => {
+    const w = parseMondayItem(
+      item("3302132921", { color_mm8cnb8e: { text: "Done", value: '{"index":1,"post_id":null,"changed_at":"2026-10-22T19:25:15.348Z"}' } }),
+      { id: "5106546225", name: "משימות סיילספורס" },
+    );
+    assert.equal(w.doneAt?.toISOString(), "2026-10-22T19:25:15.348Z");
+    assert.deepEqual([w.boardId, w.boardName], ["5106546225", "משימות סיילספורס"]);
+    assert.equal(parseMondayItem(item("4", { color_mm8cnb8e: { text: "Done", value: '{"index":1}' } })).doneAt, null);
+    assert.equal(parseMondayItem(item("5", { color_mm8cnb8e: { text: "Done", value: "{oops" } })).doneAt, null);
+  });
+
   it("no hours and no date stay null, teams are not people, bad JSON is nobody", () => {
     const w = parseMondayItem(
       item("1", {

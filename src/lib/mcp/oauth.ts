@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
+import { effectiveStaffManager } from "@/lib/auth/permissions";
 import { hasRole, isRole, type Role } from "@/lib/auth/roles";
 import { envAdmins } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
@@ -121,6 +122,8 @@ export interface McpPerson {
   name: string | null;
   /** The role the site gives them right now (ADMIN_EMAILS wins, as in session.ts). */
   siteRole: Role;
+  /** A staff manager right now (docs/staff.md). Never a preview here: an MCP call has none. */
+  staffManager: boolean;
 }
 
 /** The person behind a grant as the site sees them now, or null when they may no longer enter. */
@@ -129,7 +132,13 @@ export async function currentPerson(userId: string): Promise<McpPerson | null> {
   if (!row) return null;
   const envAdmin = envAdmins().includes(row.email);
   if (!row.active && !envAdmin) return null;
-  return { id: row.id, email: row.email, name: row.name, siteRole: envAdmin ? "admin" : row.role };
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    siteRole: envAdmin ? "admin" : row.role,
+    staffManager: effectiveStaffManager({ stored: row.staffManager, envAdmin, previewing: false }),
+  };
 }
 
 /* ------------------------------------------------------------------ tokens */
@@ -228,6 +237,11 @@ export interface McpPrincipal {
   maxRole: Role;
   /** What every tool check uses: the site role, capped by the ceiling. */
   role: Role;
+  /**
+   * Whether this connection may use the staff tools (hours and activity per employee, docs/staff.md):
+   * the person turned it on for this connection at /connectors AND is a staff manager right now.
+   */
+  staffData: boolean;
 }
 
 /** The principal for a bearer access token, or null. The role is read from the users table on every call. */
@@ -243,7 +257,14 @@ export async function verifyAccessToken(presented: string): Promise<McpPrincipal
   const person = await currentPerson(row.grant.userId);
   if (!person) return null;
   const maxRole = isRole(row.grant.maxRole) ? row.grant.maxRole : "viewer";
-  return { grantId: row.grant.id, clientName: row.clientName, person, maxRole, role: lowerRole(person.siteRole, maxRole) };
+  return {
+    grantId: row.grant.id,
+    clientName: row.clientName,
+    person,
+    maxRole,
+    role: lowerRole(person.siteRole, maxRole),
+    staffData: row.grant.staffData && person.staffManager,
+  };
 }
 
 /** Counts a call and records when and from where, at most one write per call. */

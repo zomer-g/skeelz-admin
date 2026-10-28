@@ -65,8 +65,11 @@ users per day, so summed users are not unique users over a range. GTM container 
 This mirrors the site: viewers read every dashboard and record screen, editors also edit campaign
 settings, admins also manage. Nothing writes to Salesforce. Candidate files are not served over MCP: `search_cvs` and `cv_summary` search and count CVs (including the words inside them, through Salesforce's full-text index, or a `topic` — a profession or skill backed by a set of phrases, listed with counts by `cv_topics`) and return metadata, the phrases found and links to the site, never a file or its text.
 Admin *write* operations (inviting users, keys, sync) are deliberately not exposed.
-Staff data (the מנהל עובדים permission: hours and activity per employee, `docs/staff.md`) is never exposed over MCP, for any role;
-`src/lib/auth/permissions.test.ts` fails if MCP code reads the staff-manager flag.
+Staff data (the מנהל עובדים permission: hours and activity per employee, `docs/staff.md`) has two tools, `staff_monthly` and
+`staff_employee` (`src/lib/mcp/staff-tools.ts`, `staff: true`). They are listed and run only when the connection carries staff data:
+the person is a staff manager right now (read on every call) and turned it on for that connection at `/connectors`
+(`mcp_grants.staff_data`, off by default). Without it they are "unknown". `src/lib/auth/permissions.test.ts` fails if any other
+MCP file reads staff data or the gate changes.
 
 ## 2. OAuth 2.1 (what the clients see)
 

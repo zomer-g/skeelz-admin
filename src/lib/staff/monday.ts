@@ -22,6 +22,7 @@ export const mondayConfigured = () => Boolean(process.env.MONDAY_TOKEN);
 const QUERY = `
 query ($boardId: [ID!], $cursor: String) {
   boards(ids: $boardId) {
+    name
     items_page(
       limit: ${PAGE}
       cursor: $cursor
@@ -30,7 +31,7 @@ query ($boardId: [ID!], $cursor: String) {
       cursor
       items {
         id name url
-        column_values(ids: ["${MONDAY_BOARD.doneOn}", "${MONDAY_BOARD.hours}", "${MONDAY_BOARD.people}", "${MONDAY_BOARD.notes}"]) { id text value }
+        column_values(ids: ["${MONDAY_BOARD.status}", "${MONDAY_BOARD.doneOn}", "${MONDAY_BOARD.hours}", "${MONDAY_BOARD.people}", "${MONDAY_BOARD.notes}"]) { id text value }
       }
     }
   }
@@ -50,20 +51,22 @@ async function mondayQuery<T>(query: string, variables: Record<string, unknown> 
   return json.data as T;
 }
 
-/** Every done task on the board, page by page (a cursor lives 60 minutes). */
-async function fetchDoneItems(): Promise<MondayItem[]> {
-  type Page = { boards: { items_page: { cursor: string | null; items: MondayItem[] } }[] };
+/** Every done task on the board, page by page (a cursor lives 60 minutes), with the board's name. */
+async function fetchDoneItems(): Promise<{ board: { id: string; name: string | null }; items: MondayItem[] }> {
+  type Page = { boards: { name: string | null; items_page: { cursor: string | null; items: MondayItem[] } }[] };
   const items: MondayItem[] = [];
+  let name: string | null = null;
   let cursor: string | null = null;
   for (let page = 0; page < 200; page++) {
     const data: Page = await mondayQuery<Page>(QUERY, { boardId: [MONDAY_BOARD.id], cursor });
     const board = data.boards?.[0];
     if (!board) throw new Error("the board is not visible to this token");
+    name ??= board.name;
     items.push(...board.items_page.items);
     cursor = board.items_page.cursor;
     if (!cursor) break;
   }
-  return items;
+  return { board: { id: MONDAY_BOARD.id, name }, items };
 }
 
 export interface MondayUser {
@@ -111,7 +114,14 @@ export async function syncMonday(): Promise<StaffSyncResult> {
     const linked = await db.select({ id: users.id, mondayUserId: users.mondayUserId }).from(users).where(isNotNull(users.mondayUserId));
     const map = new Map(linked.map((u) => [u.mondayUserId!, u.id]));
     // Nobody linked: nothing of anybody's is fetched or kept.
-    const rows = map.size ? rowsForLinked((await fetchDoneItems()).map(parseMondayItem), map) : [];
+    let rows: ReturnType<typeof rowsForLinked> = [];
+    if (map.size) {
+      const { board, items } = await fetchDoneItems();
+      rows = rowsForLinked(
+        items.map((item) => parseMondayItem(item, board)),
+        map,
+      );
+    }
     await db.transaction(async (tx) => {
       await tx.delete(staffWorkItems).where(eq(staffWorkItems.source, MONDAY_SOURCE));
       for (let i = 0; i < rows.length; i += 500) await tx.insert(staffWorkItems).values(rows.slice(i, i + 500));

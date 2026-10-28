@@ -45,6 +45,7 @@ import { applyExclusions, countByStatus, DEDUPE_SECONDS, REGISTRATION_WINDOW_MIN
 import { ArgError, inputSchema, type ArgValue, type Fields } from "./args";
 import { GA_FILTER_DIMS, GA_REPORT_NAMES, GA_REPORTS, JOB_SCOPES, runGaReport, type JobScope } from "@/lib/metrics/ga-report";
 import type { McpPrincipal } from "./oauth";
+import { STAFF_TOOLS } from "./staff-tools";
 
 /**
  * The MCP tools (docs/mcp.md §3). Each one names the lowest site role that may use it, the
@@ -66,6 +67,11 @@ interface Tool {
   minRole: Role;
   /** Changes data (editor/admin actions); every other tool only reads. */
   writes?: boolean;
+  /**
+   * Staff data (docs/staff.md): listed and run only when the connection carries it
+   * (McpPrincipal.staffData), whatever the role. Only staff-tools.ts defines such tools.
+   */
+  staff?: boolean;
   /** Loads every application or job: counted against a tighter per-person limit. */
   heavy?: boolean;
   /**
@@ -989,17 +995,19 @@ const TOOLS: Tool[] = [
       return { objects: state, recent_runs: runs };
     },
   },
+  ...STAFF_TOOLS,
 ];
 
 const BY_NAME = new Map(TOOLS.map((t) => [t.name, t]));
 
 /** The tools a role may use, in catalogue order. */
-export function toolsFor(role: Role): Tool[] {
-  return TOOLS.filter((t) => hasRole(role, t.minRole));
+/** The tools a connection may see: its role, and the staff tools only when it carries staff data. */
+export function toolsFor(role: Role, staffData = false): Tool[] {
+  return TOOLS.filter((t) => hasRole(role, t.minRole) && (!t.staff || staffData));
 }
 
 /** Every tool with the role it needs, for the docs and the connect page. */
-export const TOOL_CATALOGUE = TOOLS.map((t) => ({ name: t.name, title: t.title, minRole: t.minRole, writes: Boolean(t.writes) }));
+export const TOOL_CATALOGUE = TOOLS.filter((t) => !t.staff).map((t) => ({ name: t.name, title: t.title, minRole: t.minRole, writes: Boolean(t.writes) }));
 
 /** A tool as tools/list describes it. */
 export function describeTool(t: Tool) {
@@ -1014,9 +1022,11 @@ export function describeTool(t: Tool) {
 
 export type ToolLookup = { ok: true; tool: Tool } | { ok: false; reason: "unknown" | "forbidden"; required?: Role };
 
-export function findTool(name: string, role: Role): ToolLookup {
+export function findTool(name: string, role: Role, staffData = false): ToolLookup {
   const tool = BY_NAME.get(name);
   if (!tool) return { ok: false, reason: "unknown" };
+  // Not even "forbidden": a connection without staff data is not told the staff tools exist.
+  if (tool.staff && !staffData) return { ok: false, reason: "unknown" };
   if (!hasRole(role, tool.minRole)) return { ok: false, reason: "forbidden", required: tool.minRole };
   return { ok: true, tool };
 }

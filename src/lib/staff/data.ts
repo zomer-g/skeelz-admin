@@ -2,6 +2,8 @@ import { and, asc, desc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzl
 import { israelDay } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { sfTask, sfUser, staffWorkItems, users } from "@/lib/db/schema";
+import { casePath } from "@/lib/entities/emails";
+import { run } from "@/lib/entities/search";
 import { summarize, type HoursSummary } from "./hours";
 
 /**
@@ -152,7 +154,18 @@ export interface EmployeeHours {
   months: string[];
   month: string | null;
   summary: HoursSummary;
-  tasks: { id: string; title: string | null; url: string | null; doneOn: string | null; hours: number | null; notes: string | null; shared: boolean }[];
+  tasks: {
+    id: string;
+    title: string | null;
+    url: string | null;
+    boardName: string | null;
+    doneOn: string | null;
+    /** When it entered Done in monday. */
+    doneAt: Date | null;
+    hours: number | null;
+    notes: string | null;
+    shared: boolean;
+  }[];
 }
 
 /** One employee's tasks and totals, for a month (YYYY-MM) or, with "all", everything. */
@@ -180,7 +193,9 @@ export async function loadEmployeeHours(userId: string, month: string): Promise<
       id: staffWorkItems.id,
       title: staffWorkItems.title,
       url: staffWorkItems.url,
+      boardName: staffWorkItems.boardName,
       doneOn: staffWorkItems.doneOn,
+      doneAt: staffWorkItems.doneAt,
       hours: staffWorkItems.hours,
       notes: staffWorkItems.notes,
       shared: staffWorkItems.shared,
@@ -195,4 +210,92 @@ export async function loadEmployeeHours(userId: string, month: string): Promise<
 function nextMonthStart(month: string): string {
   const [y, m] = month.split("-").map(Number) as [number, number];
   return m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`;
+}
+
+/* ------------------------------------------------- Salesforce activity in detail */
+
+const ACCOUNT_PREFIX = "001";
+
+/** A Salesforce task's kind, as the monthly counts classify it. */
+const KIND_SQL = sql`CASE WHEN t.task_subtype = 'Email' THEN 'email'
+  WHEN t.task_subtype = 'Call' OR t.type ILIKE 'call%' THEN 'call' ELSE 'task' END`;
+
+/** Where a task sits: the Case's record type, or an Account (an employer), or nothing. */
+function caseTypeLabel(typeLabel: string | null, whatId: string | null): string {
+  if (typeLabel) return typeLabel;
+  if (whatId?.startsWith(ACCOUNT_PREFIX)) return "חשבון (מעסיק)";
+  return whatId ? "אחר" : "בלי מקרה";
+}
+
+export interface SfTypeRow {
+  /** The Case's record type label ("הגשות קמביום", "משרה"…), "חשבון (מעסיק)", "אחר" or "בלי מקרה". */
+  caseType: string;
+  developerName: string | null;
+  emails: number;
+  calls: number;
+  tasks: number;
+}
+
+export interface SfTaskRow {
+  id: string;
+  kind: "email" | "call" | "task";
+  subject: string | null;
+  createdAt: Date | null;
+  caseType: string;
+  developerName: string | null;
+  caseId: string | null;
+  caseNumber: string | null;
+  /** The site's record page for the Case, when it has one. */
+  path: string | null;
+}
+
+/**
+ * One Salesforce user's tasks for a month (YYYY-MM, Israel time) or every month (null): counts by
+ * the type of the Case each sits on, and the newest `limit` tasks themselves.
+ */
+export async function loadSfActivity(sfUserId: string, month: string | null, limit = 200): Promise<{ byType: SfTypeRow[]; tasks: SfTaskRow[]; total: number }> {
+  const inMonth = month ? sql`AND to_char(t.created_date AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM') = ${month}` : sql``;
+  const base = sql`FROM sf_task t
+    LEFT JOIN sf_case c ON c.id = t.what_id
+    LEFT JOIN sf_record_type rt ON rt.id = c.record_type_id
+    WHERE t.owner_id = ${sfUserId} AND NOT t.is_deleted AND t.created_date IS NOT NULL ${inMonth}`;
+  const [types, rows] = await Promise.all([
+    run<{ developer_name: string | null; type_label: string | null; account: boolean; any_what: boolean; emails: number; calls: number; tasks: number }>(sql`
+      SELECT rt.developer_name, rt.name AS type_label,
+             bool_or(t.what_id LIKE ${`${ACCOUNT_PREFIX}%`}) AS account, bool_or(t.what_id IS NOT NULL) AS any_what,
+             count(*) FILTER (WHERE (${KIND_SQL}) = 'email')::int AS emails,
+             count(*) FILTER (WHERE (${KIND_SQL}) = 'call')::int AS calls,
+             count(*)::int AS tasks
+      ${base}
+      GROUP BY rt.developer_name, rt.name, (t.what_id LIKE ${`${ACCOUNT_PREFIX}%`}), (t.what_id IS NULL)
+      ORDER BY tasks DESC`),
+    run<{ id: string; kind: SfTaskRow["kind"]; subject: string | null; created_date: Date | string | null; what_id: string | null; case_id: string | null; case_number: string | null; developer_name: string | null; type_label: string | null }>(sql`
+      SELECT t.id, ${KIND_SQL} AS kind, t.subject, t.created_date, t.what_id, c.id AS case_id,
+             c.data->>'CaseNumber' AS case_number, rt.developer_name, rt.name AS type_label
+      ${base}
+      ORDER BY t.created_date DESC
+      LIMIT ${limit}`),
+  ]);
+  const byType = types.map((r) => ({
+    caseType: caseTypeLabel(r.type_label, r.account ? ACCOUNT_PREFIX : r.any_what ? "x" : null),
+    developerName: r.developer_name,
+    emails: Number(r.emails),
+    calls: Number(r.calls),
+    tasks: Number(r.tasks),
+  }));
+  return {
+    byType,
+    total: byType.reduce((t, r) => t + r.tasks, 0),
+    tasks: rows.map((r) => ({
+      id: r.id,
+      kind: r.kind,
+      subject: r.subject,
+      createdAt: r.created_date ? new Date(r.created_date) : null,
+      caseType: caseTypeLabel(r.type_label, r.what_id),
+      developerName: r.developer_name,
+      caseId: r.case_id,
+      caseNumber: r.case_number,
+      path: r.case_id ? casePath({ id: r.case_id, recordType: r.developer_name }) : null,
+    })),
+  };
 }

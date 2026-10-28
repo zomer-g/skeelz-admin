@@ -141,6 +141,13 @@
       "when": 1793186300037,
       "tag": "0019_youthful_komodo",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1793191870506,
+      "tag": "0020_great_rawhide_kid",
+      "breakpoints": true
     }
   ]
 }

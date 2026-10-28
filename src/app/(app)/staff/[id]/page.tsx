@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Badge, Card, PageHeader, Table } from "@/components/ui";
+import { Badge, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
 import { pageAuthStaff } from "@/lib/auth/guard";
-import { loadEmployeeHours } from "@/lib/staff/data";
+import { loadEmployeeHours, loadSfActivity } from "@/lib/staff/data";
 import { dayLabel, fmtCount, fmtHours, monthLabel } from "../format";
 
 export const metadata: Metadata = { title: "שעות עובד" };
 export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
+const SF_KIND = { email: "מייל", call: "שיחה", task: "משימה" } as const;
 
 /** One employee's hours: staff managers only (docs/staff.md). The audit log records the view, never the hours. */
 export default async function EmployeeHoursPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ month?: string }> }) {
@@ -22,6 +23,7 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
   if (!data) notFound();
   const { person, byMonth, months, summary, tasks } = data;
   const sf = data.month ? byMonth.find((m) => m.month === data.month) : null;
+  const activity = person.sfUserId ? await loadSfActivity(person.sfUserId, data.month) : null;
   const title = person.name ?? person.email;
   const period = data.month ? monthLabel(data.month) : "כל התקופה";
 
@@ -135,11 +137,54 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
           </Card>
         ) : null}
 
+        {activity ? (
+          <Card title={`Salesforce לפי סוג מקרה · ${period}`}>
+            <Table head={["סוג מקרה", "מיילים", "שיחות", "משימות אחרות", "סה״כ"]} empty={activity.byType.length ? undefined : "אין משימות בתקופה הזו"}>
+              {activity.byType.map((t) => (
+                <tr key={`${t.caseType}|${t.developerName ?? ""}`}>
+                  <td className="px-3 py-2">{t.caseType}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtCount(t.emails)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtCount(t.calls)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtCount(t.tasks - t.emails - t.calls)}</td>
+                  <td className="px-3 py-2 font-medium tabular-nums">{fmtCount(t.tasks)}</td>
+                </tr>
+              ))}
+            </Table>
+            {activity.tasks.length ? (
+              <div className="mt-6">
+                <h3 className="mb-2 text-base font-bold">
+                  המשימות{activity.total > activity.tasks.length ? ` (${activity.tasks.length} האחרונות מתוך ${fmtCount(activity.total)})` : ""}
+                </h3>
+                <Table head={["נוצרה", "סוג", "נושא", "סוג מקרה", "מקרה"]}>
+                  {activity.tasks.map((t) => (
+                    <tr key={t.id}>
+                      <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(t.createdAt)}</td>
+                      <td className="px-3 py-2">{SF_KIND[t.kind]}</td>
+                      <td className="px-3 py-2">{t.subject ?? "—"}</td>
+                      <td className="px-3 py-2">{t.caseType}</td>
+                      <td className="px-3 py-2">
+                        {t.path ? (
+                          <Link href={t.path} className="text-accent-dark underline underline-offset-4">
+                            {t.caseNumber ?? "מקרה"}
+                          </Link>
+                        ) : (
+                          (t.caseNumber ?? "—")
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </Table>
+              </div>
+            ) : null}
+          </Card>
+        ) : null}
+
         <Card title="משימות מאנדיי">
-          <Table head={["תאריך ביצוע", "משימה", "שעות", "הערות"]} empty={tasks.length ? undefined : "אין משימות בתקופה הזו"}>
+          <Table head={["תאריך ביצוע", "נכנסה ל-Done", "משימה", "לוח", "שעות", "הערות"]} empty={tasks.length ? undefined : "אין משימות בתקופה הזו"}>
             {tasks.map((t) => (
               <tr key={t.id}>
                 <td className="px-3 py-2 whitespace-nowrap">{t.doneOn ? dayLabel(t.doneOn) : <Badge tone="warning">בלי תאריך</Badge>}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-sm">{formatDateTime(t.doneAt)}</td>
                 <td className="px-3 py-2">
                   {t.url ? (
                     <a href={t.url} target="_blank" rel="noopener noreferrer" className="text-accent-dark underline underline-offset-4">
@@ -156,6 +201,7 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
                     </>
                   ) : null}
                 </td>
+                <td className="px-3 py-2 text-sm">{t.boardName ?? "—"}</td>
                 <td className="px-3 py-2">{t.hours == null ? <Badge tone="warning">בלי שעות</Badge> : fmtHours(t.hours)}</td>
                 <td className="px-3 py-2 text-sm text-muted">{t.notes ?? ""}</td>
               </tr>

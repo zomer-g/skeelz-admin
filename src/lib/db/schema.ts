@@ -63,12 +63,17 @@ export const staffWorkItems = pgTable(
     source: text("source").notNull(),
     externalId: text("external_id").notNull(),
     userId: uuid("user_id").notNull(),
+    /** Where the task came from: the monday board (id and name). */
+    boardId: text("board_id"),
+    boardName: text("board_name"),
     title: text("title"),
     url: text("url"),
     /** תאריך ביצוע, YYYY-MM-DD; null when the task was closed without one. */
     doneOn: date("done_on", { mode: "string" }),
     /** null when the task was closed without hours. */
     hours: numeric("hours", { precision: 6, scale: 2, mode: "number" }),
+    /** When the task entered Done (the status column's changed_at). */
+    doneAt: ts("done_at"),
     notes: text("notes"),
     /** Assigned to more than this one person in the source. */
     shared: boolean("shared").notNull().default(false),
@@ -781,6 +786,8 @@ export const mcpGrants = pgTable(
       .notNull()
       .references(() => mcpClients.id, { onDelete: "cascade" }),
     maxRole: text("max_role").$type<Role>().notNull(),
+    /** Staff tools (hours and activity per employee) for this connection; off until a staff manager turns it on (docs/staff.md). */
+    staffData: boolean("staff_data").notNull().default(false),
     accessHash: text("access_hash").notNull(),
     accessExpiresAt: ts("access_expires_at").notNull(),
     refreshHash: text("refresh_hash").notNull(),

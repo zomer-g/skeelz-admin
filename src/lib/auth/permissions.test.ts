@@ -40,17 +40,44 @@ function sources(dir: string): string[] {
   });
 }
 
-describe("staff data stays off MCP and the API", () => {
-  // A tripwire: the MCP server and the API routes must never read the staff-manager flag or the
-  // staff screens' data. Adding staff data there is a decision for docs/staff.md, not an accident.
+describe("staff data stays off the API, and on MCP only behind its gate", () => {
+  // A tripwire: the API routes never read the staff-manager flag or the staff data, and of the MCP
+  // code only two files may — oauth.ts, which works out the gate (McpPrincipal.staffData), and
+  // staff-tools.ts, whose every tool is `staff: true`. Anything else is a decision for docs/staff.md.
   const root = join(__dirname, "..", "..");
-  const dirs = [join(root, "lib", "mcp"), join(root, "lib", "api"), join(root, "app", "mcp"), join(root, "app", "api")];
+  const apiDirs = [join(root, "lib", "api"), join(root, "app", "api")];
+  const mcpDirs = [join(root, "lib", "mcp"), join(root, "app", "mcp")];
+  const MCP_ALLOWED = [join(root, "lib", "mcp", "oauth.ts"), join(root, "lib", "mcp", "staff-tools.ts")];
   const FORBIDDEN =
     /staffManager|staff_manager|requireStaffManager|pageAuthStaff|app\/\(app\)\/staff|@\/lib\/staff|staffWorkItems|staff_work_items|staffSourceState|mondayUserId|monday_user_id/;
 
-  it("no MCP or API module refers to staff data", () => {
-    const hits = dirs.flatMap(sources).filter((f) => FORBIDDEN.test(readFileSync(f, "utf8")));
+  it("no API module refers to staff data", () => {
+    const hits = apiDirs.flatMap(sources).filter((f) => FORBIDDEN.test(readFileSync(f, "utf8")));
     assert.deepEqual(hits, []);
+  });
+
+  it("of the MCP code, only the gate and the staff tools refer to staff data", () => {
+    const hits = mcpDirs.flatMap(sources).filter((f) => !MCP_ALLOWED.includes(f) && FORBIDDEN.test(readFileSync(f, "utf8")));
+    assert.deepEqual(hits, []);
+  });
+
+  it("the gate needs both the connection's switch and a staff manager right now", () => {
+    const oauth = readFileSync(join(root, "lib", "mcp", "oauth.ts"), "utf8");
+    assert.match(oauth, /staffData: row\.grant\.staffData && person\.staffManager/);
+    assert.match(oauth, /effectiveStaffManager\(\{ stored: row\.staffManager, envAdmin, previewing: false \}\)/);
+  });
+
+  it("every staff tool is marked staff, and the registry hides and refuses them without the gate", () => {
+    const tools = readFileSync(join(root, "lib", "mcp", "staff-tools.ts"), "utf8");
+    const names = [...tools.matchAll(/name: "([a-z_]+)"/g)].map((m) => m[1]);
+    assert.ok(names.length > 0);
+    assert.equal([...tools.matchAll(/staff: true,/g)].length, names.length);
+    const registry = readFileSync(join(root, "lib", "mcp", "tools.ts"), "utf8");
+    assert.match(registry, /hasRole\(role, t\.minRole\) && \(!t\.staff \|\| staffData\)/);
+    assert.match(registry, /if \(tool\.staff && !staffData\) return \{ ok: false, reason: "unknown" \}/);
+    const server = readFileSync(join(root, "lib", "mcp", "server.ts"), "utf8");
+    assert.match(server, /toolsFor\(ctx\.principal\.role, ctx\.principal\.staffData\)/);
+    assert.match(server, /findTool\(name, principal\.role, principal\.staffData\)/);
   });
 
   it("the dashboard's shared modules (which MCP reads too) never load the staff hours", () => {
