@@ -123,14 +123,14 @@ export async function googleServiceAccount(): Promise<string | null> {
   return serviceAccountEmail();
 }
 
-/** The board is visible to the token. Says nothing about anyone's tasks or hours (docs/staff.md). */
+/** Which boards with hours the token sees. Says nothing about anyone's tasks or hours (docs/staff.md). */
 export async function testMonday(_prev: TestState, _form: FormData): Promise<TestState> {
   const admin = await requireUser("admin");
   if (!mondayConfigured()) return { ok: false, lines: ["חסר MONDAY_TOKEN"] };
   try {
-    const { board, items } = await checkMonday();
+    const { boards } = await checkMonday();
     await writeAudit(admin.email, "integration.test", "monday", { ok: true });
-    return { ok: true, lines: [`הלוח "${board}" נגיש`, `${fmt(items)} משימות בלוח`] };
+    return { ok: true, lines: [`${boards.length} לוחות עם עמודת שעות נגישים`, ...boards.map((b) => `"${b.name}": ${fmt(b.items)} משימות`)] };
   } catch (err) {
     await writeAudit(admin.email, "integration.test", "monday", { ok: false });
     return fail(err);

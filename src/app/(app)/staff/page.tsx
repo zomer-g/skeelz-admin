@@ -55,7 +55,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
       <div className="flex flex-col gap-8">
         <Card title={`משימות ושעות · ${monthLabel(picked)}`}>
           <p className="mb-4 text-sm text-muted">
-            מאנדיי: המשימות שהעובד סגר (Done) בלוח &quot;משימות סיילספורס&quot;, לפי &quot;תאריך ביצוע&quot;, והשעות שסומנו בהן. Salesforce: המשימות שהעובד תיעד לפי
+            מאנדיי: המשימות ותת-המשימות שהעובד סגר (Done) בכל לוח שיש בו עמודת &quot;שעות (בחירה)&quot;, לפי &quot;תאריך ביצוע&quot;, והשעות שסומנו בהן. Salesforce: המשימות שהעובד תיעד לפי
             תאריך היצירה, ומתוכן המיילים שנשלחו והשיחות. עובד מופיע כאן כשהוא מקושר לאחד המקורות ב
             <Link href="/admin/staff-links" className="font-medium text-accent-dark underline underline-offset-4">
               ניהול › קישור עובדים

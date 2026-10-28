@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { parseMondayItem, rowsForLinked, summarize, weekOf, type MondayItem } from "./hours";
+import { boardColumns, parseMondayItem, rowsForLinked, summarize, weekOf, type MondayBoard, type MondayColumn, type MondayItem } from "./hours";
 import { parseMonth, recentMonths } from "./data";
 
 // Shaped like the board's real answer (28.10.2026).
@@ -10,6 +10,19 @@ const item = (id: string, cols: Record<string, { text: string | null; value?: st
   url: `https://skeelz-unit.monday.com/boards/5106546225/pulses/${id}`,
   column_values: Object.entries(cols).map(([cid, c]) => ({ id: cid, text: c.text, value: c.value ?? null })),
 });
+const DONE = JSON.stringify({ done_colors: [1], labels: { "0": "In Progress", "1": "Done" } });
+// The columns of "משימות סיילספורס", as monday lists them.
+const SALES_COLUMNS: MondayColumn[] = [
+  { id: "text_mm8f638w", title: "Text", type: "text" },
+  { id: "color_mm8cnb8e", title: "Status", type: "status", settings_str: DONE },
+  { id: "date_mm8c6783", title: "Due Date", type: "date" },
+  { id: "multiple_person_mm8cmxq0", title: "Assigned To", type: "people" },
+  { id: "color_mm8cfdwb", title: "Priority", type: "status", settings_str: "{}" },
+  { id: "text_mm8cqt5", title: "Notes", type: "text" },
+  { id: "date_mm8j7f52", title: "תאריך ביצוע", type: "date" },
+  { id: "color_mm8jcnc", title: "שעות (בחירה)", type: "status", settings_str: "{}" },
+];
+const SALES = boardColumns({ id: "5106546225", name: "משימות סיילספורס", columns: SALES_COLUMNS }) as MondayBoard;
 const GUY = "120173361";
 const HAGAI = "555";
 const people = (...ids: string[]) => JSON.stringify({ personsAndTeams: ids.map((id) => ({ id: Number(id), kind: "person" })) });
@@ -23,6 +36,7 @@ describe("parseMondayItem", () => {
         multiple_person_mm8cmxq0: { text: "Guy Zomer", value: people(GUY) },
         text_mm8cqt5: { text: "  " },
       }),
+      SALES,
     );
     assert.deepEqual(
       { doneOn: w.doneOn, hours: w.hours, assigneeIds: w.assigneeIds, notes: w.notes },
@@ -33,12 +47,12 @@ describe("parseMondayItem", () => {
   it("keeps the board and when the task entered Done (the status value's changed_at)", () => {
     const w = parseMondayItem(
       item("3302132921", { color_mm8cnb8e: { text: "Done", value: '{"index":1,"post_id":null,"changed_at":"2026-10-22T19:25:15.348Z"}' } }),
-      { id: "5106546225", name: "משימות סיילספורס" },
+      SALES,
     );
     assert.equal(w.doneAt?.toISOString(), "2026-10-22T19:25:15.348Z");
     assert.deepEqual([w.boardId, w.boardName], ["5106546225", "משימות סיילספורס"]);
-    assert.equal(parseMondayItem(item("4", { color_mm8cnb8e: { text: "Done", value: '{"index":1}' } })).doneAt, null);
-    assert.equal(parseMondayItem(item("5", { color_mm8cnb8e: { text: "Done", value: "{oops" } })).doneAt, null);
+    assert.equal(parseMondayItem(item("4", { color_mm8cnb8e: { text: "Done", value: '{"index":1}' } }), SALES).doneAt, null);
+    assert.equal(parseMondayItem(item("5", { color_mm8cnb8e: { text: "Done", value: "{oops" } }), SALES).doneAt, null);
   });
 
   it("no hours and no date stay null, teams are not people, bad JSON is nobody", () => {
@@ -48,20 +62,84 @@ describe("parseMondayItem", () => {
         color_mm8jcnc: { text: "" },
         multiple_person_mm8cmxq0: { text: "x", value: JSON.stringify({ personsAndTeams: [{ id: 9, kind: "team" }, { id: 7, kind: "person" }] }) },
       }),
+      SALES,
     );
     assert.equal(w.doneOn, null);
     assert.equal(w.hours, null);
     assert.deepEqual(w.assigneeIds, ["7"]);
-    assert.deepEqual(parseMondayItem(item("2", { multiple_person_mm8cmxq0: { text: "", value: "{oops" } })).assigneeIds, []);
-    assert.equal(parseMondayItem(item("3", { color_mm8jcnc: { text: "0" } })).hours, null);
+    assert.deepEqual(parseMondayItem(item("2", { multiple_person_mm8cmxq0: { text: "", value: "{oops" } }), SALES).assigneeIds, []);
+    assert.equal(parseMondayItem(item("3", { color_mm8jcnc: { text: "0" } }), SALES).hours, null);
+  });
+});
+
+describe("boardColumns", () => {
+  it("finds the columns by title, each board with its own ids", () => {
+    assert.deepEqual(
+      { ...SALES },
+      {
+        id: "5106546225",
+        name: "משימות סיילספורס",
+        subitems: false,
+        status: "color_mm8cnb8e",
+        doneIndices: [1],
+        doneOn: "date_mm8j7f52",
+        hours: "color_mm8jcnc",
+        people: "multiple_person_mm8cmxq0",
+        notes: "text_mm8cqt5",
+      },
+    );
+  });
+
+  it("a subitems board: its Date and Owner, named after the board it belongs to; the title leads with the parent task", () => {
+    const sub = boardColumns({
+      id: "5106833064",
+      name: "Subitems of משימות דשבורד",
+      columns: [
+        { id: "person", title: "Owner", type: "people" },
+        { id: "status", title: "Status", type: "status", settings_str: JSON.stringify({ done_colors: [1] }) },
+        { id: "date0", title: "Date", type: "date" },
+        { id: "color_mm8jtfyv", title: "שעות (בחירה)", type: "status", settings_str: "{}" },
+      ],
+    })!;
+    assert.deepEqual([sub.name, sub.subitems, sub.doneOn, sub.people, sub.hours, sub.notes], ["משימות דשבורד", true, "date0", "person", "color_mm8jtfyv", null]);
+    const w = parseMondayItem(
+      {
+        id: "3314921697",
+        name: "בניית מערכת ניהול הרשאות",
+        parent_item: { name: "דשבורד שעות עבודה" },
+        column_values: [
+          { id: "date0", text: "2026-10-28", value: null },
+          { id: "color_mm8jtfyv", text: "2", value: null },
+          { id: "person", text: "Guy Zomer", value: people(GUY) },
+        ],
+      },
+      sub,
+    );
+    assert.deepEqual([w.title, w.boardName, w.doneOn, w.hours, w.assigneeIds], ["דשבורד שעות עבודה › בניית מערכת ניהול הרשאות", "משימות דשבורד", "2026-10-28", 2, [GUY]]);
+  });
+
+  it("a board without the hours column, or without people or a done status, is not read", () => {
+    assert.equal(boardColumns({ id: "1", name: "Marketing Tasks", columns: SALES_COLUMNS.filter((c) => c.title !== "שעות (בחירה)") }), null);
+    assert.equal(boardColumns({ id: "2", name: "x", columns: SALES_COLUMNS.filter((c) => c.type !== "people") }), null);
+    assert.equal(
+      boardColumns({ id: "3", name: "x", columns: SALES_COLUMNS.map((c) => (c.title === "Status" ? { ...c, settings_str: "{}" } : c)) }),
+      null,
+    );
+    // No done_colors: the label "Done" tells which index it is.
+    const byLabel = boardColumns({
+      id: "4",
+      name: "x",
+      columns: SALES_COLUMNS.map((c) => (c.title === "Status" ? { ...c, settings_str: JSON.stringify({ labels: { "5": "Done" } }) } : c)),
+    });
+    assert.deepEqual(byLabel?.doneIndices, [5]);
   });
 });
 
 describe("rowsForLinked", () => {
   const items = [
-    parseMondayItem(item("a", { multiple_person_mm8cmxq0: { text: "", value: people(GUY) }, color_mm8jcnc: { text: "2" } })),
-    parseMondayItem(item("b", { multiple_person_mm8cmxq0: { text: "", value: people(HAGAI) }, color_mm8jcnc: { text: "3" } })),
-    parseMondayItem(item("c", { multiple_person_mm8cmxq0: { text: "", value: people(GUY, HAGAI) }, color_mm8jcnc: { text: "1" } })),
+    parseMondayItem(item("a", { multiple_person_mm8cmxq0: { text: "", value: people(GUY) }, color_mm8jcnc: { text: "2" } }), SALES),
+    parseMondayItem(item("b", { multiple_person_mm8cmxq0: { text: "", value: people(HAGAI) }, color_mm8jcnc: { text: "3" } }), SALES),
+    parseMondayItem(item("c", { multiple_person_mm8cmxq0: { text: "", value: people(GUY, HAGAI) }, color_mm8jcnc: { text: "1" } }), SALES),
   ];
 
   it("keeps only the tasks of linked people; someone not linked is never stored", () => {

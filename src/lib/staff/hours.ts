@@ -9,25 +9,84 @@ export interface MondayItem {
   id: string;
   name: string;
   url?: string | null;
+  /** Set on a subitem: the task it belongs to. */
+  parent_item?: { name: string | null } | null;
   column_values: { id: string; text: string | null; value: string | null }[];
 }
 
-/** The "משימות סיילספורס" board and its columns (docs/staff.md). */
-export const MONDAY_BOARD = {
-  id: "5106546225",
-  status: "color_mm8cnb8e",
-  /** Status index of "Done". */
-  doneIndex: 1,
-  doneOn: "date_mm8j7f52",
-  /** "שעות (בחירה)": a status column whose label is the number of hours. */
-  hours: "color_mm8jcnc",
-  people: "multiple_person_mm8cmxq0",
-  notes: "text_mm8cqt5",
-} as const;
+/** A board's column as monday describes it. */
+export interface MondayColumn {
+  id: string;
+  title: string;
+  type: string;
+  settings_str?: string | null;
+}
+
+/**
+ * Every board whose tasks carry hours is read (docs/staff.md): a board takes part when it has a
+ * status column titled "שעות (בחירה)" (the label is the number of hours). Each board has its own
+ * column ids, so the columns are found by title and type: the done status, "תאריך ביצוע" (on a
+ * subitems board, its "Date"), the assignees and Notes.
+ */
+export const HOURS_COLUMN = "שעות (בחירה)";
+const DONE_ON_TITLES = ["תאריך ביצוע", "Date", "תאריך"];
+const SUBITEMS_PREFIX = /^Subitems of\s+/i;
+
+export interface MondayBoard {
+  id: string;
+  /** The board's name; for a subitems board, the name of the board its tasks belong to. */
+  name: string | null;
+  subitems: boolean;
+  status: string;
+  /** The status indexes that mean done (the column's done_colors, else the label "Done"). */
+  doneIndices: number[];
+  doneOn: string | null;
+  hours: string;
+  people: string;
+  notes: string | null;
+}
+
+const norm = (t: string) => t.trim().toLowerCase();
+
+function doneIndicesOf(settings: string | null | undefined): number[] {
+  try {
+    const s = JSON.parse(settings ?? "{}") as { done_colors?: number[]; labels?: Record<string, string> };
+    if (s.done_colors?.length) return s.done_colors.map(Number).filter(Number.isInteger);
+    const done = Object.entries(s.labels ?? {}).find(([, label]) => norm(label) === "done");
+    return done ? [Number(done[0])] : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The columns hours are read from, or null when the board has no hours column (or no way to tell done tasks or their people). */
+export function boardColumns(board: { id: string; name: string | null; columns: readonly MondayColumn[] }): MondayBoard | null {
+  const of = (type: string) => board.columns.filter((c) => c.type === type);
+  const titled = (list: MondayColumn[], titles: string[]) => titles.map((t) => list.find((c) => norm(c.title) === norm(t))).find(Boolean) ?? null;
+  const statuses = of("status");
+  const hours = titled(statuses, [HOURS_COLUMN]);
+  if (!hours) return null;
+  const status = titled(statuses, ["Status", "סטטוס"]) ?? statuses.find((c) => c !== hours && doneIndicesOf(c.settings_str).length) ?? null;
+  const people = titled(of("people"), ["Assigned To", "Owner", "Person"]) ?? of("people")[0] ?? null;
+  const doneIndices = status ? doneIndicesOf(status.settings_str) : [];
+  if (!status || !people || !doneIndices.length) return null;
+  const subitems = SUBITEMS_PREFIX.test(board.name ?? "");
+  return {
+    id: board.id,
+    name: board.name?.replace(SUBITEMS_PREFIX, "").trim() || null,
+    subitems,
+    status: status.id,
+    doneIndices,
+    doneOn: titled(of("date"), DONE_ON_TITLES)?.id ?? null,
+    hours: hours.id,
+    people: people.id,
+    notes: titled(of("text"), ["Notes", "הערות"])?.id ?? null,
+  };
+}
 
 export interface WorkItem {
   externalId: string;
-  /** The board the task is on, so a second board's tasks stay told apart. */
+  /** The board the task is on, so tasks of different boards stay told apart. */
   boardId: string;
   boardName: string | null;
   title: string | null;
@@ -72,21 +131,24 @@ function parseHours(text: string | null): number | null {
   return text && text.trim() && Number.isFinite(n) && n > 0 ? n : null;
 }
 
-export function parseMondayItem(item: MondayItem, board: { id: string; name: string | null } = { id: MONDAY_BOARD.id, name: null }): WorkItem {
+/** One task of a board; a subitem's title leads with the task it belongs to ("parent › subitem"). */
+export function parseMondayItem(item: MondayItem, board: MondayBoard): WorkItem {
   const col = new Map(item.column_values.map((c) => [c.id, c]));
-  const doneOn = col.get(MONDAY_BOARD.doneOn)?.text?.trim() ?? "";
-  const notes = col.get(MONDAY_BOARD.notes)?.text?.trim() ?? "";
+  const doneOn = (board.doneOn ? col.get(board.doneOn)?.text?.trim() : "") ?? "";
+  const notes = (board.notes ? col.get(board.notes)?.text?.trim() : "") ?? "";
+  const name = item.name?.trim() || null;
+  const parent = item.parent_item?.name?.trim();
   return {
     externalId: String(item.id),
     boardId: board.id,
     boardName: board.name,
-    title: item.name?.trim() || null,
+    title: parent && name ? `${parent} › ${name}` : name,
     url: item.url ?? null,
     doneOn: DAY.test(doneOn) ? doneOn : null,
-    doneAt: changedAt(col.get(MONDAY_BOARD.status)?.value ?? null),
-    hours: parseHours(col.get(MONDAY_BOARD.hours)?.text ?? null),
+    doneAt: changedAt(col.get(board.status)?.value ?? null),
+    hours: parseHours(col.get(board.hours)?.text ?? null),
     notes: notes || null,
-    assigneeIds: personIds(col.get(MONDAY_BOARD.people)?.value ?? null),
+    assigneeIds: personIds(col.get(board.people)?.value ?? null),
   };
 }
 

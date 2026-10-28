@@ -72,7 +72,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   Who is which Salesforce User / monday user (`users.sf_user_id`, `users.monday_user_id`, both unique) is set at `/admin/staff-links`
   (not on `/admin/users`); changing a link takes admin + staff manager. Follow the checklist in docs/staff.md for every step.
   `/staff` (one month, every linked employee) and `/staff/[id]` (month by month), code in `src/lib/staff/`: hours and done tasks of
-  the monday.com board "משימות סיילספורס" (only linked employees' are stored, `staff_work_items`; synced hourly by the worker and on
+  every monday.com board with a status column "שעות (בחירה)", subitems boards included (columns found by title per board,
+  `boardColumns` in `src/lib/staff/hours.ts`; only linked employees' are stored, `staff_work_items`; synced hourly by the worker and on
   demand, `MONDAY_TOKEN` secret, queries only, state in `staff_source_state` — never `sync_runs`/`sync_state`), plus the `sf_task`
   rows they own by Israel month: emails = TaskSubtype Email (Salesforce logs every sent email so), calls = Call, also by the type of
   Case they sit on (`loadSfActivity`). monday tasks keep their board and when they entered Done (`done_at`, the status changed_at). monday also shows

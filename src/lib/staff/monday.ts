@@ -2,11 +2,11 @@ import { eq, isNotNull } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { staffSourceState, staffWorkItems, users } from "@/lib/db/schema";
 import { safeErrorMessage } from "@/lib/log";
-import { MONDAY_BOARD, parseMondayItem, rowsForLinked, type MondayItem } from "./hours";
+import { boardColumns, HOURS_COLUMN, parseMondayItem, rowsForLinked, type MondayBoard, type MondayColumn, type MondayItem, type WorkItem } from "./hours";
 
 /**
- * Staff hours from monday.com (docs/staff.md): the done tasks of the "משימות סיילספורס" board, kept
- * only for employees linked to a monday user. Read-only: queries, never mutations. The token
+ * Staff hours from monday.com (docs/staff.md): the done tasks of every board with an hours column
+ * ("שעות (בחירה)", subitems boards included), kept only for employees linked to a monday user. Read-only: queries, never mutations. The token
  * (MONDAY_TOKEN, an xhostd secret) can do everything its owner can in monday, so it stays on the
  * server and is never logged or sent to the browser.
  */
@@ -19,23 +19,31 @@ export const MONDAY_SOURCE = "monday";
 
 export const mondayConfigured = () => Boolean(process.env.MONDAY_TOKEN);
 
-const QUERY = `
+/** Column ids go into the query text; monday's ids are short words, anything else is refused. */
+const COLUMN_ID = /^[A-Za-z0-9_]{1,64}$/;
+
+/** One board's done tasks (its own status column and done indexes), with the columns hours are read from. */
+const itemsQuery = (b: MondayBoard) => {
+  const cols = [b.status, b.doneOn, b.hours, b.people, b.notes].filter((c): c is string => Boolean(c));
+  if (!cols.every((c) => COLUMN_ID.test(c))) throw new Error(`monday board ${b.id}: unexpected column id`);
+  return `
 query ($boardId: [ID!], $cursor: String) {
   boards(ids: $boardId) {
-    name
     items_page(
       limit: ${PAGE}
       cursor: $cursor
-      query_params: { rules: [{ column_id: "${MONDAY_BOARD.status}", compare_value: [${MONDAY_BOARD.doneIndex}], operator: any_of }] }
+      query_params: { rules: [{ column_id: "${b.status}", compare_value: [${b.doneIndices.map(Number).join(", ")}], operator: any_of }] }
     ) {
       cursor
       items {
         id name url
-        column_values(ids: ["${MONDAY_BOARD.status}", "${MONDAY_BOARD.doneOn}", "${MONDAY_BOARD.hours}", "${MONDAY_BOARD.people}", "${MONDAY_BOARD.notes}"]) { id text value }
+        ${b.subitems ? "parent_item { name }" : ""}
+        column_values(ids: [${cols.map((c) => `"${c}"`).join(", ")}]) { id text value }
       }
     }
   }
 }`;
+};
 
 async function mondayQuery<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
   const res = await fetch(ENDPOINT, {
@@ -51,22 +59,39 @@ async function mondayQuery<T>(query: string, variables: Record<string, unknown> 
   return json.data as T;
 }
 
-/** Every done task on the board, page by page (a cursor lives 60 minutes), with the board's name. */
-async function fetchDoneItems(): Promise<{ board: { id: string; name: string | null }; items: MondayItem[] }> {
-  type Page = { boards: { name: string | null; items_page: { cursor: string | null; items: MondayItem[] } }[] };
-  const items: MondayItem[] = [];
-  let name: string | null = null;
+/** Every board the token sees that has an hours column, with its columns resolved by title. */
+async function hoursBoards(): Promise<MondayBoard[]> {
+  type Page = { boards: { id: string; name: string | null; columns: MondayColumn[] }[] };
+  const boards: MondayBoard[] = [];
+  for (let page = 1; page <= 50; page++) {
+    const data = await mondayQuery<Page>(
+      `query ($page: Int) { boards(limit: 100, page: $page, state: active) { id name columns(types: [status, date, people, text]) { id title type settings_str } } }`,
+      { page },
+    );
+    for (const b of data.boards ?? []) {
+      const resolved = boardColumns({ id: String(b.id), name: b.name, columns: b.columns ?? [] });
+      if (resolved) boards.push(resolved);
+    }
+    if ((data.boards ?? []).length < 100) break;
+  }
+  return boards;
+}
+
+/** Every done task on one board, page by page (a cursor lives 60 minutes). */
+async function fetchDoneItems(board: MondayBoard): Promise<WorkItem[]> {
+  type Page = { boards: { items_page: { cursor: string | null; items: MondayItem[] } }[] };
+  const query = itemsQuery(board);
+  const items: WorkItem[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 200; page++) {
-    const data: Page = await mondayQuery<Page>(QUERY, { boardId: [MONDAY_BOARD.id], cursor });
-    const board = data.boards?.[0];
-    if (!board) throw new Error("the board is not visible to this token");
-    name ??= board.name;
-    items.push(...board.items_page.items);
-    cursor = board.items_page.cursor;
+    const data: Page = await mondayQuery<Page>(query, { boardId: [board.id], cursor });
+    const found = data.boards?.[0];
+    if (!found) break;
+    items.push(...found.items_page.items.map((item) => parseMondayItem(item, board)));
+    cursor = found.items_page.cursor;
     if (!cursor) break;
   }
-  return { board: { id: MONDAY_BOARD.id, name }, items };
+  return items;
 }
 
 export interface MondayUser {
@@ -84,15 +109,15 @@ export async function listMondayUsers(): Promise<MondayUser[]> {
   return (data.users ?? []).map((u) => ({ id: String(u.id), name: u.name, email: u.email?.toLowerCase() ?? null }));
 }
 
-/** The connection test on /admin/integrations: the board is visible, and how big it is. Nothing per person. */
-export async function checkMonday(): Promise<{ board: string; items: number }> {
-  const data = await mondayQuery<{ boards: { name: string; items_count: number }[] }>(
-    `query ($boardId: [ID!]) { boards(ids: $boardId) { name items_count } }`,
-    { boardId: [MONDAY_BOARD.id] },
-  );
-  const board = data.boards?.[0];
-  if (!board) throw new Error("the board is not visible to this token");
-  return { board: board.name, items: board.items_count };
+/** The connection test on /admin/integrations: which boards have hours, and how big they are. Nothing per person. */
+export async function checkMonday(): Promise<{ boards: { name: string; items: number }[] }> {
+  const boards = await hoursBoards();
+  if (!boards.length) throw new Error(`no board with a "${HOURS_COLUMN}" column is visible to this token`);
+  const data = await mondayQuery<{ boards: { id: string; items_count: number }[] }>(`query ($ids: [ID!]) { boards(ids: $ids) { id items_count } }`, {
+    ids: boards.map((b) => b.id),
+  });
+  const counts = new Map((data.boards ?? []).map((b) => [String(b.id), b.items_count]));
+  return { boards: boards.map((b) => ({ name: `${b.name ?? b.id}${b.subitems ? " (תת-משימות)" : ""}`, items: counts.get(b.id) ?? 0 })) };
 }
 
 export interface StaffSyncResult {
@@ -101,7 +126,7 @@ export interface StaffSyncResult {
   skipped?: string;
 }
 
-/** Pulls the board and replaces the stored rows of the linked employees in one transaction. */
+/** Pulls every hours board and replaces the stored rows of the linked employees in one transaction. */
 export async function syncMonday(): Promise<StaffSyncResult> {
   if (!mondayConfigured()) return { rows: 0, error: null, skipped: "MONDAY_TOKEN is not set" };
   const db = getDb();
@@ -116,11 +141,9 @@ export async function syncMonday(): Promise<StaffSyncResult> {
     // Nobody linked: nothing of anybody's is fetched or kept.
     let rows: ReturnType<typeof rowsForLinked> = [];
     if (map.size) {
-      const { board, items } = await fetchDoneItems();
-      rows = rowsForLinked(
-        items.map((item) => parseMondayItem(item, board)),
-        map,
-      );
+      const items: WorkItem[] = [];
+      for (const board of await hoursBoards()) items.push(...(await fetchDoneItems(board)));
+      rows = rowsForLinked(items, map);
     }
     await db.transaction(async (tx) => {
       await tx.delete(staffWorkItems).where(eq(staffWorkItems.source, MONDAY_SOURCE));
