@@ -33,6 +33,13 @@ export const users = pgTable(
     name: text("name"),
     picture: text("picture"),
     role: text("role").$type<Role>().notNull().default("viewer"),
+    /**
+     * מנהל עובדים: may see staff data (hours, activity per employee). Separate from the role on
+     * purpose: admin does not include it, and only a staff manager can grant it (docs/staff.md).
+     */
+    staffManager: boolean("staff_manager").notNull().default(false),
+    /** The person's Salesforce User, so their logged activity can be told apart. One site user per Salesforce user. */
+    sfUserId: text("sf_user_id").unique(),
     active: boolean("active").notNull().default(true),
     createdAt: ts("created_at").notNull().defaultNow(),
     lastLoginAt: ts("last_login_at"),
@@ -116,6 +123,8 @@ export const accessReviews = pgTable(
     id: bigserial("id", { mode: "number" }).primaryKey(),
     userId: uuid("user_id").notNull(),
     role: text("role").notNull(),
+    /** The staff-manager flag as it was confirmed; a change since makes the review due again. */
+    staffManager: boolean("staff_manager").notNull().default(false),
     reviewedBy: text("reviewed_by").notNull(),
     reviewedAt: ts("reviewed_at").notNull().defaultNow(),
   },

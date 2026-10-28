@@ -3,6 +3,7 @@ import { and, asc, eq, gt, inArray, isNull, ne, or, sql } from "drizzle-orm";
 import { writeAudit } from "@/lib/audit";
 import { getDb } from "@/lib/db/client";
 import { accessRequests, auditLog, invites, users } from "@/lib/db/schema";
+import { effectiveStaffManager } from "./permissions";
 import { readPreviewRole } from "./preview";
 import { hasRole, type Role } from "./roles";
 import { verifiedIdentity, type Identity } from "./xhost";
@@ -26,6 +27,11 @@ export interface SessionUser {
   previewing: boolean;
   /** Admin by ADMIN_EMAILS; the UI can't demote or deactivate these. */
   envAdmin: boolean;
+  /**
+   * מנהל עובדים, effective: may see staff data. Never true while previewing, and independent of the
+   * role — check it with requireStaffManager / pageAuthStaff, never with a role (docs/staff.md).
+   */
+  staffManager: boolean;
 }
 
 export type Session =
@@ -48,7 +54,11 @@ export const getSession = cache(async (): Promise<Session> => {
   if (!user) return { status: "refused", identity };
   // An admin previewing a lower role gets exactly that role everywhere.
   const preview = user.realRole === "admin" ? await readPreviewRole() : null;
-  return { status: "ok", identity, user: preview ? { ...user, role: preview, previewing: true } : user };
+  return {
+    status: "ok",
+    identity,
+    user: preview ? { ...user, role: preview, previewing: true, staffManager: false } : user,
+  };
 });
 
 async function resolveUser(identity: Identity): Promise<SessionUser | null> {
@@ -147,6 +157,7 @@ async function resolveUser(identity: Identity): Promise<SessionUser | null> {
     realRole: row.role,
     previewing: false,
     envAdmin: isEnvAdmin,
+    staffManager: effectiveStaffManager({ stored: row.staffManager, envAdmin: isEnvAdmin, previewing: false }),
   };
 }
 
@@ -217,4 +228,11 @@ export async function requireUser(minimum: Role): Promise<SessionUser> {
   if (session.status === "refused") throw new AuthError(403, `החשבון ${session.identity.email} אינו מורשה`);
   if (!hasRole(session.user.role, minimum)) throw new AuthError(403, "אין לך הרשאה לפעולה הזו");
   return session.user;
+}
+
+/** For server actions and route handlers that touch staff data: only a current staff manager, whatever the role. */
+export async function requireStaffManager(): Promise<SessionUser> {
+  const user = await requireUser("viewer");
+  if (!user.staffManager) throw new AuthError(403, "אין לך הרשאת מנהל עובדים");
+  return user;
 }

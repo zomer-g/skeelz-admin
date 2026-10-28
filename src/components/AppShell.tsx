@@ -54,7 +54,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
             <span className="text-sm font-medium text-accent-dark">ניהול</span>
           </Link>
 
-          <NavLinks isAdmin={user.role === "admin"} className="order-3 -mx-1 w-[calc(100%+0.5rem)] lg:order-2 lg:mx-0 lg:w-auto" />
+          <NavLinks isAdmin={user.role === "admin"} isStaffManager={user.staffManager} className="order-3 -mx-1 w-[calc(100%+0.5rem)] lg:order-2 lg:mx-0 lg:w-auto" />
 
           <div className="order-2 ms-auto flex flex-wrap items-center justify-end gap-3 lg:order-3">
             {user.realRole === "admin" ? <PreviewSwitcher current={user.role} /> : null}

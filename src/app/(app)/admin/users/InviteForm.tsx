@@ -2,8 +2,8 @@
 
 import { useActionState } from "react";
 import { buttonClass, fieldClass } from "@/components/ui";
-import { ROLE_LABELS, ROLES } from "@/lib/auth/roles";
 import { inviteUser, type ActionState } from "./actions";
+import { PermissionFields } from "./PermissionBoxes";
 
 export function InviteForm() {
   const [state, action, pending] = useActionState<ActionState, FormData>(inviteUser, null);
@@ -25,16 +25,10 @@ export function InviteForm() {
             className={`${fieldClass} text-start`}
           />
         </label>
-        <label className="flex flex-col gap-2">
-          <span className="text-sm font-medium text-muted">תפקיד</span>
-          <select name="role" defaultValue="viewer" className={`${fieldClass} min-w-[11rem]`}>
-            {ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
-              </option>
-            ))}
-          </select>
-        </label>
+        <fieldset className="flex flex-col gap-2">
+          <legend className="mb-2 text-sm font-medium text-muted">הרשאות</legend>
+          <PermissionFields />
+        </fieldset>
         <button type="submit" disabled={pending} className={buttonClass("primary")}>
           {pending ? "יוצר הזמנה…" : "הזמנה"}
         </button>

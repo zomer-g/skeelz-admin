@@ -20,20 +20,21 @@ export interface ReviewStatus {
   lastReviewedBy: string | null;
   /** The role at that review; a change since then needs a fresh confirmation anyway. */
   lastRole: string | null;
-  /** No confirmation this month, or the role changed after it. */
+  /** No confirmation this month, or the role or staff-manager flag changed after it. */
   due: boolean;
 }
 
 export async function loadReviewStatus(): Promise<Map<string, ReviewStatus>> {
   const db = getDb();
   const [active, reviews] = await Promise.all([
-    db.select({ id: users.id, role: users.role }).from(users).where(eq(users.active, true)),
+    db.select({ id: users.id, role: users.role, staffManager: users.staffManager }).from(users).where(eq(users.active, true)),
     db
       .selectDistinctOn([accessReviews.userId], {
         userId: accessReviews.userId,
         reviewedAt: accessReviews.reviewedAt,
         reviewedBy: accessReviews.reviewedBy,
         role: accessReviews.role,
+        staffManager: accessReviews.staffManager,
       })
       .from(accessReviews)
       .orderBy(accessReviews.userId, desc(accessReviews.reviewedAt)),
@@ -43,7 +44,8 @@ export async function loadReviewStatus(): Promise<Map<string, ReviewStatus>> {
   return new Map(
     active.map((u) => {
       const r = last.get(u.id);
-      const due = !r || reviewMonth(r.reviewedAt) !== month || r.role !== u.role;
+      // A change of role or of the staff-manager flag since the last confirmation needs a fresh one.
+      const due = !r || reviewMonth(r.reviewedAt) !== month || r.role !== u.role || r.staffManager !== u.staffManager;
       return [u.id, { userId: u.id, lastReviewedAt: r?.reviewedAt ?? null, lastReviewedBy: r?.reviewedBy ?? null, lastRole: r?.role ?? null, due }];
     }),
   );
@@ -56,10 +58,13 @@ export async function countDueReviews(): Promise<number> {
 /** An admin confirms one user's access and role for this month. */
 export async function confirmAccess(admin: string, userId: string): Promise<void> {
   const db = getDb();
-  const [user] = await db.select({ email: users.email, role: users.role, active: users.active }).from(users).where(eq(users.id, userId));
+  const [user] = await db
+    .select({ email: users.email, role: users.role, staffManager: users.staffManager, active: users.active })
+    .from(users)
+    .where(eq(users.id, userId));
   if (!user?.active) return;
-  await db.insert(accessReviews).values({ userId, role: user.role as Role, reviewedBy: admin });
-  await writeAudit(admin, "access.reviewed", user.email, { role: user.role, month: reviewMonth() });
+  await db.insert(accessReviews).values({ userId, role: user.role as Role, staffManager: user.staffManager, reviewedBy: admin });
+  await writeAudit(admin, "access.reviewed", user.email, { role: user.role, staffManager: user.staffManager, month: reviewMonth() });
 }
 
 /** How many reviews were done this month, for the review card's summary. */

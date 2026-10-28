@@ -922,7 +922,11 @@ const TOOLS: Tool[] = [
       const db = getDb();
       const admins = envAdmins();
       const [userRows, inviteRows, requestRows] = await Promise.all([
-        db.select().from(users).orderBy(desc(users.lastLoginAt)),
+        // Named columns only: the staff-manager flag and the Salesforce link never leave over MCP (docs/staff.md).
+        db
+          .select({ email: users.email, name: users.name, role: users.role, active: users.active, lastLoginAt: users.lastLoginAt, createdAt: users.createdAt })
+          .from(users)
+          .orderBy(desc(users.lastLoginAt)),
         db
           .select()
           .from(invites)

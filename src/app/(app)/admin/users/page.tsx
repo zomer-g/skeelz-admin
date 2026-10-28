@@ -1,15 +1,17 @@
-import { and, desc, gt, isNull } from "drizzle-orm";
+import { and, asc, desc, gt, isNull } from "drizzle-orm";
 import type { Metadata } from "next";
 import { Badge, buttonClass, Card, formatDateTime, PageHeader, smallFieldClass, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
-import { ROLE_LABELS, ROLES, type Role } from "@/lib/auth/roles";
+import { categoriesOf, CATEGORY_HINTS, CATEGORY_LABELS } from "@/lib/auth/permissions";
+import { ROLE_LABELS } from "@/lib/auth/roles";
 import { envAdmins } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
-import { accessRequests, invites, users } from "@/lib/db/schema";
+import { accessRequests, invites, sfUser, users } from "@/lib/db/schema";
 import { AdminTabs } from "../AdminTabs";
 import { loadReviewStatus, reviewMonth } from "@/lib/security/reviews";
-import { approveRequest, changeRole, confirmUserAccess, dismissRequest, revokeInvite, setActive } from "./actions";
+import { approveRequest, confirmUserAccess, dismissRequest, linkSfUser, revokeInvite, setActive } from "./actions";
 import { InviteForm } from "./InviteForm";
+import { PermissionBoxes, PermissionFields } from "./PermissionBoxes";
 
 export const metadata: Metadata = { title: "משתמשים והרשאות" };
 
@@ -18,7 +20,7 @@ export default async function UsersPage() {
   if (!auth.ok) return auth.render;
 
   const db = getDb();
-  const [userRows, inviteRows, requestRows, reviews] = await Promise.all([
+  const [userRows, inviteRows, requestRows, reviews, sfUsers] = await Promise.all([
     db.select().from(users).orderBy(desc(users.lastLoginAt)),
     db
       .select()
@@ -27,7 +29,12 @@ export default async function UsersPage() {
       .orderBy(desc(invites.createdAt)),
     db.select().from(accessRequests).orderBy(desc(accessRequests.lastAt)).limit(100),
     loadReviewStatus(),
+    db
+      .select({ id: sfUser.id, name: sfUser.name, email: sfUser.email, isActive: sfUser.isActive })
+      .from(sfUser)
+      .orderBy(desc(sfUser.isActive), asc(sfUser.name)),
   ]);
+  const linkedTo = new Map(userRows.filter((u) => u.sfUserId).map((u) => [u.sfUserId!, u.email]));
   const due = [...reviews.values()].filter((r) => r.due).length;
   const [year, month] = reviewMonth().split("-");
   const configuredAdmins = envAdmins();
@@ -41,7 +48,8 @@ export default async function UsersPage() {
         <Card title="הזמנת משתמש">
           <InviteForm />
           <p className="mt-4 text-xs text-muted">
-            צופה: צפייה בדשבורדים ורשומות · עורך דשבורד: גם עריכת ווידג׳טים ותצוגות · אדמין: גם ניהול משתמשים, חיבורים וסנכרון
+            {CATEGORY_LABELS.view}: {CATEGORY_HINTS.view} · {CATEGORY_LABELS.edit}: {CATEGORY_HINTS.edit} · {CATEGORY_LABELS.admin}: {CATEGORY_HINTS.admin}.
+            הרשאת {CATEGORY_LABELS.staff} לא ניתנת בהזמנה: מנהל עובדים מסמן אותה בטבלת המשתמשים אחרי שהמשתמש נכנס.
           </p>
         </Card>
 
@@ -58,9 +66,9 @@ export default async function UsersPage() {
                   <td className="px-3 py-3">{formatDateTime(r.lastAt)}</td>
                   <td className="px-3 py-3">
                     <div className="flex flex-wrap items-center justify-end gap-2">
-                      <form action={approveRequest} className="flex items-center gap-2">
+                      <form action={approveRequest} className="flex flex-wrap items-center gap-2">
                         <input type="hidden" name="email" value={r.email} />
-                        <RoleSelect defaultValue="viewer" who={r.email} />
+                        <PermissionFields who={r.email} />
                         <button className={buttonClass("primary", "sm")}>
                           אישור<span className="sr-only"> · {r.email}</span>
                         </button>
@@ -85,10 +93,10 @@ export default async function UsersPage() {
             role="status"
           >
             {due
-              ? `אישור ההרשאות של ${month}/${year}: נותרו ${due} משתמשים פעילים לאשר. עברו על כל משתמש, וודאו שהוא עדיין צריך גישה ושהתפקיד שלו נכון, ולחצו "אישור". משתמש שלא צריך גישה — השביתו אותו.`
+              ? `אישור ההרשאות של ${month}/${year}: נותרו ${due} משתמשים פעילים לאשר. עברו על כל משתמש, וודאו שהוא עדיין צריך גישה ושההרשאות שלו נכונות, ולחצו "אישור". משתמש שלא צריך גישה — השביתו אותו.`
               : `כל ההרשאות אושרו לחודש ${month}/${year}.`}
           </p>
-          <Table head={["משתמש", "תפקיד", "סטטוס", "כניסה אחרונה", "אישור חודשי", ""]}>
+          <Table head={["משתמש", "הרשאות", "משתמש Salesforce", "סטטוס", "כניסה אחרונה", "אישור חודשי", ""]}>
             {userRows.map((u) => {
               const isSelf = u.id === auth.user.id;
               const isConfigured = configuredAdmins.includes(u.email);
@@ -103,20 +111,31 @@ export default async function UsersPage() {
                   </td>
                   <td className="px-3 py-3">
                     {locked ? (
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <Badge tone={u.role === "admin" ? "brand" : "accent"}>{ROLE_LABELS[u.role]}</Badge>
+                        {u.staffManager || isConfigured ? <Badge tone="accent">{CATEGORY_LABELS.staff}</Badge> : null}
                         {isConfigured ? <span className="text-xs text-muted">מוגדר בהגדרות השרת</span> : null}
                         {isSelf && !isConfigured ? <span className="text-xs text-muted">(את/ה)</span> : null}
                       </div>
                     ) : (
-                      <form action={changeRole} className="flex items-center gap-2">
-                        <input type="hidden" name="id" value={u.id} />
-                        <RoleSelect defaultValue={u.role} who={u.email} />
-                        <button className={buttonClass("secondary", "sm")}>
-                          עדכון<span className="sr-only"> · {u.email}</span>
-                        </button>
-                      </form>
+                      <PermissionBoxes
+                        userId={u.id}
+                        who={u.name ?? u.email}
+                        boxes={categoriesOf(u.role, u.staffManager)}
+                        canGrantStaff={auth.user.staffManager}
+                      />
                     )}
+                  </td>
+                  <td className="px-3 py-3">
+                    <SfUserLink
+                      userId={u.id}
+                      who={u.name ?? u.email}
+                      current={u.sfUserId}
+                      suggested={u.sfUserId ? null : (sfUsers.find((s) => s.email?.toLowerCase() === u.email && !linkedTo.has(s.id))?.id ?? null)}
+                      options={sfUsers}
+                      linkedTo={linkedTo}
+                      selfEmail={u.email}
+                    />
                   </td>
                   <td className="px-3 py-3">
                     {u.active ? <Badge tone="success">פעיל</Badge> : <Badge>מושבת</Badge>}
@@ -195,14 +214,47 @@ export default async function UsersPage() {
   );
 }
 
-function RoleSelect({ defaultValue, who }: { defaultValue: Role; who: string }) {
+type SfOption = { id: string; name: string | null; email: string | null; isActive: boolean };
+
+/**
+ * Which Salesforce User the person is. A Salesforce user already linked to someone else is not offered:
+ * one person's logged activity must never be attributed to another. Saved with a button (WCAG 3.2.2).
+ */
+function SfUserLink({
+  userId,
+  who,
+  current,
+  suggested,
+  options,
+  linkedTo,
+  selfEmail,
+}: {
+  userId: string;
+  who: string;
+  current: string | null;
+  suggested: string | null;
+  options: SfOption[];
+  linkedTo: Map<string, string>;
+  selfEmail: string;
+}) {
+  const free = options.filter((o) => !linkedTo.has(o.id) || linkedTo.get(o.id) === selfEmail);
   return (
-    <select name="role" defaultValue={defaultValue} className={smallFieldClass} aria-label={`תפקיד · ${who}`}>
-      {ROLES.map((r) => (
-        <option key={r} value={r}>
-          {ROLE_LABELS[r]}
-        </option>
-      ))}
-    </select>
+    <form action={linkSfUser} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="id" value={userId} />
+      <select name="sfUserId" defaultValue={current ?? suggested ?? ""} className={`${smallFieldClass} max-w-[14rem]`} aria-label={`משתמש Salesforce · ${who}`}>
+        <option value="">— לא מקושר —</option>
+        {free.map((o) => (
+          <option key={o.id} value={o.id}>
+            {o.name ?? o.id}
+            {o.email ? ` · ${o.email}` : ""}
+            {o.isActive ? "" : " (לא פעיל)"}
+          </option>
+        ))}
+      </select>
+      <button className={buttonClass("secondary", "sm")}>
+        שמירה<span className="sr-only"> · {who}</span>
+      </button>
+      {!current && suggested ? <span className="text-xs text-muted">הצעה לפי המייל, טרם נשמרה</span> : null}
+    </form>
   );
 }

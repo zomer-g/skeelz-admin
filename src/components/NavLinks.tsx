@@ -20,6 +20,8 @@ const ITEMS: NavItem[] = [
 ];
 
 const ADMIN: NavItem = { href: "/admin/users", label: "ניהול", also: ["/admin"] };
+/** Staff managers only (docs/staff.md); the page checks again for itself. */
+const STAFF: NavItem = { href: "/staff", label: "עובדים" };
 
 function isActive(item: NavItem, pathname: string): boolean {
   if (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)) return true;
@@ -27,11 +29,11 @@ function isActive(item: NavItem, pathname: string): boolean {
 }
 
 /** One scrolling row on phones, wrapping from `lg` up. */
-export function NavLinks({ isAdmin, className = "" }: { isAdmin: boolean; className?: string }) {
+export function NavLinks({ isAdmin, isStaffManager, className = "" }: { isAdmin: boolean; isStaffManager: boolean; className?: string }) {
   const pathname = usePathname();
   const activeRef = useRef<HTMLAnchorElement>(null);
   useActiveInStrip(activeRef, pathname);
-  const items = isAdmin ? [...ITEMS, ADMIN] : ITEMS;
+  const items = [...ITEMS, ...(isStaffManager ? [STAFF] : []), ...(isAdmin ? [ADMIN] : [])];
 
   return (
     <nav className={`flex items-center gap-1 overflow-x-auto p-1 [scrollbar-width:thin] lg:flex-wrap lg:overflow-visible ${className}`} aria-label="ניווט ראשי">

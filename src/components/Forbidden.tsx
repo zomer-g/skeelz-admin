@@ -3,13 +3,15 @@ import { logoutUrl } from "@/lib/auth/urls";
 import { PublicDocLinks } from "./PublicDoc";
 import { buttonClass } from "./ui";
 
-export function Forbidden({ email, reason, required }: { email: string; reason: "not_invited" | "role"; required?: Role }) {
-  if (reason === "role") {
+export function Forbidden({ email, reason, required }: { email: string; reason: "not_invited" | "role" | "staff"; required?: Role }) {
+  if (reason === "role" || reason === "staff") {
     return (
       <div className="mx-auto max-w-lg rounded-card border-2 border-line bg-surface p-8 text-center">
         <h1 className="text-2xl font-bold">אין הרשאה לעמוד הזה</h1>
         <p className="mt-3 text-muted">
-          העמוד דורש הרשאת {required ? ROLE_LABELS[required] : "גבוהה יותר"}. אפשר לבקש שינוי הרשאה מאדמין המערכת.
+          {reason === "staff"
+            ? "העמוד דורש הרשאת מנהל עובדים."
+            : `העמוד דורש הרשאת ${required ? ROLE_LABELS[required] : "גבוהה יותר"}. אפשר לבקש שינוי הרשאה מאדמין המערכת.`}
         </p>
       </div>
     );

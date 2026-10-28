@@ -54,7 +54,13 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   (definitions: `docs/candidates-tab-metrics.md`, "רשומים מול הגשה מהירה"). History funnel ≠ current-status counts — keep both.
 - **Roles:** viewer < editor (dashboard config) < admin (users, integrations, API keys, connections, sync). Admins can "view as" a lower
   role (cookie `skeelz_view_as`, honoured only when `realRole` is admin); `user.role` is the effective role that every
-  check uses — only the preview switch itself checks `realRole`.
+  check uses — only the preview switch itself checks `realRole`. `/admin/users` shows them as permission boxes (צופה always,
+  עורך, אדמין ⊇ עורך; `src/lib/auth/permissions.ts`); adding a box asks for confirmation first.
+- **Staff data (מנהל עובדים, `docs/staff.md`) is the most sensitive data between employees.** A separate flag
+  `users.staff_manager`, not a role: admin does not include it, only a staff manager grants it (ADMIN_EMAILS are staff managers
+  by configuration), invites never grant it, "view as" drops it (`user.staffManager` false), and MCP / `/api` never carry it —
+  `permissions.test.ts` fails if their code touches it. Pages use `pageAuthStaff`, actions `requireStaffManager`, never `hasRole`.
+  Site users link to their Salesforce User (`users.sf_user_id`, unique). Follow the checklist in docs/staff.md for every step.
 - **Salesforce is read-only in phase 1.** The SF client must expose no write methods. Candidates/employer
   contacts = Contact, companies = Account, jobs/applications/leads = Case by RecordType.
 - **Job key:** the public site's job URL is `/job/<24-hex Mongo id>`; that id (`site_job_key`) joins SF Cases to GA4.

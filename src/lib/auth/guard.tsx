@@ -30,3 +30,16 @@ export async function pageAuth(minimum: Role, returnTo: string): Promise<PageAut
   logPageView(session.user.email, returnTo);
   return { ok: true, user: session.user };
 }
+
+/**
+ * For pages that show staff data: only a current staff manager (never during a "view as"
+ * preview), whatever the role. Others get the same refusal as a missing role, which names no data.
+ */
+export async function pageAuthStaff(returnTo: string): Promise<PageAuth> {
+  const auth = await pageAuth("viewer", returnTo);
+  if (!auth.ok) return auth;
+  if (!auth.user.staffManager) {
+    return { ok: false, render: <Forbidden email={auth.user.email} reason="staff" /> };
+  }
+  return auth;
+}
