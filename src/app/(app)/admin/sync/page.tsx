@@ -89,33 +89,6 @@ export default async function SyncPage() {
           ) : null}
         </Card>
 
-        <Card title="מצב לפי אובייקט">
-          <Table
-            head={["אובייקט", "רשומות", "עדכון אחרון", "סמן", "שגיאה"]}
-            empty={states.length === 0 ? "עוד לא רץ סנכרון" : undefined}
-          >
-            {states.map((s) => (
-              <tr key={s.object}>
-                <td className="px-3 py-2 font-medium" dir="ltr">
-                  {s.object}
-                </td>
-                <td className="px-3 py-2">{s.rowCount?.toLocaleString("he-IL") ?? "—"}</td>
-                <td className="px-3 py-2">{formatDateTime(s.lastSuccessAt)}</td>
-                <td className="px-3 py-2 text-xs text-muted">{formatDateTime(s.cursor)}</td>
-                <td className="px-3 py-2 text-xs">
-                  {s.lastError ? (
-                    <span className="text-danger" dir="ltr">
-                      {s.lastError.slice(0, 160)}
-                    </span>
-                  ) : (
-                    <Badge tone="success">תקין</Badge>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </Table>
-        </Card>
-
         <Card title="מאנדיי · שעות עובדים">
           {mondayConfigured() ? (
             <dl className="mb-4 grid gap-1 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-4">
@@ -142,6 +115,54 @@ export default async function SyncPage() {
           ) : (
             <p className="text-xs text-muted">סנכרון ידני של מאנדיי זמין למנהלי עובדים.</p>
           )}
+        </Card>
+
+        <Card title="מצב לפי אובייקט">
+          <Table
+            head={["אובייקט", "רשומות", "עדכון אחרון", "סמן", "שגיאה"]}
+            empty={states.length === 0 && !monday ? "עוד לא רץ סנכרון" : undefined}
+          >
+            {states.map((s) => (
+              <tr key={s.object}>
+                <td className="px-3 py-2 font-medium" dir="ltr">
+                  {s.object}
+                </td>
+                <td className="px-3 py-2">{s.rowCount?.toLocaleString("he-IL") ?? "—"}</td>
+                <td className="px-3 py-2">{formatDateTime(s.lastSuccessAt)}</td>
+                <td className="px-3 py-2 text-xs text-muted">{formatDateTime(s.cursor)}</td>
+                <td className="px-3 py-2 text-xs">
+                  {s.lastError ? (
+                    <span className="text-danger" dir="ltr">
+                      {s.lastError.slice(0, 160)}
+                    </span>
+                  ) : (
+                    <Badge tone="success">תקין</Badge>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {mondayConfigured() || monday ? (
+              <tr>
+                <td className="px-3 py-2 font-medium">
+                  <span dir="ltr">monday.com</span> <span className="text-xs text-muted">(שעות עובדים)</span>
+                </td>
+                <td className="px-3 py-2">{monday?.items?.toLocaleString("he-IL") ?? "—"}</td>
+                <td className="px-3 py-2">{formatDateTime(monday?.lastSuccessAt ?? null)}</td>
+                <td className="px-3 py-2 text-xs text-muted">—</td>
+                <td className="px-3 py-2 text-xs">
+                  {monday?.lastError ? (
+                    <span className="text-danger" dir="ltr">
+                      {monday.lastError.slice(0, 160)}
+                    </span>
+                  ) : !mondayConfigured() ? (
+                    <Badge>לא הוגדר</Badge>
+                  ) : (
+                    <Badge tone="success">תקין</Badge>
+                  )}
+                </td>
+              </tr>
+            ) : null}
+          </Table>
         </Card>
 
         <Card title="ריצות אחרונות" tone="accent-light">

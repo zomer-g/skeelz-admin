@@ -7,6 +7,7 @@ import { AuthError, requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { sfUser, users } from "@/lib/db/schema";
 import { isSfId } from "@/lib/entities/search";
+import { syncMonday } from "@/lib/staff/monday";
 
 // Who is which Salesforce / monday user decides whose activity and hours the staff screens attribute to
 // whom (docs/staff.md), so changing a link takes an admin who is also a staff manager. Checked here, on
@@ -70,6 +71,10 @@ export async function linkMondayUser(form: FormData): Promise<void> {
   }
   await db.update(users).set({ mondayUserId: mondayUserId || null }).where(eq(users.id, target.id));
   await writeAudit(admin.email, mondayUserId ? "staff.monday_linked" : "staff.monday_unlinked", target.email);
+  // Pull the board now, so the new employee's tasks show (or an unlinked one's go) without waiting for the hourly
+  // sync. A failure is recorded in staff_source_state and shown on /staff and /admin/sync; the link itself stands.
+  await syncMonday();
   revalidatePath(PATH);
   revalidatePath("/staff", "layout");
+  revalidatePath("/admin/sync");
 }
