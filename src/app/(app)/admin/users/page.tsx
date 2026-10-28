@@ -8,7 +8,7 @@ import { envAdmins } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
 import { accessRequests, invites, users } from "@/lib/db/schema";
 import { AdminTabs } from "../AdminTabs";
-import { loadReviewStatus, reviewMonth } from "@/lib/security/reviews";
+import { loadReviewStatus, RENEW_WINDOW_DAYS, REVIEW_DAYS, type ReviewStatus } from "@/lib/security/reviews";
 import { approveRequest, confirmUserAccess, dismissRequest, revokeInvite, setActive } from "./actions";
 import { InviteForm } from "./InviteForm";
 import { PermissionBoxes, PermissionFields } from "./PermissionBoxes";
@@ -30,8 +30,8 @@ export default async function UsersPage() {
     db.select().from(accessRequests).orderBy(desc(accessRequests.lastAt)).limit(100),
     loadReviewStatus(),
   ]);
-  const due = [...reviews.values()].filter((r) => r.due).length;
-  const [year, month] = reviewMonth().split("-");
+  const due = [...reviews.values()].filter((r) => r.state === "due").length;
+  const soon = [...reviews.values()].filter((r) => r.state === "soon").length;
   const configuredAdmins = envAdmins();
 
   return (
@@ -84,14 +84,15 @@ export default async function UsersPage() {
 
         <Card title={`משתמשים (${userRows.length})`}>
           <p
-            className={`mb-4 rounded-card px-4 py-3 text-sm ring-1 ${due ? "bg-hot/20 ring-hot" : "bg-success-soft ring-success/30"}`}
+            className={`mb-4 rounded-card px-4 py-3 text-sm ring-1 ${due || soon ? "bg-hot/20 ring-hot" : "bg-success-soft ring-success/30"}`}
             role="status"
           >
-            {due
-              ? `אישור ההרשאות של ${month}/${year}: נותרו ${due} משתמשים פעילים לאשר. עברו על כל משתמש, וודאו שהוא עדיין צריך גישה ושההרשאות שלו נכונות, ולחצו "אישור". משתמש שלא צריך גישה — השביתו אותו.`
-              : `כל ההרשאות אושרו לחודש ${month}/${year}.`}
+            {`כל אישור הרשאה תקף ${REVIEW_DAYS} יום. ב-${RENEW_WINDOW_DAYS} הימים האחרונים שלו מוצגת תזכורת, ואפשר כבר לחדש אותו ל-${REVIEW_DAYS} יום נוספים מסוף התקופה. `}
+            {due || soon
+              ? `${due ? `ממתינים לאישור: ${due}. ` : ""}${soon ? `פג בקרוב: ${soon}. ` : ""}עברו על כל משתמש, וודאו שהוא עדיין צריך גישה ושההרשאות שלו נכונות, ולחצו "אישור" או "חידוש". משתמש שלא צריך גישה — השביתו אותו.`
+              : "כל ההרשאות מאושרות."}
           </p>
-          <Table head={["משתמש", "הרשאות", "סטטוס", "כניסה אחרונה", "אישור חודשי", ""]}>
+          <Table head={["משתמש", "הרשאות", "סטטוס", "כניסה אחרונה", "אישור הרשאות", ""]}>
             {userRows.map((u) => {
               const isSelf = u.id === auth.user.id;
               const isConfigured = configuredAdmins.includes(u.email);
@@ -128,22 +129,7 @@ export default async function UsersPage() {
                   <td className="px-3 py-3">{formatDateTime(u.lastLoginAt)}</td>
                   <td className="px-3 py-3">
                     {u.active ? (
-                      reviews.get(u.id)?.due ? (
-                        <form action={confirmUserAccess} className="flex flex-col items-start gap-1">
-                          <input type="hidden" name="id" value={u.id} />
-                          <button className={buttonClass("primary", "sm")}>
-                            אישור<span className="sr-only"> ההרשאה של {u.email} לחודש הזה</span>
-                          </button>
-                          <span className="text-xs text-muted">
-                            {reviews.get(u.id)?.lastReviewedAt ? `אחרון: ${formatDateTime(reviews.get(u.id)!.lastReviewedAt)}` : "לא אושר עדיין"}
-                          </span>
-                        </form>
-                      ) : (
-                        <span className="text-xs">
-                          <Badge tone="success">אושר</Badge>
-                          <span className="ms-1 text-muted">{formatDateTime(reviews.get(u.id)?.lastReviewedAt ?? null)}</span>
-                        </span>
-                      )
+                      <ReviewCell status={reviews.get(u.id)} email={u.email} id={u.id} />
                     ) : (
                       <span className="text-xs text-muted">—</span>
                     )}
@@ -195,5 +181,36 @@ export default async function UsersPage() {
         </Card>
       </div>
     </>
+  );
+}
+
+const formatDay = (d: Date) => d.toLocaleDateString("he-IL", { timeZone: "Asia/Jerusalem", day: "numeric", month: "numeric", year: "numeric" });
+
+/** One user's confirmation: approve when due, renew in the last days, or until when it holds. */
+function ReviewCell({ status, email, id }: { status: ReviewStatus | undefined; email: string; id: string }) {
+  if (!status || status.state === "valid") {
+    return (
+      <span className="text-xs">
+        <Badge tone="success">מאושר</Badge>
+        {status?.validUntil ? <span className="ms-1 text-muted">עד {formatDay(status.validUntil)}</span> : null}
+      </span>
+    );
+  }
+  const soon = status.state === "soon";
+  return (
+    <form action={confirmUserAccess} className="flex flex-col items-start gap-1">
+      <input type="hidden" name="id" value={id} />
+      <button className={buttonClass(soon ? "secondary" : "primary", "sm")}>
+        {soon ? `חידוש ל-${REVIEW_DAYS} יום` : "אישור"}
+        <span className="sr-only"> ההרשאה של {email}</span>
+      </button>
+      <span className="text-xs text-muted">
+        {soon && status.validUntil
+          ? `בתוקף עד ${formatDay(status.validUntil)} (${status.daysLeft === 0 ? "היום האחרון" : `עוד ${status.daysLeft} ימים`})`
+          : status.lastReviewedAt
+            ? `פג. אושר לאחרונה ${formatDateTime(status.lastReviewedAt)}`
+            : "לא אושר עדיין"}
+      </span>
+    </form>
   );
 }

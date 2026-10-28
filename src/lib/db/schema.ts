@@ -171,6 +171,8 @@ export const accessReviews = pgTable(
     staffManager: boolean("staff_manager").notNull().default(false),
     reviewedBy: text("reviewed_by").notNull(),
     reviewedAt: ts("reviewed_at").notNull().defaultNow(),
+    /** Until when this confirmation holds (lib/security/reviews.ts); null on rows from before, read as reviewed_at + 60 days. */
+    validUntil: ts("valid_until"),
   },
   (t) => [index("access_reviews_user_idx").on(t.userId, t.reviewedAt)],
 );

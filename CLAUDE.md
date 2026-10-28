@@ -24,8 +24,10 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   grants 30 more at a time at `/admin/security`; counted from the audit log.
 - **Security & privacy duties** (`docs/cv-security.md`): every candidate-file open and every search inside CVs (with its
   results, `cvs.text_search`) is logged; logs are kept 24 months and purged nightly (`purgeOldLogs`, `LOG_RETENTION_MONTHS`).
-  Admins confirm every active user's access each Israel month at `/admin/users` (`src/lib/security/reviews.ts`); open alerts and
-  due reviews show on every page for admins (`AdminAlerts`). `/privacy` renders the policy plus three admin-editable chapters:
+  Admins confirm every active user's access at `/admin/users` (`src/lib/security/reviews.ts`): a confirmation holds 60 days
+  (`access_reviews.valid_until`), in its last 10 it shows on every page for admins and can be renewed for 60 more counted from
+  the end of the period; a role/staff change makes it due at once; nothing is revoked on its own. Open alerts and due / soon
+  reviews show on every page for admins (`AdminAlerts`). `/privacy` renders the policy plus three admin-editable chapters:
   `privacy-logs`, `database-definition`, `security-procedure` — keep them true when logging, limits or retention change.
 - **External API = SKEELZ Connect** (`docs/connect-api.md`, shared with the crm and site apps; contract, scopes and limits in
   `src/lib/api/spec.ts`, which also generates `/api/v1/openapi.json` (public) and the docs page `/api-docs`). Inbound

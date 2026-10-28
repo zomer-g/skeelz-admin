@@ -55,7 +55,7 @@ export async function inviteUser(_prev: ActionState, form: FormData): Promise<Ac
   };
 }
 
-/** The monthly review: an admin confirms one user's access and role (lib/security/reviews.ts). */
+/** The access review: an admin confirms or renews one user's access and role (lib/security/reviews.ts). */
 export async function confirmUserAccess(form: FormData): Promise<void> {
   const admin = await requireUser("admin");
   const id = String(form.get("id") ?? "");

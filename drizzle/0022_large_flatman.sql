@@ -1,0 +1,1 @@
+ALTER TABLE "access_reviews" ADD COLUMN "valid_until" timestamp with time zone;

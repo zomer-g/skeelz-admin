@@ -42,7 +42,7 @@ const ACTION_LABELS: Record<string, string> = {
   "candidate.file_rate_limited": "פתיחת קובץ נחסמה (מגבלה יומית)",
   "files.quota_granted": "אושרו עוד קבצים להיום",
   "security.alert_handled": "התראת אבטחה טופלה",
-  "access.reviewed": "אישור הרשאה חודשי",
+  "access.reviewed": "אישור או חידוש הרשאה (60 יום)",
   "cvs.text_search": "חיפוש בתוך קורות חיים",
   "candidates.contacts_copied": "העתקת פרטי קשר של מועמדים",
   "cvs.contacts_copied": "העתקת פרטי קשר מרשימת קורות החיים",
