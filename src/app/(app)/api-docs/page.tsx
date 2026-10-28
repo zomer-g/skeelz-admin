@@ -11,6 +11,7 @@ import {
   API_SCOPES,
   APP,
   ENDPOINTS,
+  STAFF_SCOPES,
   KEY_PREFIX,
   LEGACY_KEYS,
   MIN_TOKEN_LENGTH,
@@ -196,6 +197,9 @@ const VERIFY_EXAMPLE = [
 export default async function ApiDocsPage() {
   const auth = await pageAuth("viewer", "/api-docs");
   if (!auth.ok) return auth.render;
+  // The staff endpoints and their scope (docs/staff.md) are documented only to staff managers.
+  const endpoints = ENDPOINTS.filter((e) => !e.internal || auth.user.staffManager);
+  const scopes = API_SCOPES.filter((sc) => !STAFF_SCOPES.includes(sc.scope) || auth.user.staffManager);
 
   const legacyOn = legacyKeys().length;
   const outboundOn = webhookConfigured();
@@ -225,7 +229,7 @@ export default async function ApiDocsPage() {
               דורש הרשאה אחת. מפתח שבוטל או שפג תוקפו נדחה מיד.
             </p>
             <Table head={["הרשאה", "מה היא פותחת", "נתיבים"]} caption="הרשאות">
-              {API_SCOPES.map((sc) => (
+              {scopes.map((sc) => (
                 <tr key={sc.scope}>
                   <td className={td}>
                     <C>{sc.scope}</C>
@@ -233,7 +237,7 @@ export default async function ApiDocsPage() {
                   <td className={td}>{sc.label}</td>
                   <td className={td}>
                     <ul className="flex flex-col gap-1">
-                      {ENDPOINTS.filter((e) => e.auth === sc.scope).map((e) => (
+                      {endpoints.filter((e) => e.auth === sc.scope).map((e) => (
                         <li key={e.path}>
                           <C>{`${e.method} ${e.path}`}</C>
                         </li>
@@ -364,7 +368,7 @@ export default async function ApiDocsPage() {
               בלבד: שמות מועמדים, פרטי קשר וקבצים לא יוצאים דרכו. תיאור מכונה של כל הנתיבים ב-<C>/api/v1/openapi.json</C> (OpenAPI 3.1, בלי מפתח).
             </p>
             <Table head={["נתיב", "הרשאה", "מה"]} caption="נתיבים">
-              {ENDPOINTS.map((e) => (
+              {endpoints.map((e) => (
                 <tr key={e.path}>
                   <td className={td}>
                     <C>{`${e.method} ${e.path}`}</C>
@@ -377,7 +381,7 @@ export default async function ApiDocsPage() {
               ))}
             </Table>
 
-            {ENDPOINTS.map((e) => (
+            {endpoints.map((e) => (
               <section key={e.path} className="flex flex-col gap-3">
                 <H3>
                   <span dir="ltr">{`${e.method} ${e.path}`}</span>

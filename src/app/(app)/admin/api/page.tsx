@@ -1,4 +1,4 @@
-import { desc, getTableColumns } from "drizzle-orm";
+import { desc, getTableColumns, sql } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { McpConnectInfo } from "@/components/McpConnectInfo";
@@ -7,7 +7,7 @@ import { legacyKeys } from "@/lib/api/keys";
 import { KEY_PREFIX, LEGACY_KEYS } from "@/lib/api/spec";
 import { pageAuth } from "@/lib/auth/guard";
 import { getDb } from "@/lib/db/client";
-import { apiKeys } from "@/lib/db/schema";
+import { apiCalls, apiKeys } from "@/lib/db/schema";
 import { AdminTabs } from "../AdminTabs";
 import { revokeApiKey } from "./actions";
 import { CreateKeyForm } from "./CreateKeyForm";
@@ -26,13 +26,37 @@ function Scopes({ scopes }: { scopes: string[] }) {
   );
 }
 
+/** A key's calls in the last 30 days, linking to its log. */
+function Calls({ usage, href, name }: { usage?: { month: number; errors: number; last: Date | null }; href: string; name: string }) {
+  if (!usage) return <span className="text-xs text-muted">אין</span>;
+  return (
+    <Link href={href} className="text-sm text-accent-dark underline underline-offset-4">
+      {usage.month.toLocaleString("he-IL")}
+      {usage.errors ? <span className="ms-1 text-xs text-danger">({usage.errors.toLocaleString("he-IL")} שגיאות)</span> : null}
+      <span className="sr-only"> · יומן הקריאות של {name}</span>
+    </Link>
+  );
+}
+
 export default async function ApiKeysPage() {
   const auth = await pageAuth("admin", "/admin/api");
   if (!auth.ok) return auth.render;
 
   // Every column but the hash: it is never shown, so it is never read.
   const { hash: _hash, ...shown } = getTableColumns(apiKeys);
-  const keys = await getDb().select(shown).from(apiKeys).orderBy(desc(apiKeys.createdAt));
+  const [keys, usage] = await Promise.all([
+    getDb().select(shown).from(apiKeys).orderBy(desc(apiKeys.createdAt)),
+    getDb()
+      .select({
+        keyId: apiCalls.keyId,
+        month: sql<number>`(count(*) FILTER (WHERE ${apiCalls.at} > now() - interval '30 days'))::int`,
+        errors: sql<number>`(count(*) FILTER (WHERE ${apiCalls.at} > now() - interval '30 days' AND ${apiCalls.status} >= 400))::int`,
+        last: sql<Date | null>`max(${apiCalls.at})`.mapWith(apiCalls.at),
+      })
+      .from(apiCalls)
+      .groupBy(apiCalls.keyId),
+  ]);
+  const callsOf = new Map(usage.map((u) => [u.keyId, u]));
   const configured = new Set(legacyKeys().map((k) => k.env));
   const now = Date.now();
 
@@ -51,12 +75,12 @@ export default async function ApiKeysPage() {
             </Link>
             .
           </p>
-          <CreateKeyForm />
+          <CreateKeyForm staffScopes={auth.user.staffManager} />
         </Card>
 
         <Card title="מפתחות">
           <Table
-            head={["שם", "מפתח", "הרשאות", "נוצר", "תפוגה", "שימוש אחרון", "מצב", ""]}
+            head={["שם", "מפתח", "הרשאות", "נוצר", "תפוגה", "שימוש אחרון", "קריאות (30 יום)", "מצב", ""]}
             empty={keys.length === 0 ? "עוד לא נוצרו מפתחות" : undefined}
             caption="מפתחות API"
           >
@@ -65,7 +89,9 @@ export default async function ApiKeysPage() {
               return (
                 <tr key={k.id}>
                   <td className="px-3 py-2 font-medium" dir="auto">
-                    {k.name}
+                    <Link href={`/admin/api/${k.id}`} className="text-accent-dark underline underline-offset-4">
+                      {k.name}
+                    </Link>
                   </td>
                   <td className="whitespace-nowrap px-3 py-2 font-mono text-xs" dir="ltr">
                     {KEY_PREFIX}
@@ -88,6 +114,9 @@ export default async function ApiKeysPage() {
                         {k.lastUsedIp}
                       </span>
                     ) : null}
+                  </td>
+                  <td className="px-3 py-2">
+                    <Calls usage={callsOf.get(k.id)} href={`/admin/api/${k.id}`} name={k.name} />
                   </td>
                   <td className="px-3 py-2">
                     {k.revokedAt ? <Badge>בוטל</Badge> : expired ? <Badge tone="warning">פג תוקף</Badge> : <Badge tone="success">פעיל</Badge>}
@@ -130,7 +159,7 @@ export default async function ApiKeysPage() {
             טוקנים משותפים שהוגדרו כמשתני סביבה סודיים ב-xhostd לפני שהמפתחות עברו לכאן. הם ממשיכים לעבוד כמפתחות עם ההרשאות שבטבלה, ואי אפשר
             לבטל אותם מכאן: מבטלים אותם במחיקת המשתנה בשרת.
           </p>
-          <Table head={["משתנה", "הרשאות", "תפקיד", "מצב"]} caption="מפתחות מהגדרות השרת">
+          <Table head={["משתנה", "הרשאות", "תפקיד", "קריאות (30 יום)", "מצב"]} caption="מפתחות מהגדרות השרת">
             {LEGACY_KEYS.map((k) => (
               <tr key={k.env}>
                 <td className="px-3 py-2 font-mono text-xs" dir="ltr">
@@ -142,6 +171,9 @@ export default async function ApiKeysPage() {
                 <td className="px-3 py-2 text-sm">
                   <span className="block text-xs text-muted">מפתח מהגדרות השרת (env)</span>
                   {k.note}
+                </td>
+                <td className="px-3 py-2">
+                  <Calls usage={callsOf.get(`env:${k.env}`)} href={`/admin/api/env:${k.env}`} name={k.env} />
                 </td>
                 <td className="px-3 py-2">{configured.has(k.env) ? <Badge tone="success">מוגדר</Badge> : <Badge>לא מוגדר</Badge>}</td>
               </tr>

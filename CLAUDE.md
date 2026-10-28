@@ -29,9 +29,10 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `privacy-logs`, `database-definition`, `security-procedure` — keep them true when logging, limits or retention change.
 - **External API = SKEELZ Connect** (`docs/connect-api.md`, shared with the crm and site apps; contract, scopes and limits in
   `src/lib/api/spec.ts`, which also generates `/api/v1/openapi.json` (public) and the docs page `/api-docs`). Inbound
-  `GET /api/v1/{ping,jobs,jobs/:id,metrics,site/jobs}` through `withApiKey(path, scope, handler)`: Bearer header only,
+  `GET /api/v1/{ping,jobs,jobs/:id,metrics,site/jobs,staff/monthly,staff/employee}` through `withApiKey(path, scope, handler)`: Bearer header only,
   keys `sk_admin_…` issued at `/admin/api` (table `api_keys`, sha256 only, shown once, revocable), scopes `jobs:read`
-  `metrics:read` `site-feed:read`, 403 `insufficient_scope`. Env tokens stay as legacy keys: `API_TOKEN` (+ `_PREVIOUS`) =
+  `metrics:read` `site-feed:read` (+ `staff:read`, see Staff data), 403 `insufficient_scope`. Every call made with a key is a row
+  in `api_calls` (key, time, path+query, status, address, ms), shown per key at `/admin/api/[id]`, purged with the logs. Env tokens stay as legacy keys: `API_TOKEN` (+ `_PREVIOUS`) =
   jobs+metrics, `SITE_FEED_TOKEN` = site feed only. In-memory rate limits per key, lockout per address. Outbound to the
   other apps only via `peerFetch` (`src/lib/connect/client.ts`); connections set at `/admin/connections`, peer keys
   AES-256-GCM encrypted under `CONNECT_SECRET_KEY` and never sent to the browser. Outbound webhooks
@@ -58,7 +59,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   עורך, אדמין ⊇ עורך; `src/lib/auth/permissions.ts`); adding a box asks for confirmation first.
 - **Staff data (מנהל עובדים, `docs/staff.md`) is the most sensitive data between employees.** A separate flag
   `users.staff_manager`, not a role: admin does not include it, only a staff manager grants it (ADMIN_EMAILS are staff managers
-  by configuration), invites never grant it, "view as" drops it (`user.staffManager` false), `/api` never carries it, and MCP only
+  by configuration), invites never grant it, "view as" drops it (`user.staffManager` false), `/api` only as `staff:read` (`/api/v1/staff/*`, a key a staff-manager admin issued, re-checked on every call by
+  `staffKeyAllowed` in `src/lib/api/staff.ts`, never env keys, counts not candidate names, not in the public openapi.json), and MCP only
   through `src/lib/mcp/staff-tools.ts` (`staff_monthly`, `staff_employee`, `staff: true`) when `McpPrincipal.staffData`: a staff manager
   now AND staff data turned on for that connection at `/connectors` (`mcp_grants.staff_data`) — `permissions.test.ts` fails otherwise. Pages use `pageAuthStaff`, actions `requireStaffManager`, never `hasRole`.
   Who is which Salesforce User / monday user (`users.sf_user_id`, `users.monday_user_id`, both unique) is set at `/admin/staff-links`

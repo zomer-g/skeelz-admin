@@ -148,6 +148,13 @@
       "when": 1793191870506,
       "tag": "0020_great_rawhide_kid",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1793193847483,
+      "tag": "0021_noisy_kang",
+      "breakpoints": true
     }
   ]
 }

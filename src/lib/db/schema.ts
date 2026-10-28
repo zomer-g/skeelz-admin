@@ -747,6 +747,29 @@ export const sfSchemaReports = pgTable("sf_schema_reports", {
  */
 
 /** Clients that registered themselves (RFC 7591). Public clients: PKCE, no secret. */
+/**
+ * Every call made with an API key (docs/connect-api.md §1), for the key's page at /admin/api/[id]:
+ * when, which endpoint and query, the answer's status, from where and how long it took. Calls with
+ * no valid key are not here (they are in the activity log as api.denied). Purged with the other logs.
+ */
+export const apiCalls = pgTable(
+  "api_calls",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    /** api_keys.id, or `env:<NAME>` for a legacy env key. */
+    keyId: text("key_id").notNull(),
+    keyName: text("key_name").notNull(),
+    at: ts("at").notNull().defaultNow(),
+    method: text("method").notNull(),
+    /** The path and query as called (at most 500 characters). */
+    path: text("path").notNull(),
+    status: integer("status").notNull(),
+    ip: text("ip"),
+    ms: integer("ms"),
+  },
+  (t) => [index("api_calls_key_idx").on(t.keyId, t.at)],
+);
+
 export const mcpClients = pgTable("mcp_clients", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),

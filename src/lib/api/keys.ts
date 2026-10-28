@@ -19,6 +19,8 @@ export interface ApiKeyIdentity {
   name: string;
   scopes: string[];
   legacy: boolean;
+  /** Who issued it (an email); null for a legacy env key. */
+  createdBy: string | null;
 }
 
 export const hashKey = (key: string) => createHash("sha256").update(key).digest("hex");
@@ -44,7 +46,7 @@ export async function verifyKey(presented: string): Promise<ApiKeyIdentity | nul
   // Every legacy token is compared, in constant time, whichever the value looks like.
   let legacy: ApiKeyIdentity | null = null;
   for (const k of legacyKeys()) {
-    if (matchesToken(presented, [k.token]) && !legacy) legacy = { id: `env:${k.env}`, name: legacyKeyName(k.env), scopes: k.scopes, legacy: true };
+    if (matchesToken(presented, [k.token]) && !legacy) legacy = { id: `env:${k.env}`, name: legacyKeyName(k.env), scopes: k.scopes, legacy: true, createdBy: null };
   }
   if (legacy) return legacy;
   if (!presented.startsWith(KEY_PREFIX)) return null;
@@ -54,7 +56,7 @@ export async function verifyKey(presented: string): Promise<ApiKeyIdentity | nul
   if (!row || !timingSafeEqual(Buffer.from(row.hash, "hex"), Buffer.from(hash, "hex"))) return null;
   if (row.revokedAt) return null;
   if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
-  return { id: row.id, name: row.name, scopes: row.scopes, legacy: false };
+  return { id: row.id, name: row.name, scopes: row.scopes, legacy: false, createdBy: row.createdBy };
 }
 
 /** Records when and from where a key was last used, at most once a minute per key. */

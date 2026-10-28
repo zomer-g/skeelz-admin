@@ -3,7 +3,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { generateKey } from "@/lib/api/keys";
-import { isApiScope, KEY_EXPIRY_DAYS } from "@/lib/api/spec";
+import { isApiScope, KEY_EXPIRY_DAYS, STAFF_SCOPES } from "@/lib/api/spec";
 import { writeAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
@@ -25,6 +25,11 @@ export async function createApiKey(_prev: CreateKeyState, form: FormData): Promi
 
   if (!name || name.length > 100) return { ok: false, message: "יש לתת למפתח שם (עד 100 תווים): למי הוא מיועד" };
   if (!scopes.length || !scopes.every(isApiScope)) return { ok: false, message: "יש לבחור לפחות הרשאה אחת" };
+  // Staff data (docs/staff.md): admin alone does not include it. The key also stops working for it
+  // the moment its issuer stops being a staff manager (lib/api/staff.ts).
+  if (scopes.some((sc) => STAFF_SCOPES.includes(sc)) && !admin.staffManager) {
+    return { ok: false, message: "רק אדמין שהוא גם מנהל עובדים יכול להנפיק מפתח עם נתוני עובדים" };
+  }
   const days = expiry === "" ? null : Number(expiry);
   if (days !== null && !(KEY_EXPIRY_DAYS as readonly number[]).includes(days)) return { ok: false, message: "תוקף לא תקין" };
 

@@ -33,6 +33,11 @@ Every app implements the same five parts. Copy this file into each repo as `docs
   - The screen lists them as "מפתח מהגדרות השרת (env)" and they cannot be revoked in the UI.
 - **Rate limits and lockout:** the in-memory limits each app already has, now per key (bucket = key id).
 - **Audit:** `api_key.created`, `api_key.revoked`, `api.denied` (throttled), `api.used` (first use per hour per key).
+- **Call log (admin):** every call made with a key, whatever the answer (2xx, 400, 403, 429, 500), is a row in `api_calls`:
+  key id (or `env:<NAME>`), key name, time, method, path and query, status, address, duration. `/admin/api` shows each key's
+  calls in the last 30 days; `/admin/api/[id]` shows its totals, a per-endpoint breakdown and the full log (100 a page,
+  filter by success/error). Calls with no valid key are not per key: they stay `api.denied` in the activity log. Purged after
+  24 months with the other logs.
 
 ## 2. Connections to the other apps (outbound)
 - **Screen:** `/admin/connections` ("חיבורים"), admin only. One row per peer app: base URL, the key that peer issued to us, enabled on/off.
@@ -73,6 +78,10 @@ Every app implements the same five parts. Copy this file into each repo as `docs
 - `jobs:read` — existing /api/v1/jobs, /jobs/:id
 - `metrics:read` — existing /api/v1/metrics
 - `site-feed:read` — existing /api/v1/site/jobs
+- `staff:read` — GET /api/v1/staff/monthly?month=, /api/v1/staff/employee?email=&month= (docs/staff.md): hours and tasks per
+  employee. Internal: not in the public openapi.json, on /api-docs only for staff managers. Only an admin who is also a staff
+  manager can put it on a key, and every call checks that the key's issuer still is one (`src/lib/api/staff.ts`); env keys
+  never get it. Salesforce tasks are counted by case type, never listed, so no candidate name travels.
 
 **crm**
 - `intake:write` — existing POST /api/v1/intake/applications. Also keep the current path `/api/intake/applications` as an alias.

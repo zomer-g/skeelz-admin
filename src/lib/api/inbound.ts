@@ -1,7 +1,10 @@
 import { writeAudit } from "@/lib/audit";
+import { getDb } from "@/lib/db/client";
+import { apiCalls } from "@/lib/db/schema";
 import { touchKey, verifyKey, type ApiKeyIdentity } from "./keys";
 import { firstInWindow, hit, secondsLeft } from "./rate-limit";
 import { API_LIMITS, endpointFor, type EndpointAuth } from "./spec";
+import { staffKeyAllowed } from "./staff";
 import { logError } from "@/lib/log";
 
 /**
@@ -39,6 +42,23 @@ export function clientIp(req: Request): string {
 
 type Handler<C> = (req: Request, ctx: C, key: ApiKeyIdentity) => Promise<Response>;
 
+/** One row in api_calls for a call made with a key, whatever its answer. Never blocks or fails the call. */
+function recordCall(key: ApiKeyIdentity, req: Request, status: number, started: number, ip: string): void {
+  const url = new URL(req.url);
+  void getDb()
+    .insert(apiCalls)
+    .values({
+      keyId: key.id,
+      keyName: key.name,
+      method: req.method,
+      path: `${url.pathname}${url.search}`.slice(0, 500),
+      status,
+      ip: ip === "unknown" ? null : ip,
+      ms: Date.now() - started,
+    })
+    .catch((err: unknown) => logError("api call log", err));
+}
+
 /**
  * In order: no key in the URL, then the Authorization header's key. A missing or invalid
  * key counts toward the address's lockout (and is refused outright while it is locked out);
@@ -56,6 +76,7 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
   const route = `${endpoint.method} ${path}`;
 
   const gate = async (req: Request, ctx: C): Promise<Response> => {
+    const started = Date.now();
     const ip = clientIp(req);
     const knownIp = ip !== "unknown";
 
@@ -82,13 +103,28 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
       return apiError(401, "unauthorized", "A valid key is required: Authorization: Bearer <key>.", { "WWW-Authenticate": 'Bearer realm="skeelz"' });
     }
 
+    // From here on the key is known: every answer is in its call log.
+    const answer = (res: Response) => {
+      recordCall(key, req, res.status, started, ip);
+      return res;
+    };
+
     if (auth !== "any" && !key.scopes.includes(auth)) {
       if (firstInWindow(`scope:${key.id}:${route}`, 10 * MIN)) {
         await writeAudit(ACTOR, "api.denied", route, { ip, reason: "insufficient_scope", key: key.name, keyId: key.id, required: auth });
       }
-      return apiError(403, "insufficient_scope", `This key lacks the ${auth} scope.`, {
-        "WWW-Authenticate": `Bearer realm="skeelz", error="insufficient_scope", scope="${auth}"`,
-      });
+      return answer(
+        apiError(403, "insufficient_scope", `This key lacks the ${auth} scope.`, {
+          "WWW-Authenticate": `Bearer realm="skeelz", error="insufficient_scope", scope="${auth}"`,
+        }),
+      );
+    }
+    // staff:read (docs/staff.md) also needs the key's issuer to be a staff manager right now; an env key never is.
+    if (auth === "staff:read" && !(await staffKeyAllowed(key))) {
+      if (firstInWindow(`staff:${key.id}`, 10 * MIN)) {
+        await writeAudit(ACTOR, "api.denied", route, { ip, reason: "issuer_lost_staff_access", key: key.name, keyId: key.id });
+      }
+      return answer(apiError(403, "insufficient_scope", "The person who issued this key is no longer allowed staff data."));
     }
     touchKey(key, ip);
 
@@ -108,7 +144,7 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
     if (blocked) {
       if (firstInWindow(`limited:${key.id}`, 10 * MIN)) await writeAudit(ACTOR, "api.rate_limited", route, { ip, key: key.name, keyId: key.id });
       const retry = Math.max(1, Math.ceil((blocked.resetAt - Date.now()) / 1000));
-      return apiError(429, "rate_limited", "Rate limit exceeded.", { ...rateHeaders, "Retry-After": String(retry) });
+      return answer(apiError(429, "rate_limited", "Rate limit exceeded.", { ...rateHeaders, "Retry-After": String(retry) }));
     }
 
     // The log shows which key uses the API and from where, without a row per request.
@@ -117,11 +153,11 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
     try {
       const res = await handler(req, ctx, key);
       for (const [name, value] of Object.entries(rateHeaders)) res.headers.set(name, value);
-      return res;
+      return answer(res);
     } catch (err) {
       // Never the message: a database error's message holds the SQL and its values.
       logError(`api ${route}`, err);
-      return apiError(500, "internal_error", "Something went wrong.", rateHeaders);
+      return answer(apiError(500, "internal_error", "Something went wrong.", rateHeaders));
     }
   };
 

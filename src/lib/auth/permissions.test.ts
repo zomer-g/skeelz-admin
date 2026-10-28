@@ -40,20 +40,33 @@ function sources(dir: string): string[] {
   });
 }
 
-describe("staff data stays off the API, and on MCP only behind its gate", () => {
-  // A tripwire: the API routes never read the staff-manager flag or the staff data, and of the MCP
-  // code only two files may — oauth.ts, which works out the gate (McpPrincipal.staffData), and
-  // staff-tools.ts, whose every tool is `staff: true`. Anything else is a decision for docs/staff.md.
+describe("staff data reaches the API and MCP only behind their gates", () => {
+  // A tripwire. Of the API code only lib/api/staff.ts (the gate: the key's issuer is a staff manager
+  // now) and the routes under app/api/v1/staff may read staff data; of the MCP code only oauth.ts
+  // (its gate, McpPrincipal.staffData) and staff-tools.ts, whose every tool is `staff: true`.
+  // Anything else is a decision for docs/staff.md.
   const root = join(__dirname, "..", "..");
   const apiDirs = [join(root, "lib", "api"), join(root, "app", "api")];
   const mcpDirs = [join(root, "lib", "mcp"), join(root, "app", "mcp")];
   const MCP_ALLOWED = [join(root, "lib", "mcp", "oauth.ts"), join(root, "lib", "mcp", "staff-tools.ts")];
+  const API_ALLOWED = [join(root, "lib", "api", "staff.ts"), ...sources(join(root, "app", "api", "v1", "staff"))];
   const FORBIDDEN =
     /staffManager|staff_manager|requireStaffManager|pageAuthStaff|app\/\(app\)\/staff|@\/lib\/staff|staffWorkItems|staff_work_items|staffSourceState|mondayUserId|monday_user_id/;
 
-  it("no API module refers to staff data", () => {
-    const hits = apiDirs.flatMap(sources).filter((f) => FORBIDDEN.test(readFileSync(f, "utf8")));
+  it("of the API code, only the staff gate and the staff routes refer to staff data", () => {
+    const hits = apiDirs.flatMap(sources).filter((f) => !API_ALLOWED.includes(f) && FORBIDDEN.test(readFileSync(f, "utf8")));
     assert.deepEqual(hits, []);
+  });
+
+  it("the API's staff scope needs an issuer who is a staff manager now, never an env key", () => {
+    const gate = readFileSync(join(root, "lib", "api", "staff.ts"), "utf8");
+    assert.match(gate, /if \(key\.legacy \|\| !key\.createdBy\) return false;/);
+    assert.match(gate, /effectiveStaffManager\(\{ stored: row\?\.staffManager \?\? false, envAdmin, previewing: false \}\)/);
+    const inbound = readFileSync(join(root, "lib", "api", "inbound.ts"), "utf8");
+    assert.match(inbound, /if \(auth === "staff:read" && !\(await staffKeyAllowed\(key\)\)\)/);
+    for (const f of sources(join(root, "app", "api", "v1", "staff"))) assert.match(readFileSync(f, "utf8"), /withApiKey\("[^"]+", "staff:read"/);
+    const issue = readFileSync(join(root, "app", "(app)", "admin", "api", "actions.ts"), "utf8");
+    assert.match(issue, /STAFF_SCOPES\.includes\(sc\)\) && !admin\.staffManager/);
   });
 
   it("of the MCP code, only the gate and the staff tools refer to staff data", () => {

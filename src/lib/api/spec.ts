@@ -67,7 +67,14 @@ export const API_SCOPES = [
   { scope: "jobs:read", label: "משרות: רשימה ומשרה אחת, עם ספירת הגשות וחשיפה באתר" },
   { scope: "metrics:read", label: "מדדים מצטברים: המשפך של לשונית המועמדים ותנועה באתר" },
   { scope: "site-feed:read", label: "הפיד של האתר החדש: המשרות הפעילות עם תוכן דף המשרה" },
+  {
+    scope: "staff:read",
+    label: "נתוני עובדים: שעות ומשימות לפי עובד וחודש (מאנדיי ו-Salesforce). רק אדמין שהוא גם מנהל עובדים מנפיק, והמפתח עובד רק כל עוד הוא מנהל עובדים",
+  },
 ] as const;
+
+/** Scopes only a staff manager may put on a key, checked again on every call (lib/api/staff.ts). */
+export const STAFF_SCOPES: readonly ApiScope[] = ["staff:read"];
 
 export type ApiScope = (typeof API_SCOPES)[number]["scope"];
 
@@ -126,6 +133,8 @@ export interface EndpointSpec {
   params: ParamSpec[];
   /** Counted against the tighter shared budget (API_LIMITS.metricsPerMinute). */
   heavy?: boolean;
+  /** Left out of the public openapi.json; documented only on /api-docs, behind the sign-in (the staff endpoints). */
+  internal?: boolean;
   response: Schema;
 }
 
@@ -307,6 +316,64 @@ export const ENDPOINTS: EndpointSpec[] = [
       data_freshness: obj({ salesforce_synced_at: { type: ["string", "null"], format: "date-time" } }),
     }),
   },
+  {
+    method: "GET",
+    path: "/api/v1/staff/monthly",
+    auth: "staff:read",
+    internal: true,
+    summary: "שעות ומשימות של העובדים בחודש",
+    description:
+      "לכל עובד שמקושר למאנדיי או ל-Salesforce: שעות ומשימות שבוצעו בלוח מאנדיי, ומשימות Salesforce שבבעלותו (מתוכן מיילים ושיחות). נתוני עובדים: המפתח צריך staff:read, ומי שהנפיק אותו צריך להיות מנהל עובדים בזמן הקריאה.",
+    params: [{
+        name: "month",
+        in: "query",
+        schema: { type: "string", pattern: "^\\d{4}-(0[1-9]|1[0-2])$" },
+        description: "YYYY-MM, שעון ישראל",
+        defaultLabel: "החודש הנוכחי",
+      }],
+    response: obj({
+      month: str,
+      employees: {
+        type: "array",
+        items: obj({
+          name: strOrNull,
+          email: str,
+          hours: { type: ["number", "null"] },
+          monday_tasks: { type: ["integer", "null"] },
+          salesforce_tasks: { type: ["integer", "null"] },
+          salesforce_emails: { type: ["integer", "null"] },
+          salesforce_calls: { type: ["integer", "null"] },
+          total_tasks: int,
+        }),
+      },
+    }),
+  },
+  {
+    method: "GET",
+    path: "/api/v1/staff/employee",
+    auth: "staff:read",
+    internal: true,
+    summary: "עובד אחד: חודש אחרי חודש, ומשימות החודש",
+    description:
+      "עובד אחד לפי המייל שלו במערכת: סיכום לכל חודש; משימות מאנדיי (לוח, תאריך ביצוע, מתי נכנסה ל-Done, שעות); ומשימות Salesforce לפי סוג המקרה. בלי נושאי המשימות של Salesforce, שעשויים להכיל שמות מועמדים.",
+    params: [
+      { name: "email", in: "query", schema: { type: "string" }, description: "המייל של העובד במערכת (חובה)" },
+      { ...{
+        name: "month",
+        in: "query",
+        schema: { type: "string", pattern: "^\\d{4}-(0[1-9]|1[0-2])$" },
+        description: "YYYY-MM, שעון ישראל",
+        defaultLabel: "החודש הנוכחי",
+      }, defaultLabel: "החודש האחרון שיש בו משימות" },
+    ],
+    response: obj({
+      employee: obj({ name: strOrNull, email: str }),
+      month: str,
+      by_month: { type: "array", items: { type: "object" } },
+      monday: { type: "object" },
+      salesforce: { type: ["object", "null"] },
+    }),
+  },
 ];
 
 export const endpointFor = (path: string): EndpointSpec => {
@@ -338,7 +405,7 @@ const ERROR_STATUS_TEXT: Record<number, string> = {
 /** The OpenAPI 3.1 document served at /api/v1/openapi.json. */
 export function openApiDocument(version: string): Record<string, unknown> {
   const paths: Record<string, Record<string, unknown>> = {};
-  for (const e of ENDPOINTS) {
+  for (const e of ENDPOINTS.filter((x) => !x.internal)) {
     const keyed = e.auth !== "public";
     const errors = [
       ...(keyed || e.params.length ? [400] : []),
@@ -372,7 +439,7 @@ export function openApiDocument(version: string): Record<string, unknown> {
         "Jobs, statuses, ids and aggregates only: never candidate names, contact details or files.",
     },
     servers: [{ url: "/" }],
-    "x-scopes": Object.fromEntries(API_SCOPES.map((s) => [s.scope, s.label])),
+    "x-scopes": Object.fromEntries(API_SCOPES.filter((s) => !STAFF_SCOPES.includes(s.scope)).map((s) => [s.scope, s.label])),
     components: {
       securitySchemes: { bearer: { type: "http", scheme: "bearer", description: `A key ${KEY_PREFIX}… issued at /admin/api` } },
       schemas: SCHEMAS,

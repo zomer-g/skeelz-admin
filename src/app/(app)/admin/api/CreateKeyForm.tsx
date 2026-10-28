@@ -2,10 +2,11 @@
 
 import { useActionState, useRef, useState } from "react";
 import { buttonClass, fieldClass } from "@/components/ui";
-import { API_SCOPES, KEY_EXPIRY_DAYS } from "@/lib/api/spec";
+import { API_SCOPES, KEY_EXPIRY_DAYS, STAFF_SCOPES } from "@/lib/api/spec";
 import { createApiKey, type CreateKeyState } from "./actions";
 
-export function CreateKeyForm() {
+/** `staffScopes`: the issuer is a staff manager, so the staff scope is offered (the server checks again). */
+export function CreateKeyForm({ staffScopes = false }: { staffScopes?: boolean }) {
   const [state, action, pending] = useActionState<CreateKeyState, FormData>(createApiKey, null);
   const [copied, setCopied] = useState<string | null>(null);
   const keyField = useRef<HTMLInputElement>(null);
@@ -52,7 +53,7 @@ export function CreateKeyForm() {
         </div>
         <fieldset className="flex flex-col gap-2">
           <legend className="mb-2 text-sm font-medium text-muted">הרשאות (לפחות אחת)</legend>
-          {API_SCOPES.map((s) => (
+          {API_SCOPES.filter((s) => staffScopes || !STAFF_SCOPES.includes(s.scope)).map((s) => (
             <label key={s.scope} className="flex items-start gap-3">
               <input type="checkbox" name="scopes" value={s.scope} className="mt-1 size-5 shrink-0 accent-accent" />
               <span>
