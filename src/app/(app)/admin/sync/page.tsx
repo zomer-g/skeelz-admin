@@ -4,6 +4,8 @@ import { Badge, buttonClass, Card, formatDateTime, PageHeader, Table } from "@/c
 import { pageAuth } from "@/lib/auth/guard";
 import { getDb } from "@/lib/db/client";
 import { syncRequests, syncRuns, syncState } from "@/lib/db/schema";
+import { mondayConfigured, staffSourceStatus } from "@/lib/staff/monday";
+import { SyncButton as MondaySyncButton } from "../../staff/SyncButton";
 import { AdminTabs } from "../AdminTabs";
 import { requestSync } from "./actions";
 
@@ -27,16 +29,18 @@ export default async function SyncPage() {
   if (!auth.ok) return auth.render;
 
   const db = getDb();
-  const [states, runs, pending] = await Promise.all([
+  const [states, runs, pending, monday] = await Promise.all([
     db.select().from(syncState).orderBy(asc(syncState.object)),
     db.select().from(syncRuns).orderBy(desc(syncRuns.startedAt)).limit(40),
     db.select().from(syncRequests).where(isNull(syncRequests.doneAt)).orderBy(asc(syncRequests.requestedAt)),
+    // Kept apart from sync_state (which MCP's sync_status reads); docs/staff.md.
+    staffSourceStatus(),
   ]);
   const workerOn = process.env.SYNC_WORKER === "true";
 
   return (
     <>
-      <PageHeader title="ניהול · סנכרון" subtitle="סנכרון Salesforce לבסיס הנתונים המקומי (קריאה בלבד)" />
+      <PageHeader title="ניהול · סנכרון" subtitle="סנכרון Salesforce, Google, SMOOV ומאנדיי לבסיס הנתונים המקומי (קריאה בלבד)" />
       <AdminTabs />
 
       <div className="flex flex-col gap-8">
@@ -50,7 +54,8 @@ export default async function SyncPage() {
                 </>
               ) : (
                 <>תהליך הסנכרון כבוי בשרת הזה (SYNC_WORKER).</>
-              )}
+              )}{" "}
+              {mondayConfigured() ? <>מאנדיי (שעות עובדים) כל {process.env.STAFF_SYNC_INTERVAL_MIN ?? 60} דקות.</> : null}
             </p>
             <div className="flex flex-wrap gap-2">
               <form action={requestSync}>
@@ -109,6 +114,34 @@ export default async function SyncPage() {
               </tr>
             ))}
           </Table>
+        </Card>
+
+        <Card title="מאנדיי · שעות עובדים">
+          {mondayConfigured() ? (
+            <dl className="mb-4 grid gap-1 text-sm sm:grid-cols-[auto_1fr] sm:gap-x-4">
+              <dt className="text-muted">סנכרון אחרון שהצליח</dt>
+              <dd>{formatDateTime(monday?.lastSuccessAt ?? null)}</dd>
+              <dt className="text-muted">ניסיון אחרון</dt>
+              <dd>{formatDateTime(monday?.lastStartedAt ?? null)}</dd>
+              <dt className="text-muted">מצב</dt>
+              <dd>
+                {monday?.lastError ? (
+                  <span className="text-danger" dir="ltr">
+                    {monday.lastError.slice(0, 160)}
+                  </span>
+                ) : (
+                  <Badge tone="success">תקין</Badge>
+                )}
+              </dd>
+            </dl>
+          ) : (
+            <p className="mb-4 text-sm text-muted">החיבור למאנדיי לא הוגדר (MONDAY_TOKEN).</p>
+          )}
+          {auth.user.staffManager ? (
+            <MondaySyncButton />
+          ) : (
+            <p className="text-xs text-muted">סנכרון ידני של מאנדיי זמין למנהלי עובדים.</p>
+          )}
         </Card>
 
         <Card title="ריצות אחרונות" tone="accent-light">

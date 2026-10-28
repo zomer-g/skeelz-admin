@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { parseMondayItem, rowsForLinked, summarize, weekOf, type MondayItem } from "./hours";
+import { parseMonth, recentMonths } from "./data";
 
 // Shaped like the board's real answer (28.10.2026).
 const item = (id: string, cols: Record<string, { text: string | null; value?: string | null }>, name = `task ${id}`): MondayItem => ({
@@ -102,5 +103,18 @@ describe("summarize", () => {
     assert.equal(weekOf("2026-10-25"), "2026-10-25");
     assert.equal(weekOf("2026-10-31"), "2026-10-25");
     assert.equal(weekOf("2026-11-01"), "2026-11-01");
+  });
+});
+
+describe("staff months", () => {
+  it("lists the last months newest first, across the year", () => {
+    assert.deepEqual(recentMonths(4, "2026-02-14"), ["2026-02", "2026-01", "2025-12", "2025-11"]);
+    assert.equal(recentMonths(12, "2026-10-28").at(-1), "2025-11");
+  });
+
+  it("accepts only a real YYYY-MM", () => {
+    assert.equal(parseMonth("2026-10"), "2026-10");
+    assert.equal(parseMonth("2026-13"), null);
+    assert.equal(parseMonth("2026-10' OR 1=1"), null);
   });
 });

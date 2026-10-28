@@ -4,7 +4,7 @@
  * screens (M3+) report actual connectivity.
  */
 export interface IntegrationStatus {
-  key: "salesforce" | "ga4" | "gtm" | "smoov";
+  key: "salesforce" | "ga4" | "gtm" | "smoov" | "monday";
   name: string;
   scope: string;
   envVars: string[];
@@ -45,6 +45,14 @@ const DEFINITIONS: Omit<IntegrationStatus, "configured">[] = [
     envVars: ["SMOOV_API_KEY"],
     guide: "docs/setup-smoov.md",
     milestone: "M6",
+  },
+  {
+    key: "monday",
+    name: "monday.com",
+    scope: "הלוח \"משימות סיילספורס\" — משימות שבוצעו ושעות העובדים (קריאה בלבד)",
+    envVars: ["MONDAY_TOKEN"],
+    guide: "docs/staff.md",
+    milestone: "עובדים",
   },
 ];
 

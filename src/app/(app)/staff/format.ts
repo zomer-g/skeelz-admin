@@ -10,3 +10,8 @@ export const monthLabel = (month: string) => `${MONTHS[Number(month.slice(5, 7))
 
 /** "25.10.2026" from "2026-10-25". */
 export const dayLabel = (day: string | null) => (day ? `${Number(day.slice(8, 10))}.${Number(day.slice(5, 7))}.${day.slice(0, 4)}` : "—");
+
+const counts = new Intl.NumberFormat("he-IL");
+
+/** A count, in Hebrew digits grouping. */
+export const fmtCount = (n: number) => counts.format(n);

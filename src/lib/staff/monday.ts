@@ -36,11 +36,11 @@ query ($boardId: [ID!], $cursor: String) {
   }
 }`;
 
-async function mondayQuery<T>(variables: Record<string, unknown>): Promise<T> {
+async function mondayQuery<T>(query: string, variables: Record<string, unknown> = {}): Promise<T> {
   const res = await fetch(ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: process.env.MONDAY_TOKEN ?? "", "API-Version": API_VERSION },
-    body: JSON.stringify({ query: QUERY, variables }),
+    body: JSON.stringify({ query, variables }),
     signal: AbortSignal.timeout(30_000),
   });
   // Never the body of a failure in full: it is shown on the staff screen and in the worker log.
@@ -56,7 +56,7 @@ async function fetchDoneItems(): Promise<MondayItem[]> {
   const items: MondayItem[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < 200; page++) {
-    const data: Page = await mondayQuery<Page>({ boardId: [MONDAY_BOARD.id], cursor });
+    const data: Page = await mondayQuery<Page>(QUERY, { boardId: [MONDAY_BOARD.id], cursor });
     const board = data.boards?.[0];
     if (!board) throw new Error("the board is not visible to this token");
     items.push(...board.items_page.items);
@@ -64,6 +64,32 @@ async function fetchDoneItems(): Promise<MondayItem[]> {
     if (!cursor) break;
   }
   return items;
+}
+
+export interface MondayUser {
+  id: string;
+  name: string;
+  email: string | null;
+}
+
+/** The account's members (not guests), for linking employees on /admin/staff-links. */
+export async function listMondayUsers(): Promise<MondayUser[]> {
+  if (!mondayConfigured()) return [];
+  const data = await mondayQuery<{ users: { id: string; name: string; email: string | null }[] }>(
+    `query { users(kind: non_guests, limit: 500) { id name email } }`,
+  );
+  return (data.users ?? []).map((u) => ({ id: String(u.id), name: u.name, email: u.email?.toLowerCase() ?? null }));
+}
+
+/** The connection test on /admin/integrations: the board is visible, and how big it is. Nothing per person. */
+export async function checkMonday(): Promise<{ board: string; items: number }> {
+  const data = await mondayQuery<{ boards: { name: string; items_count: number }[] }>(
+    `query ($boardId: [ID!]) { boards(ids: $boardId) { name items_count } }`,
+    { boardId: [MONDAY_BOARD.id] },
+  );
+  const board = data.boards?.[0];
+  if (!board) throw new Error("the board is not visible to this token");
+  return { board: board.name, items: board.items_count };
 }
 
 export interface StaffSyncResult {

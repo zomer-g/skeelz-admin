@@ -2,9 +2,9 @@
 
 import { useActionState } from "react";
 import { buttonClass, smallFieldClass } from "@/components/ui";
-import { addSmoovCampaign, testGa4, testGtm, testSmoov, type TestState } from "./actions";
+import { addSmoovCampaign, testGa4, testGtm, testMonday, testSmoov, type TestState } from "./actions";
 
-const ACTIONS = { ga4: testGa4, gtm: testGtm, smoov: testSmoov } as const;
+const ACTIONS = { ga4: testGa4, gtm: testGtm, smoov: testSmoov, monday: testMonday } as const;
 
 /** The live region stays mounted, so the result is announced when it arrives. */
 function Result({ state }: { state: TestState }) {

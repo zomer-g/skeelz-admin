@@ -10,6 +10,7 @@ import { serviceAccountEmail } from "@/lib/google/auth";
 import { ga4Configured, jobKeyFromPath, runReport } from "@/lib/google/ga4";
 import { getLiveVersion, gtmConfigured, sendsJobId } from "@/lib/google/gtm";
 import { smoov, smoovAuthScheme, smoovConfigured } from "@/lib/smoov/client";
+import { checkMonday, mondayConfigured } from "@/lib/staff/monday";
 
 export type TestState = { ok: boolean; lines: string[] } | null;
 
@@ -120,4 +121,18 @@ export async function removeSmoovCampaign(form: FormData): Promise<void> {
 export async function googleServiceAccount(): Promise<string | null> {
   await requireUser("admin");
   return serviceAccountEmail();
+}
+
+/** The board is visible to the token. Says nothing about anyone's tasks or hours (docs/staff.md). */
+export async function testMonday(_prev: TestState, _form: FormData): Promise<TestState> {
+  const admin = await requireUser("admin");
+  if (!mondayConfigured()) return { ok: false, lines: ["חסר MONDAY_TOKEN"] };
+  try {
+    const { board, items } = await checkMonday();
+    await writeAudit(admin.email, "integration.test", "monday", { ok: true });
+    return { ok: true, lines: [`הלוח "${board}" נגיש`, `${fmt(items)} משימות בלוח`] };
+  } catch (err) {
+    await writeAudit(admin.email, "integration.test", "monday", { ok: false });
+    return fail(err);
+  }
 }

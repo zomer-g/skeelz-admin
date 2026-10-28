@@ -6,8 +6,7 @@ import { writeAudit } from "@/lib/audit";
 import { CATEGORY_LABELS, isCategory, roleAfter, roleFor } from "@/lib/auth/permissions";
 import { AuthError, envAdmins, requireUser } from "@/lib/auth/session";
 import { getDb, type Db } from "@/lib/db/client";
-import { accessRequests, invites, sfUser, users } from "@/lib/db/schema";
-import { isSfId } from "@/lib/entities/search";
+import { accessRequests, invites, users } from "@/lib/db/schema";
 import { confirmAccess } from "@/lib/security/reviews";
 
 // Every action re-checks the caller: a server action is a public endpoint,
@@ -94,30 +93,6 @@ export async function setCategory(form: FormData): Promise<void> {
     await tx.update(users).set({ role }).where(eq(users.id, target.id));
   });
   await writeAudit(admin.email, "user.role_changed", target.email, { from: target.role, to: role, box: CATEGORY_LABELS[category], on });
-  revalidatePath(PATH);
-}
-
-/** Links a site user to their Salesforce User (or clears it), so their logged activity can be told apart. */
-export async function linkSfUser(form: FormData): Promise<void> {
-  const admin = await requireUser("admin");
-  const id = String(form.get("id") ?? "");
-  const sfUserId = String(form.get("sfUserId") ?? "").trim();
-  if (!UUID_RE.test(id)) throw new Error("invalid id");
-  if (sfUserId && !isSfId(sfUserId)) throw new Error("invalid Salesforce user");
-
-  const db = getDb();
-  const [target] = await db.select().from(users).where(eq(users.id, id)).limit(1);
-  if (!target) throw new Error("user not found");
-  if ((target.sfUserId ?? "") === sfUserId) return;
-  if (sfUserId) {
-    const [known] = await db.select({ id: sfUser.id }).from(sfUser).where(eq(sfUser.id, sfUserId)).limit(1);
-    if (!known) throw new Error("unknown Salesforce user");
-    // One site user per Salesforce user: someone else's activity must never become this person's.
-    const [taken] = await db.select({ email: users.email }).from(users).where(eq(users.sfUserId, sfUserId)).limit(1);
-    if (taken) throw new Error("Salesforce user already linked");
-  }
-  await db.update(users).set({ sfUserId: sfUserId || null }).where(eq(users.id, target.id));
-  await writeAudit(admin.email, sfUserId ? "user.sf_linked" : "user.sf_unlinked", target.email, { from: target.sfUserId, to: sfUserId || null });
   revalidatePath(PATH);
 }
 

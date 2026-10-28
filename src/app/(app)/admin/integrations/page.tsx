@@ -9,6 +9,7 @@ import { getDb } from "@/lib/db/client";
 import { gtmVersions, smoovCampaigns, smoovCampaignStats, syncState, webhookDeliveries } from "@/lib/db/schema";
 import { serviceAccountEmail } from "@/lib/google/auth";
 import { integrationStatus } from "@/lib/integrations";
+import { staffSourceStatus } from "@/lib/staff/monday";
 import { AdminTabs } from "../AdminTabs";
 import { removeSmoovCampaign } from "./actions";
 import { AddCampaignForm, TestButton } from "./IntegrationTools";
@@ -20,12 +21,13 @@ const pct = (part: number | null, whole: number | null) => (part == null || !who
 
 const STATE_OBJECT = { salesforce: "Case", ga4: "GA4", gtm: "GTM", smoov: "SMOOV" } as const;
 
+
 export default async function IntegrationsPage() {
   const auth = await pageAuth("admin", "/admin/integrations");
   if (!auth.ok) return auth.render;
 
   const db = getDb();
-  const [states, campaigns, [liveGtm], deliveries, [queue]] = await Promise.all([
+  const [states, campaigns, [liveGtm], deliveries, [queue], mondayState] = await Promise.all([
     db.select().from(syncState),
     db
       .select({ campaign: smoovCampaigns, stats: smoovCampaignStats })
@@ -41,6 +43,8 @@ export default async function IntegrationsPage() {
         failed: sql<number>`(count(*) filter (where ${webhookDeliveries.failedAt} is not null))::int`,
       })
       .from(webhookDeliveries),
+    // monday keeps its state apart from sync_state (docs/staff.md); only when it last ran is shown here.
+    staffSourceStatus(),
   ]);
   const stateByObject = new Map(states.map((s) => [s.object, s]));
   const integrations = integrationStatus();
@@ -48,12 +52,12 @@ export default async function IntegrationsPage() {
 
   return (
     <>
-      <PageHeader title="ניהול · מקורות נתונים" subtitle="Salesforce, Google ו-SMOOV, ו-webhooks יוצאים" />
+      <PageHeader title="ניהול · מקורות נתונים" subtitle="Salesforce, Google, SMOOV ומאנדיי, ו-webhooks יוצאים" />
       <AdminTabs />
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
         {integrations.map((i) => {
-          const state = stateByObject.get(STATE_OBJECT[i.key]);
+          const state = i.key === "monday" ? mondayState : stateByObject.get(STATE_OBJECT[i.key]);
           return (
             <Card key={i.key} title={i.name} tone={i.configured ? "accent" : "accent-light"}>
               <div className="flex flex-col gap-4">
