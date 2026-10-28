@@ -57,6 +57,7 @@ const ACTION_LABELS: Record<string, string> = {
   "api.used": "שימוש ב-API",
   "api.denied": "גישה ל-API נדחתה",
   "api.rate_limited": "חריגה ממגבלת ה-API",
+  "api.people_listed": "API · נמסרו פרטי מועמדים",
   "connection.updated": "עדכון חיבור למערכת אחרת",
   "connection.checked": "בדיקת חיבור למערכת אחרת",
   "mcp.call": "MCP · שימוש בכלי",

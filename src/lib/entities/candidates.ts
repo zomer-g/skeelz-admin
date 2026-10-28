@@ -54,6 +54,8 @@ export interface CandidateRow {
   firstApplicationAt: Date | null;
   lastApplicationAt: Date | null;
   createdAt: Date | null;
+  /** Skill names (lib/skills.ts), never ids. */
+  skills: string[];
 }
 
 const PLACE = candidatePlaceSql("ct");
@@ -99,6 +101,8 @@ function toCandidate(r: Record<string, unknown>): CandidateRow {
     firstApplicationAt: asDate(r.first_at),
     lastApplicationAt: asDate(r.last_at),
     createdAt: asDate(r.created_date),
+    // The site lists skills by id; each id has its name (lib/skills.ts), and the checkboxes repeat them.
+    skills: skillNames(str((r.data as Record<string, unknown> | null)?.skills_cambium__c), (r.data ?? undefined) as Record<string, unknown> | undefined),
   };
 }
 
@@ -223,7 +227,6 @@ export interface CandidateDetail extends CandidateRow {
   birthDate: string | null;
   gender: string | null;
   contactType: string | null;
-  skills: string[];
   talent: boolean;
   lastActivityDate: string | null;
 }
@@ -239,8 +242,6 @@ export async function loadCandidate(id: string): Promise<CandidateDetail | null>
     birthDate: str(data.Birthdate) ?? str(data.dateOfBirth_cambium__c),
     gender: str(data.Gender__c),
     contactType: str(data.contact_type_C__c),
-    // The site lists skills by id; each id has its name (lib/skills.ts), and the checkboxes repeat them.
-    skills: skillNames(str(data.skills_cambium__c), data),
     talent: isTrue(data.Field3__c),
     lastActivityDate: str(data.LastActivityDate),
   };

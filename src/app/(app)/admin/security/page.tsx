@@ -159,7 +159,7 @@ export default async function SecurityPage() {
         </Card>
 
         <Card title={`ייצוא פרטי קשר היום (${exports.length} משתמשים)`}>
-          <Table head={["משתמש", "פרטים שהתקבלו", "מזה דרך MCP", "מותר היום", "נחסמו", ""]} empty={exports.length === 0 ? "אף אחד לא ייצא פרטי קשר היום" : undefined}>
+          <Table head={["משתמש", "פרטים שהתקבלו", "מזה דרך MCP", "מזה דרך API", "מותר היום", "נחסמו", ""]} empty={exports.length === 0 ? "אף אחד לא ייצא פרטי קשר היום" : undefined}>
             {exports.map((u) => (
               <tr key={u.email}>
                 <td className="px-3 py-2" dir="ltr">
@@ -167,6 +167,7 @@ export default async function SecurityPage() {
                 </td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(u.exported)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(u.via.mcp)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(u.via.api)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(u.allowed)}</td>
                 <td className="px-3 py-2 tabular-nums">{u.refused ? <Badge tone="brand">{fmtInt(u.refused)}</Badge> : "0"}</td>
                 <td className="px-3 py-2 text-end">
@@ -182,7 +183,7 @@ export default async function SecurityPage() {
           </Table>
           <p className="mt-3 text-xs text-muted">
             נספרים: כל מייל או טלפון שהועתק מרשימת המועמדים או קורות החיים, וכל אדם שכלי MCP החזיר (חיפוש מועמדים, הגשות, קורות חיים, לידים, תשלומים, איש
-            קשר לפי מייל). הפירוט ב<Link href="/admin/audit" className="underline underline-offset-2">יומן הפעילות</Link>.
+            קשר לפי מייל), וכל מועמד שמפתח API עם פרטים אישיים החזיר (נספר על מי שהנפיק את המפתח). הפירוט ב<Link href="/admin/audit" className="underline underline-offset-2">יומן הפעילות</Link>.
           </p>
         </Card>
 

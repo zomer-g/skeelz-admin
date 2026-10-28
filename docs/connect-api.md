@@ -71,12 +71,21 @@ Every app implements the same five parts. Copy this file into each repo as `docs
 - **`GET /api/v1/ping`:** any valid key. Returns `{"app":"admin|crm|site","version":"<git sha short or XHOST_SHA>","time":ISO,"key":{"name","scopes"}}`.
 - **`GET /api/v1/openapi.json`:** no auth needed (it holds no data). An OpenAPI 3.1 document of that app's endpoints, generated from one TS spec object, the same source as the docs page.
 - **Docs page** `/api-docs` (signed-in staff): human docs from the same spec, including the scopes table and curl examples with `<KEY>` placeholders.
-- **Personal data:** no endpoint returns candidate names, emails, phones or files unless this spec lists the scope explicitly. The admin app's rule (jobs, statuses, ids, aggregates only) stays.
+- **Personal data:** no endpoint returns candidate names, emails, phones or files unless this spec lists the scope explicitly. In the admin app that is `people:read` alone (with `?include=people`); everything else, and every webhook, carries jobs, statuses, ids and aggregates only. Files never.
 
 ## 4. Scopes per app
 **admin**
 - `jobs:read` — existing /api/v1/jobs, /jobs/:id
-- `metrics:read` — existing /api/v1/metrics
+- `metrics:read` — existing /api/v1/metrics, and GET /api/v1/metrics/applications?from=&to=&scope=&by=day|job|job_day:
+  applications counted by Israel day and/or job (job id, title, company). Counts only.
+- `records:read` — the detailed records, one per row, by ids: GET /api/v1/applications (filters from, to, job_id,
+  candidate_id, status, scope, fast; page paging), /api/v1/applications/:id (with its status history), /api/v1/candidates
+  (filters from, to, area, napa, skill, cv, fast, applied). No names, emails or phones, never files (`src/lib/api/records.ts`).
+- `people:read` — adds candidates' name, email and phone to the `records:read` endpoints, only when a call asks
+  (`?include=people`), and only together with `records:read` on the key. Never on an env key; every call checks that the
+  key's issuer is still an active admin, and the people count against the issuer's daily export budget
+  (`src/lib/security/exports.ts`, `api.people_listed` in the audit log under the issuer; a page is cut to what is left,
+  then 429 `export_limit`). The gate: `src/lib/api/people.ts`, pinned by `src/lib/api/people.test.ts`.
 - `site-feed:read` — existing /api/v1/site/jobs
 - `staff:read` — GET /api/v1/staff/monthly?month=, /api/v1/staff/employee?email=&month= (docs/staff.md): hours and tasks per
   employee. Internal: not in the public openapi.json, on /api-docs only for staff managers. Only an admin who is also a staff

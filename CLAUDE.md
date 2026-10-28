@@ -29,9 +29,10 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `privacy-logs`, `database-definition`, `security-procedure` — keep them true when logging, limits or retention change.
 - **External API = SKEELZ Connect** (`docs/connect-api.md`, shared with the crm and site apps; contract, scopes and limits in
   `src/lib/api/spec.ts`, which also generates `/api/v1/openapi.json` (public) and the docs page `/api-docs`). Inbound
-  `GET /api/v1/{ping,jobs,jobs/:id,metrics,site/jobs,staff/monthly,staff/employee}` through `withApiKey(path, scope, handler)`: Bearer header only,
+  `GET /api/v1/{ping,jobs,jobs/:id,metrics,metrics/applications,applications,applications/:id,candidates,site/jobs,staff/monthly,staff/employee}` through `withApiKey(path, scope, handler)`: Bearer header only,
   keys `sk_admin_…` issued at `/admin/api` (table `api_keys`, sha256 only, shown once, revocable), scopes `jobs:read`
-  `metrics:read` `site-feed:read` (+ `staff:read`, see Staff data), 403 `insufficient_scope`. Every call made with a key is a row
+  `metrics:read` (aggregates, incl. applications per job per day) `site-feed:read` `records:read` (one application / candidate per
+  row, ids only, `src/lib/api/records.ts`) `people:read` (+ `staff:read`, see Staff data), 403 `insufficient_scope`. Every call made with a key is a row
   in `api_calls` (key, time, path+query, status, address, ms), shown per key at `/admin/api/[id]`, purged with the logs. Env tokens stay as legacy keys: `API_TOKEN` (+ `_PREVIOUS`) =
   jobs+metrics, `SITE_FEED_TOKEN` = site feed only. In-memory rate limits per key, lockout per address. Outbound to the
   other apps only via `peerFetch` (`src/lib/connect/client.ts`); connections set at `/admin/connections`, peer keys
@@ -39,7 +40,10 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   (`src/lib/api/outbound.ts`) are detected and delivered by the sync worker: `webhook_case_state` remembers what was
   reported, `webhook_deliveries` queues events with retries, each POST is HMAC-signed with `WEBHOOK_TOKEN`. All
   directions carry jobs, statuses, ids and aggregates only — never candidate names, contact details or files
-  (`src/lib/api/data.ts`). A new endpoint, scope or event must keep that and be added to `spec.ts` (the docs page and
+  (`src/lib/api/data.ts`) — with one exception: `people:read` adds name/email/phone to the `records:read` endpoints when a call
+  asks (`?include=people`), through `src/lib/api/people.ts` only (key holds it with `records:read`, never an env key, issuer still
+  an active admin on every call, counted as `api.people_listed` under the issuer in the daily export budget; `people.test.ts`
+  pins it). Files never. A new endpoint, scope or event must keep that and be added to `spec.ts` (the docs page and
   openapi.json follow).
 - **MCP server** (`docs/mcp.md`, code in `src/lib/mcp/`): AI clients connect at `/mcp` with OAuth 2.1 + PKCE (DCR at
   `/mcp/oauth/register`, metadata under `/.well-known/`, issuer = the origin). Sign-in is the site's own xhostd Google
@@ -107,7 +111,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `/api/candidates/contacts` + `CopyContacts` — `candidateFilters()` parses the URL once for both the page and that route, each
   value appears once (phones compared by digits), it stops at 5,000, and every copy writes `candidates.contacts_copied` with the
   filter and the count. **Daily export budget** (`src/lib/security/exports.ts`): those counts, `cvs.contacts_copied` and
-  `mcp.people_listed` (every MCP tool that returns people declares `people(result)`) are summed per user per Israel day:
+  `mcp.people_listed` (every MCP tool that returns people declares `people(result)`) and `api.people_listed` (API keys with
+  `people:read`, under the issuer) are summed per user per Israel day:
   10,000 a day, admin alert at 5,000, past it a copy is cut then refused and a tool call refused, until an admin grants
   10,000 more at `/admin/security` (`export_quota_grants`). Any new route or tool that hands out names/emails/phones must count there.
   **Finding a CV** (`src/lib/entities/cv.ts`, the box on `/emails/<address>`): it sits in one of three places — on the Contact,

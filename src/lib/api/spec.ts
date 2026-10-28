@@ -65,7 +65,15 @@ export const PEER_LABELS: Record<Peer, string> = { crm: "CRM (skeelz-crm)", site
 
 export const API_SCOPES = [
   { scope: "jobs:read", label: "משרות: רשימה ומשרה אחת, עם ספירת הגשות וחשיפה באתר" },
-  { scope: "metrics:read", label: "מדדים מצטברים: המשפך של לשונית המועמדים ותנועה באתר" },
+  { scope: "metrics:read", label: "מדדים מצטברים: המשפך של לשונית המועמדים, הגשות לפי יום ולפי משרה, ותנועה באתר" },
+  {
+    scope: "records:read",
+    label: "נתונים מפורטים: הגשה אחת ומועמד אחד לכל שורה (מזהים, משרה, סטטוס, תאריכים, מקום וכישורים), בלי שמות ופרטי קשר",
+  },
+  {
+    scope: "people:read",
+    label: "פרטים אישיים: שם, מייל וטלפון של המועמדים בנתונים המפורטים (עם records:read, ?include=people). נרשם ביומן ונספר במכסת הייצוא היומית של מי שהנפיק",
+  },
   { scope: "site-feed:read", label: "הפיד של האתר החדש: המשרות הפעילות עם תוכן דף המשרה" },
   {
     scope: "staff:read",
@@ -75,6 +83,12 @@ export const API_SCOPES = [
 
 /** Scopes only a staff manager may put on a key, checked again on every call (lib/api/staff.ts). */
 export const STAFF_SCOPES: readonly ApiScope[] = ["staff:read"];
+
+/**
+ * Scopes that hand out people's details: never on an env key, and every call re-checks that the issuer
+ * is still an active admin and counts the people against their daily export budget (lib/api/people.ts).
+ */
+export const PEOPLE_SCOPES: readonly ApiScope[] = ["people:read"];
 
 export type ApiScope = (typeof API_SCOPES)[number]["scope"];
 
@@ -164,6 +178,43 @@ const SCHEMAS: Record<string, Schema> = {
     created_at: { type: ["string", "null"], format: "date-time" },
     updated_at: { type: ["string", "null"], format: "date-time" },
   }),
+  Application: obj({
+    id: { type: "string", description: "Salesforce Case id" },
+    case_number: strOrNull,
+    job_id: { type: ["string", "null"], description: "The job's Salesforce Case id (ParentId)" },
+    job_title: strOrNull,
+    company: strOrNull,
+    candidate_id: { type: ["string", "null"], description: "The candidate's Salesforce Contact id" },
+    status: strOrNull,
+    paid: bool,
+    fast_applied: { type: "boolean", description: "הגשה מהירה (the site's one-click apply)" },
+    candidate_has_cv: { type: ["boolean", "null"], description: "The candidate's קו\"ח checkbox; null with no Contact" },
+    owner: { type: ["string", "null"], description: "The staff member who owns the Case" },
+    created_at: { type: "string", format: "date-time" },
+    closed_at: { type: ["string", "null"], format: "date-time" },
+    accepted_at: { type: ["string", "null"], format: "date-time", description: "When the status became התקבל" },
+    start_date: { type: ["string", "null"], format: "date" },
+    candidate: {
+      ...obj({ name: strOrNull, email: strOrNull, phone: strOrNull }),
+      description: "Only with include=people and a key holding people:read",
+    },
+  }),
+  Candidate: obj({
+    id: { type: "string", description: "Salesforce Contact id" },
+    created_at: { type: ["string", "null"], format: "date-time" },
+    city: strOrNull,
+    district: { type: ["string", "null"], description: "CBS district (מחוז)" },
+    sub_district: { type: ["string", "null"], description: "CBS sub-district (נפה)" },
+    skills: { type: "array", items: str, description: "Skill names" },
+    has_cv: bool,
+    fast_apply: bool,
+    applications: int,
+    first_application_at: { type: ["string", "null"], format: "date-time" },
+    last_application_at: { type: ["string", "null"], format: "date-time" },
+    name: { type: ["string", "null"], description: "Only with include=people and people:read" },
+    email: { type: ["string", "null"], description: "Only with include=people and people:read" },
+    phone: { type: ["string", "null"], description: "Only with include=people and people:read" },
+  }),
   SiteFeedJob: obj({
     id: { type: "string", description: "The site job key" },
     case_id: str,
@@ -190,6 +241,39 @@ const scopeParam: ParamSpec = {
   description: "paid (בתשלום בלבד) או all",
   defaultLabel: "paid",
 };
+
+const limitParam: ParamSpec = {
+  name: "limit",
+  in: "query",
+  schema: { type: "integer", minimum: 1, maximum: API_LIMITS.maxPageSize, default: API_LIMITS.defaultPageSize },
+  description: `1–${API_LIMITS.maxPageSize}`,
+  defaultLabel: String(API_LIMITS.defaultPageSize),
+};
+
+const pageParam: ParamSpec = {
+  name: "page",
+  in: "query",
+  schema: { type: "integer", minimum: 1, maximum: API_LIMITS.maxPage, default: 1 },
+  description: `1–${API_LIMITS.maxPage}`,
+  defaultLabel: "1",
+};
+
+const dayParam = (name: string, description: string, defaultLabel?: string): ParamSpec => ({
+  name,
+  in: "query",
+  schema: { type: "string", format: "date" },
+  description,
+  ...(defaultLabel ? { defaultLabel } : {}),
+});
+
+const includeParam: ParamSpec = {
+  name: "include",
+  in: "query",
+  schema: { type: "string", enum: ["people"] },
+  description: "people: גם שם, מייל וטלפון. דורש מפתח עם people:read; נרשם ביומן ונספר במכסת הייצוא היומית",
+};
+
+const listOf = (schema: string) => obj({ data: { type: "array", items: ref(schema) }, page: int, limit: int, total: int, has_more: bool });
 
 export const ENDPOINTS: EndpointSpec[] = [
   {
@@ -234,22 +318,10 @@ export const ENDPOINTS: EndpointSpec[] = [
       },
       scopeParam,
       { name: "updated_since", in: "query", schema: { type: "string", format: "date-time" }, description: "תאריך ושעה ב-ISO 8601: רק משרות שהשתנו מאז" },
-      {
-        name: "limit",
-        in: "query",
-        schema: { type: "integer", minimum: 1, maximum: API_LIMITS.maxPageSize, default: API_LIMITS.defaultPageSize },
-        description: `1–${API_LIMITS.maxPageSize}`,
-        defaultLabel: String(API_LIMITS.defaultPageSize),
-      },
-      {
-        name: "page",
-        in: "query",
-        schema: { type: "integer", minimum: 1, maximum: API_LIMITS.maxPage, default: 1 },
-        description: `1–${API_LIMITS.maxPage}`,
-        defaultLabel: "1",
-      },
+      limitParam,
+      pageParam,
     ],
-    response: obj({ data: { type: "array", items: ref("Job") }, page: int, limit: int, total: int, has_more: bool }),
+    response: listOf("Job"),
   },
   {
     method: "GET",
@@ -315,6 +387,91 @@ export const ENDPOINTS: EndpointSpec[] = [
       site: { type: "object" },
       data_freshness: obj({ salesforce_synced_at: { type: ["string", "null"], format: "date-time" } }),
     }),
+  },
+  {
+    method: "GET",
+    path: "/api/v1/metrics/applications",
+    auth: "metrics:read",
+    heavy: true,
+    summary: "הגשות לפי יום ולפי משרה",
+    description:
+      "מספר ההגשות שנוצרו בטווח ימים (שעון ישראל), מקובצות לפי יום, לפי משרה או לפי משרה ויום. ספירות בלבד, בלי אנשים: כך משייכים הגשות למשרות עם מפתח של מדדים.",
+    params: [
+      dayParam("from", `YYYY-MM-DD, כולל. הטווח עד ${API_LIMITS.maxRangeDays} ימים`, "29 ימים לפני to"),
+      dayParam("to", "YYYY-MM-DD, כולל", "היום"),
+      scopeParam,
+      {
+        name: "by",
+        in: "query",
+        schema: { type: "string", enum: ["day", "job", "job_day"], default: "job_day" },
+        description: "day (יום), job (משרה) או job_day (משרה ויום)",
+        defaultLabel: "job_day",
+      },
+    ],
+    response: obj({
+      range: obj({ from: str, to: str, scope: str, by: str }),
+      total: int,
+      rows: {
+        type: "array",
+        items: obj({ day: { type: "string", format: "date" }, job_id: strOrNull, job_title: strOrNull, company: strOrNull, applications: int, paid: int }),
+      },
+    }),
+  },
+  {
+    method: "GET",
+    path: "/api/v1/applications",
+    auth: "records:read",
+    summary: "הגשות, אחת לכל שורה",
+    description:
+      "הגשות למשרות (כולל השמות), מהחדשה לישנה: המשרה, החברה, מזהה המועמד, הסטטוס הנוכחי ותאריכים. בלי שם ופרטי קשר של המועמד, אלא עם include=people ומפתח שיש לו people:read.",
+    params: [
+      dayParam("from", "YYYY-MM-DD: נוצרו מהיום הזה (שעון ישראל)"),
+      dayParam("to", "YYYY-MM-DD: נוצרו עד היום הזה, כולל"),
+      { name: "job_id", in: "query", schema: str, description: "רק ההגשות למשרה הזו (מזהה Salesforce)" },
+      { name: "candidate_id", in: "query", schema: str, description: "רק ההגשות של המועמד הזה (מזהה Contact)" },
+      { name: "status", in: "query", schema: str, description: "סטטוס נוכחי, בעברית כמו ב-Salesforce (למשל התקבל)" },
+      scopeParam,
+      { name: "fast", in: "query", schema: { type: "string", enum: ["fast", "regular"] }, description: "fast: רק הגשה מהירה; regular: רק הגשות רגילות" },
+      includeParam,
+      limitParam,
+      pageParam,
+    ],
+    response: listOf("Application"),
+  },
+  {
+    method: "GET",
+    path: "/api/v1/applications/{id}",
+    auth: "records:read",
+    summary: "הגשה אחת עם היסטוריית הסטטוסים",
+    description: "הגשה אחת לפי מזהה Salesforce, עם כל שינויי הסטטוס שלה (מתי, מאיזה ולאיזה). פרטי המועמד רק עם include=people ו-people:read.",
+    params: [{ name: "id", in: "path", schema: str, description: "מזהה Salesforce של ההגשה" }, includeParam],
+    response: obj({
+      data: {
+        allOf: [ref("Application"), obj({ status_history: { type: "array", items: obj({ at: { type: "string", format: "date-time" }, from: strOrNull, to: strOrNull }) } })],
+      },
+    }),
+  },
+  {
+    method: "GET",
+    path: "/api/v1/candidates",
+    auth: "records:read",
+    summary: "מועמדים, אחד לכל שורה",
+    description:
+      "מועמדים (Contacts), מהחדש לישן: מתי נרשמו, מקום (מחוז ונפה של הלמ\"ס), כישורים, האם יש קו\"ח, הגשה מהירה, ומספר ההגשות. בלי שם ופרטי קשר, אלא עם include=people ומפתח שיש לו people:read. לעולם לא הקבצים עצמם.",
+    params: [
+      dayParam("from", "YYYY-MM-DD: נוצרו מהיום הזה"),
+      dayParam("to", "YYYY-MM-DD: נוצרו עד היום הזה, כולל"),
+      { name: "area", in: "query", schema: str, description: "מחוז הלמ\"ס: 1–7, או unknown" },
+      { name: "napa", in: "query", schema: str, description: "קוד נפה של הלמ\"ס, למשל 51 תל אביב" },
+      { name: "skill", in: "query", schema: str, description: "שם כישור" },
+      { name: "cv", in: "query", schema: { type: "string", enum: ["yes", "no"] }, description: "יש קו\"ח או אין" },
+      { name: "fast", in: "query", schema: { type: "string", enum: ["yes", "no"] }, description: "נכנסו בהגשה מהירה או לא" },
+      { name: "applied", in: "query", schema: { type: "string", enum: ["yes", "no"] }, description: "הגישו למשרה או לא" },
+      includeParam,
+      limitParam,
+      pageParam,
+    ],
+    response: listOf("Candidate"),
   },
   {
     method: "GET",
@@ -389,7 +546,7 @@ export const API_ERRORS: { status: number; codes: string[]; meaning: string }[] 
   { status: 403, codes: ["insufficient_scope"], meaning: "המפתח תקף, אבל אין לו את ההרשאה שהנתיב דורש" },
   { status: 404, codes: ["not_found"], meaning: "הרשומה לא נמצאה" },
   { status: 405, codes: ["—"], meaning: "שיטה שאינה GET" },
-  { status: 429, codes: ["rate_limited", "locked_out"], meaning: "חריגה מהמגבלות, או חסימה אחרי ניסיונות כושלים. עם Retry-After" },
+  { status: 429, codes: ["rate_limited", "locked_out", "export_limit"], meaning: "חריגה מהמגבלות, חסימה אחרי ניסיונות כושלים, או מכסת הייצוא היומית של פרטים אישיים. עם Retry-After" },
   { status: 500, codes: ["internal_error"], meaning: "תקלה בשרת" },
 ];
 
@@ -436,7 +593,8 @@ export function openApiDocument(version: string): Record<string, unknown> {
       version,
       description:
         "The admin app's part of SKEELZ Connect. Keys are issued at /admin/api and sent only as `Authorization: Bearer <key>`. " +
-        "Jobs, statuses, ids and aggregates only: never candidate names, contact details or files.",
+        "Jobs, statuses, ids and aggregates; candidate names, emails and phones only with include=people on a key holding people:read " +
+        "(logged and counted against the issuer's daily export budget). Never files.",
     },
     servers: [{ url: "/" }],
     "x-scopes": Object.fromEntries(API_SCOPES.filter((s) => !STAFF_SCOPES.includes(s.scope)).map((s) => [s.scope, s.label])),

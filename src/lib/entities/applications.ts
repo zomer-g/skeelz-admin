@@ -29,6 +29,8 @@ export interface ApplicationFilters {
   jobId?: string;
   contactId?: string;
   companyKey?: string;
+  /** One application by its Case id (the API's /applications/{id}). */
+  id?: string;
 }
 
 export interface ApplicationRow {
@@ -127,6 +129,8 @@ function whereOf(f: ApplicationFilters): SQL {
   if (f.owner) parts.push(sql`u.name = ${f.owner}`);
   if (f.jobId && isSfId(f.jobId)) parts.push(sql`a.parent_id = ${f.jobId}`);
   if (f.contactId && isSfId(f.contactId)) parts.push(sql`a.contact_id = ${f.contactId}`);
+  // Never widened to every application when the id is malformed.
+  if (f.id !== undefined) parts.push(isSfId(f.id) ? sql`a.id = ${f.id}` : sql`false`);
   if (f.companyKey) {
     parts.push(sql`a.parent_id IN (
       SELECT p.id FROM sf_case p LEFT JOIN sf_account acc ON acc.id = p.account_id

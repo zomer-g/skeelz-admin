@@ -8,7 +8,8 @@ import { raiseAlert } from "./files";
 /**
  * How many people's details one person may take out of the system in a day (Israel time): the
  * copy buttons on /candidates and /cvs hand over emails or phones in bulk, and the MCP tools
- * that list people return names, emails and phones a page at a time. Each is logged with how
+ * that list people (and API keys with people:read, under their issuer) return names, emails
+ * and phones a page at a time. Each is logged with how
  * many people it returned, and the day's total is counted from those log entries, like the file
  * limit (lib/security/files.ts): 10,000 people a day; at 5,000 the admins get an alert; past the
  * limit a copy is cut to what is left (then refused), a tool call is refused, the admins are
@@ -17,8 +18,10 @@ import { raiseAlert } from "./files";
 export const EXPORT_LIMITS = { daily: 10_000, alertAt: 5_000, grant: 10_000 } as const;
 
 /** The log entries that carry people out, each with `details.count`. */
-export const EXPORT_ACTIONS = ["candidates.contacts_copied", "cvs.contacts_copied", "mcp.people_listed"] as const;
+export const EXPORT_ACTIONS = ["candidates.contacts_copied", "cvs.contacts_copied", "mcp.people_listed", "api.people_listed"] as const;
 export const MCP_PEOPLE_LISTED = "mcp.people_listed";
+/** An API answer with `include=people`, counted under the key's issuer (lib/api/people.ts). */
+export const API_PEOPLE_LISTED = "api.people_listed";
 export const EXPORT_REFUSED = "export.rate_limited";
 
 export interface ExportUsage {
@@ -96,19 +99,20 @@ export interface ExportUsageRow {
   exported: number;
   refused: number;
   allowed: number;
-  /** Where the people went: the copy buttons, the MCP tools, or both. */
-  via: { screen: number; mcp: number };
+  /** Where the people went: the copy buttons, the MCP tools, the API. */
+  via: { screen: number; mcp: number; api: number };
 }
 
 /** Everyone who took people's details out today (or was refused), most first. */
 export async function loadExportUsageToday(): Promise<ExportUsageRow[]> {
   const day = israelDay();
   const rows = (
-    await getDb().execute<{ email: string; exported: number; screen: number; mcp: number; refused: number; extra: number }>(sql`
+    await getDb().execute<{ email: string; exported: number; screen: number; mcp: number; api: number; refused: number; extra: number }>(sql`
       SELECT a.actor AS email,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action IN ${EXPORT_ACTIONS}), 0)::int AS exported,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action IN ('candidates.contacts_copied', 'cvs.contacts_copied')), 0)::int AS screen,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action = ${MCP_PEOPLE_LISTED}), 0)::int AS mcp,
+             coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action = ${API_PEOPLE_LISTED}), 0)::int AS api,
              count(*) FILTER (WHERE a.action = ${EXPORT_REFUSED})::int AS refused,
              coalesce((SELECT sum(g.extra) FROM export_quota_grants g WHERE g.user_email = a.actor AND g.day = ${day}), 0)::int AS extra
         FROM audit_log a
@@ -121,7 +125,7 @@ export async function loadExportUsageToday(): Promise<ExportUsageRow[]> {
     exported: Number(r.exported),
     refused: Number(r.refused),
     allowed: EXPORT_LIMITS.daily + Number(r.extra),
-    via: { screen: Number(r.screen), mcp: Number(r.mcp) },
+    via: { screen: Number(r.screen), mcp: Number(r.mcp), api: Number(r.api) },
   }));
 }
 

@@ -3,7 +3,7 @@
 import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { generateKey } from "@/lib/api/keys";
-import { isApiScope, KEY_EXPIRY_DAYS, STAFF_SCOPES } from "@/lib/api/spec";
+import { isApiScope, KEY_EXPIRY_DAYS, PEOPLE_SCOPES, STAFF_SCOPES } from "@/lib/api/spec";
 import { writeAudit } from "@/lib/audit";
 import { requireUser } from "@/lib/auth/session";
 import { getDb } from "@/lib/db/client";
@@ -29,6 +29,10 @@ export async function createApiKey(_prev: CreateKeyState, form: FormData): Promi
   // the moment its issuer stops being a staff manager (lib/api/staff.ts).
   if (scopes.some((sc) => STAFF_SCOPES.includes(sc)) && !admin.staffManager) {
     return { ok: false, message: "רק אדמין שהוא גם מנהל עובדים יכול להנפיק מפתח עם נתוני עובדים" };
+  }
+  // Personal details ride on the detailed records only (?include=people); alone the scope opens nothing.
+  if (scopes.some((sc) => PEOPLE_SCOPES.includes(sc)) && !scopes.includes("records:read")) {
+    return { ok: false, message: "פרטים אישיים ניתנים רק יחד עם נתונים מפורטים (records:read)" };
   }
   const days = expiry === "" ? null : Number(expiry);
   if (days !== null && !(KEY_EXPIRY_DAYS as readonly number[]).includes(days)) return { ok: false, message: "תוקף לא תקין" };
