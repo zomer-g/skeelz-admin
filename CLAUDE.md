@@ -61,6 +61,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   by configuration), invites never grant it, "view as" drops it (`user.staffManager` false), and MCP / `/api` never carry it —
   `permissions.test.ts` fails if their code touches it. Pages use `pageAuthStaff`, actions `requireStaffManager`, never `hasRole`.
   Site users link to their Salesforce User (`users.sf_user_id`, unique). Follow the checklist in docs/staff.md for every step.
+  Hours (`/staff`, `/staff/[id]`, code in `src/lib/staff/`): done tasks of the monday.com board "משימות סיילספורס" for employees
+  linked by `users.monday_user_id` (only theirs are stored), into `staff_work_items`; synced hourly by the worker and on demand
+  (`MONDAY_TOKEN` secret, queries only), state in `staff_source_state` — never `sync_runs`/`sync_state`. Employees don't see their own.
 - **Salesforce is read-only in phase 1.** The SF client must expose no write methods. Candidates/employer
   contacts = Contact, companies = Account, jobs/applications/leads = Case by RecordType.
 - **Job key:** the public site's job URL is `/job/<24-hex Mongo id>`; that id (`site_job_key`) joins SF Cases to GA4.

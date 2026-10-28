@@ -8,6 +8,7 @@ import {
   index,
   integer,
   jsonb,
+  numeric,
   pgTable,
   text,
   timestamp,
@@ -40,12 +41,50 @@ export const users = pgTable(
     staffManager: boolean("staff_manager").notNull().default(false),
     /** The person's Salesforce User, so their logged activity can be told apart. One site user per Salesforce user. */
     sfUserId: text("sf_user_id").unique(),
+    /** The person's monday.com user id, whose tasks are their logged hours (docs/staff.md). Set by a staff manager. */
+    mondayUserId: text("monday_user_id").unique(),
     active: boolean("active").notNull().default(true),
     createdAt: ts("created_at").notNull().defaultNow(),
     lastLoginAt: ts("last_login_at"),
   },
   (t) => [check("users_role_check", sql`${t.role} in ('viewer', 'editor', 'admin')`)],
 );
+
+/**
+ * Staff data (docs/staff.md): one employee's done task with its hours, from monday.com. Read only by
+ * src/lib/staff/ behind requireStaffManager / pageAuthStaff — never by the dashboard, MCP or the API.
+ * Replaced whole on every sync; only tasks of a linked employee are kept.
+ */
+export const staffWorkItems = pgTable(
+  "staff_work_items",
+  {
+    /** "<source>:<external id>:<user id>": a task shared by two linked employees is a row each. */
+    id: text("id").primaryKey(),
+    source: text("source").notNull(),
+    externalId: text("external_id").notNull(),
+    userId: uuid("user_id").notNull(),
+    title: text("title"),
+    url: text("url"),
+    /** תאריך ביצוע, YYYY-MM-DD; null when the task was closed without one. */
+    doneOn: date("done_on", { mode: "string" }),
+    /** null when the task was closed without hours. */
+    hours: numeric("hours", { precision: 6, scale: 2, mode: "number" }),
+    notes: text("notes"),
+    /** Assigned to more than this one person in the source. */
+    shared: boolean("shared").notNull().default(false),
+    syncedAt: ts("synced_at").notNull().defaultNow(),
+  },
+  (t) => [index("staff_work_items_user_idx").on(t.userId, t.doneOn)],
+);
+
+/** When each staff source last synced. Kept apart from sync_runs / sync_state, which admins and MCP read. */
+export const staffSourceState = pgTable("staff_source_state", {
+  source: text("source").primaryKey(),
+  lastStartedAt: ts("last_started_at"),
+  lastSuccessAt: ts("last_success_at"),
+  lastError: text("last_error"),
+  items: integer("items"),
+});
 
 /** An admin's invitation, redeemed when that email first signs in. */
 export const invites = pgTable(

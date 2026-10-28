@@ -45,10 +45,17 @@ describe("staff data stays off MCP and the API", () => {
   // staff screens' data. Adding staff data there is a decision for docs/staff.md, not an accident.
   const root = join(__dirname, "..", "..");
   const dirs = [join(root, "lib", "mcp"), join(root, "lib", "api"), join(root, "app", "mcp"), join(root, "app", "api")];
-  const FORBIDDEN = /staffManager|staff_manager|requireStaffManager|pageAuthStaff|app\/\(app\)\/staff/;
+  const FORBIDDEN =
+    /staffManager|staff_manager|requireStaffManager|pageAuthStaff|app\/\(app\)\/staff|@\/lib\/staff|staffWorkItems|staff_work_items|staffSourceState|mondayUserId|monday_user_id/;
 
   it("no MCP or API module refers to staff data", () => {
     const hits = dirs.flatMap(sources).filter((f) => FORBIDDEN.test(readFileSync(f, "utf8")));
+    assert.deepEqual(hits, []);
+  });
+
+  it("the dashboard's shared modules (which MCP reads too) never load the staff hours", () => {
+    const shared = ["metrics", "entities", "dashboard"].map((d) => join(root, "lib", d));
+    const hits = shared.flatMap(sources).filter((f) => /@\/lib\/staff|staffWorkItems|staff_work_items|staffSourceState/.test(readFileSync(f, "utf8")));
     assert.deepEqual(hits, []);
   });
 });

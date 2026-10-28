@@ -8,7 +8,8 @@
  *   2. the nightly Salesforce reconcile, in the SYNC_RECONCILE_HOUR_UTC hour
  *   3. an incremental Salesforce sync every SYNC_INTERVAL_MIN minutes (default 10)
  *   4. Google Analytics / Tag Manager / SMOOV every MARKETING_SYNC_INTERVAL_MIN (default 360)
- * and then, when WEBHOOK_URL is set, delivers due webhook events (src/lib/api/outbound.ts).
+ * then, beside that job, the staff hours from monday.com every STAFF_SYNC_INTERVAL_MIN (default 60,
+ * when MONDAY_TOKEN is set; docs/staff.md — logged as a count only, never what the tasks say), and then, when WEBHOOK_URL is set, delivers due webhook events (src/lib/api/outbound.ts).
  */
 import { asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { deliverPending, detectCaseChanges, enqueueSyncFailures, maybeDailySummary } from "@/lib/api/outbound";
@@ -20,12 +21,14 @@ import { marketingConfigured, runMarketingSync } from "@/lib/integrations/market
 import { salesforceConfigured } from "@/lib/sf/client";
 import { runSync, type SyncMode } from "@/lib/sf/sync";
 import { safeErrorMessage } from "@/lib/log";
+import { mondayConfigured, staffSourceStatus, syncMonday } from "@/lib/staff/monday";
 
 type JobMode = SyncMode | "marketing";
 
 const INTERVAL_MIN = Number(process.env.SYNC_INTERVAL_MIN ?? 10);
 const MARKETING_INTERVAL_MIN = Number(process.env.MARKETING_SYNC_INTERVAL_MIN ?? 360);
 const FAILED_RETRY_MIN = 30;
+const STAFF_INTERVAL_MIN = Number(process.env.STAFF_SYNC_INTERVAL_MIN ?? 60);
 const RECONCILE_HOUR_UTC = Number(process.env.SYNC_RECONCILE_HOUR_UTC ?? 0); // 02:00–03:00 Israel time
 const MODES = new Set<JobMode>(["incremental", "full", "reconcile", "marketing"]);
 
@@ -141,6 +144,14 @@ async function tick(): Promise<void> {
       const mode = await chooseScheduled();
       if (mode) await run(mode, "schedule");
     }
+
+    await safely("staff hours", async () => {
+      if (!mondayConfigured()) return;
+      const state = await staffSourceStatus();
+      if (Date.now() - (state?.lastStartedAt?.getTime() ?? 0) < STAFF_INTERVAL_MIN * 60_000) return;
+      const r = await syncMonday();
+      log(r.error ? `staff hours (monday) failed: ${r.error}` : `staff hours (monday): ${r.rows} rows`);
+    });
 
     await safely("webhook delivery", async () => {
       await maybeDailySummary();

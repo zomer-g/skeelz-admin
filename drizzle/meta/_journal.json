@@ -134,6 +134,13 @@
       "when": 1793185040001,
       "tag": "0018_minor_revanche",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793186300037,
+      "tag": "0019_youthful_komodo",
+      "breakpoints": true
     }
   ]
 }
