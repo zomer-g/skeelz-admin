@@ -746,7 +746,6 @@ export const sfSchemaReports = pgTable("sf_schema_reports", {
  * ceiling (`max_role`) they chose when approving. Only sha256 hashes of codes and tokens are kept.
  */
 
-/** Clients that registered themselves (RFC 7591). Public clients: PKCE, no secret. */
 /**
  * Every call made with an API key (docs/connect-api.md §1), for the key's page at /admin/api/[id]:
  * when, which endpoint and query, the answer's status, from where and how long it took. Calls with
@@ -770,6 +769,7 @@ export const apiCalls = pgTable(
   (t) => [index("api_calls_key_idx").on(t.keyId, t.at)],
 );
 
+/** Clients that registered themselves (RFC 7591). Public clients: PKCE, no secret. */
 export const mcpClients = pgTable("mcp_clients", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
