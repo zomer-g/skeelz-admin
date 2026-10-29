@@ -22,9 +22,9 @@ import {
 import { loadPositions } from "@/lib/metrics/jobs";
 
 /**
- * The applications tab (הגשות) is three views over the same applications and the same filter box:
- * the funnel (/pipeline), the cases in progress (/pipeline/active) and the application figures by
- * status (/pipeline/metrics). Definitions in docs/applications-tab.md.
+ * The applications tab (הגשות) is four views over the same applications and the same filter box:
+ * the funnel (/pipeline), the cases in progress (/pipeline/active), the application figures by
+ * status (/pipeline/metrics) and how long after an application its milestones come (/pipeline/timing). Definitions in docs/applications-tab.md.
  */
 
 /** Applications in Salesforce start in early 2025; the timeline starts with that year so whole months can be picked. */
@@ -39,6 +39,7 @@ export const VIEWS = [
   { key: "funnel", label: "המשפך", href: "/pipeline" },
   { key: "active", label: "פעילות כרגע", href: "/pipeline/active" },
   { key: "metrics", label: "מדדי הגשות", href: "/pipeline/metrics" },
+  { key: "timing", label: "לוח זמנים", href: "/pipeline/timing" },
 ] as const;
 
 export type View = (typeof VIEWS)[number]["key"];

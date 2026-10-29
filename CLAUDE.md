@@ -100,9 +100,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `withCrown_cambium__c` exists but is never set). Definitions in `docs/employers-tab-metrics.md`, code in `src/lib/metrics/employers.ts`.
 - **Dashboard tabs** (`docs/dashboard-tabs.md`): `/` executive summary · `/talent` candidate pool · `/jobs` jobs ·
   `/matching` demand (open jobs) vs supply (candidates) by CBS district / sub-district and skill (`src/lib/metrics/geo.ts`) ·
-  `/pipeline` applications in three views sharing one filter box (`pipeline/shared.tsx`, `docs/applications-tab.md`): the
+  `/pipeline` applications in four views sharing one filter box (`pipeline/shared.tsx`, `docs/applications-tab.md`): the
   anchored funnel + leaks + a side-by-side period comparison (`?cmp=1&cfrom=&cto=`, `CompareFunnels`), `/pipeline/active` the
-  applications list (application/event date basis, `now` status and `moved` = status entered in the range, from `statusEvents`), `/pipeline/metrics` counts by status (`src/lib/metrics/statuses.ts`, application/event date basis) + `ApplicationPipeline` · `/employers` · `/marketing` · `/analytics` Google Analytics (every
+  applications list (application/event date basis, `now` status and `moved` = status entered in the range, from `statusEvents`), `/pipeline/metrics` counts by status (`src/lib/metrics/statuses.ts`, application/event date basis) + `ApplicationPipeline`, `/pipeline/timing` weeks from application to CV sent / hired (histograms, mean, median, p90) and a campaign forecast for `?n=` applications (`src/lib/metrics/timing.ts`, rate from mature applications only) · `/employers` · `/marketing` · `/analytics` Google Analytics (every
   mirrored GA report through `src/lib/metrics/ga-report.ts`, shared with the MCP `ga_report`) · `/campaigns` (with campaigns from send to apply, `CampaignFunnel`, SMOOV + GA). A job has two pages: `/jobs/[id]`
   (dashboard analytics) and `/positions/[id]` (the entity card, under מעסיקים) — entity pages link to `/positions`.
 - **Entities** (`/applications`, `/companies`, `/positions` (jobs list), `/candidates`, `/emails`, `/cvs`, `/outreach` (פעילות יזומה), `/leads`, `/payments` — the SF "מעקב תשלומים" list view, read-only; code in `src/lib/entities/`, docs in `docs/entities.md`): URL-driven

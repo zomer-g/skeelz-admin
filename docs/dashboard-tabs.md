@@ -5,7 +5,7 @@
 | תקציר מנהלים | `/` | השורה התחתונה של כל הלשוניות בעמוד אחד |
 | מועמדים | `/talent` | מאגר המועמדים עצמו |
 | משרות | `/jobs` | המשרות, עם פתיחות, לחיצות ושלבי ההגשה לכל משרה |
-| הגשות | `/pipeline` | שלוש תצוגות (`docs/applications-tab.md`): המשפך מהחשיפה ועד ההשמה, פעילות כרגע (`/pipeline/active`), ומדדי הגשות לפי סטטוס ותהליך ההגשה (`/pipeline/metrics`, `docs/candidates-tab-metrics.md`) |
+| הגשות | `/pipeline` | ארבע תצוגות (`docs/applications-tab.md`): המשפך מהחשיפה ועד ההשמה, פעילות כרגע (`/pipeline/active`), מדדי הגשות לפי סטטוס ותהליך ההגשה (`/pipeline/metrics`, `docs/candidates-tab-metrics.md`), ולוח זמנים — היסטוגרמות עד שליחת קו"ח ועד ההשמה וצפי לקמפיין (`/pipeline/timing`) |
 | מעסיקים | `/employers` | לידים, חוזים ואימות משרות (`docs/employers-tab-metrics.md`) |
 | התאמה | `/matching` | ביקוש (משרות פעילות) מול היצע (מועמדים) לפי מחוז ונפה ולפי כישורים (`docs/geo-and-skills.md`) |
 | שיווק | `/marketing` | Google Analytics ו-Salesforce במקביל |
