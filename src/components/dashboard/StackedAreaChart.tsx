@@ -30,7 +30,20 @@ function niceMax(v: number): number {
  * a column and the tooltip lists every layer there with the total; arrow keys move it, a live
  * region reads it out. A legend is always shown; the table view holds every value.
  */
-export function StackedAreaChart({ columns, layers, unit, height = 260 }: { columns: string[]; layers: AreaLayer[]; unit: string; height?: number }) {
+export function StackedAreaChart({
+  columns,
+  layers,
+  unit,
+  height = 260,
+  legend,
+}: {
+  columns: string[];
+  layers: AreaLayer[];
+  unit: string;
+  height?: number;
+  /** A shorter key than one entry per layer (e.g. one per person plus the two shades); the tooltip and table still name every layer. */
+  legend?: { label: string; color: string; opacity?: number }[];
+}) {
   const svgRef = useRef<SVGSVGElement>(null);
   const liveId = useId();
   const [hover, setHover] = useState<number | null>(null);
@@ -93,7 +106,7 @@ export function StackedAreaChart({ columns, layers, unit, height = 260 }: { colu
   return (
     <figure className="flex flex-col gap-2">
       <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink" aria-label="מקרא">
-        {layers.map((l) => (
+        {(legend ?? layers).map((l) => (
           <li key={l.label} className="flex items-center gap-2">
             <span className="inline-block size-3 rounded-[3px]" style={{ background: l.color, opacity: l.opacity ?? 1 }} aria-hidden />
             {l.label}

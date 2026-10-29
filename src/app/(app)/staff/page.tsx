@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BarList, type BarItem } from "@/components/dashboard/BarList";
-import { StackedAreaChart, type AreaLayer } from "@/components/dashboard/StackedAreaChart";
 import { Badge, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
 import { pageAuthStaff } from "@/lib/auth/guard";
 import { loadStaffMonth, loadStaffTrend, parseMonth, recentMonths, type MonthCounts, type StaffMonthRow, type StaffTrend } from "@/lib/staff/data";
 import { mondayConfigured, staffSourceStatus } from "@/lib/staff/monday";
 import { fmtCount, fmtHours, monthLabel, shortMonthLabel } from "./format";
+import { StaffTrends } from "./StaffTrends";
 import { SyncButton } from "./SyncButton";
 
 export const metadata: Metadata = { title: "עובדים" };
@@ -18,8 +18,8 @@ export const dynamic = "force-dynamic";
  * Cases opened that month that they own, by type — as bars, each with its table. Who is
  * which user is set at /admin/staff-links. Nothing here is offered over MCP or the API (docs/staff.md).
  */
-export default async function StaffPage({ searchParams }: { searchParams: Promise<{ month?: string; ctype?: string }> }) {
-  const { month = "", ctype = "" } = await searchParams;
+export default async function StaffPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
+  const { month = "" } = await searchParams;
   const auth = await pageAuthStaff(`/staff${month ? `?month=${encodeURIComponent(month)}` : ""}`);
   if (!auth.ok) return auth.render;
 
@@ -56,7 +56,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
       </nav>
 
       <div className="flex flex-col gap-8">
-        <Trends trend={trend} month={picked} caseType={trend.caseTypes.includes(ctype) ? ctype : ""} />
+        <Trends trend={trend} />
 
         <Card title={`פעילות לפי עובד · ${monthLabel(picked)}`}>
           <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
@@ -228,79 +228,16 @@ function CasesByType({ rows, month }: { rows: StaffMonthRow[]; month: string }) 
   );
 }
 
-/** One colour per employee, in the staff list's order, so a person keeps theirs whatever is filtered. */
-const SERIES = Array.from({ length: 8 }, (_, i) => `var(--color-series-${i + 1})`);
-const OTHERS = "#98a2b3";
-
-/** Past eight people the rest fold into one grey "אחרים" layer: no ninth hue. */
-function folded<T extends { name: string }>(people: T[], sum: (a: T[]) => T): { person: T; color: string }[] {
-  if (people.length <= SERIES.length) return people.map((p, i) => ({ person: p, color: SERIES[i]! }));
-  const keep = people.slice(0, SERIES.length - 1);
-  return [...keep.map((p, i) => ({ person: p, color: SERIES[i]! })), { person: sum(people.slice(SERIES.length - 1)), color: OTHERS }];
-}
-
-const addUp = (lists: number[][]) => lists.reduce((a, b) => a.map((v, i) => v + (b[i] ?? 0)), lists[0]!.map(() => 0));
-
-/**
- * The last 12 months, stacked per employee: the Cases they own by the month they were opened (all
- * types, or one picked above the chart), and their emails (the dark shade) and calls (the light
- * shade of the same colour).
- */
-function Trends({ trend, month, caseType }: { trend: StaffTrend; month: string; caseType: string }) {
+/** The last 12 months, per employee, filtered in the browser (StaffTrends). */
+function Trends({ trend }: { trend: StaffTrend }) {
   if (!trend.people.length) return null;
-  const columns = trend.months.map(shortMonthLabel);
-  type P = StaffTrend["people"][number];
-  const others = (rest: P[]): P => ({
-    id: "others",
-    name: `אחרים (${rest.length})`,
-    emails: addUp(rest.map((p) => p.emails)),
-    calls: addUp(rest.map((p) => p.calls)),
-    cases: addUp(rest.map((p) => p.cases)),
-    casesByType: Object.fromEntries(trend.caseTypes.map((t) => [t, addUp(rest.map((p) => p.casesByType[t] ?? trend.months.map(() => 0)))])),
-  });
-  const people = folded(trend.people, others);
-  const caseLayers: AreaLayer[] = people.map(({ person, color }) => ({
-    label: person.name,
-    color,
-    values: caseType ? (person.casesByType[caseType] ?? trend.months.map(() => 0)) : person.cases,
-  }));
-  const actionLayers: AreaLayer[] = people.flatMap(({ person, color }) => [
-    { label: `${person.name} · מיילים`, color, values: person.emails },
-    { label: `${person.name} · שיחות`, color, opacity: 0.45, values: person.calls },
-  ]);
-  const href = (t: string) => `/staff?month=${month}${t ? `&ctype=${encodeURIComponent(t)}` : ""}#cases-trend`;
   return (
     <Card title="לאורך זמן · 12 החודשים האחרונים">
-      <div className="flex flex-col gap-10">
-        <section id="cases-trend" aria-labelledby="cases-trend-h">
-          <h3 id="cases-trend-h" className="mb-1 font-medium">
-            מקרים שנפתחו לפי חודש{caseType ? ` · ${caseType}` : ""}
-          </h3>
-          <p className="mb-3 text-sm text-muted">שכבה לכל עובד: המקרים שנפתחו באותו חודש והוא הבעלים שלהם היום. הקצה העליון הוא הסה״כ.</p>
-          {trend.caseTypes.length > 1 ? (
-            <nav aria-label="סוג מקרה" className="mb-4 flex flex-wrap gap-2">
-              {["", ...trend.caseTypes].map((t) => (
-                <Link
-                  key={t || "all"}
-                  href={href(t)}
-                  aria-current={t === caseType ? "true" : undefined}
-                  className={`rounded-full px-3 py-1 text-sm font-medium ${t === caseType ? "bg-accent text-white" : "bg-panel text-ink hover:bg-accent/10"}`}
-                >
-                  {t || "כל הסוגים"}
-                </Link>
-              ))}
-            </nav>
-          ) : null}
-          <StackedAreaChart columns={columns} layers={caseLayers} unit={caseType ? `מקרים (${caseType})` : "מקרים"} />
-        </section>
-        <section aria-labelledby="actions-trend-h">
-          <h3 id="actions-trend-h" className="mb-1 font-medium">
-            מיילים ושיחות לפי חודש
-          </h3>
-          <p className="mb-3 text-sm text-muted">לכל עובד צבע משלו: הגוון הכהה הוא המיילים שנשלחו מ-Salesforce, והבהיר הוא השיחות שתועדו.</p>
-          <StackedAreaChart columns={columns} layers={actionLayers} unit="מיילים ושיחות" />
-        </section>
-      </div>
+      <StaffTrends
+        months={trend.months.map(shortMonthLabel)}
+        caseTypes={trend.caseTypes}
+        people={trend.people.map((p) => ({ id: p.id, name: p.name, emails: p.emails, calls: p.calls, casesByType: p.casesByType }))}
+      />
     </Card>
   );
 }
