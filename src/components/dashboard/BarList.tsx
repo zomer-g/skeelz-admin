@@ -7,6 +7,8 @@ export interface BarItem {
   color?: string;
   /** Optional secondary note shown after the value (e.g. share of the first stage). */
   note?: string;
+  /** The value as text, when a whole number is not how it reads (hours: "1.5 ש׳"). */
+  display?: string;
 }
 
 /**
@@ -24,13 +26,13 @@ export function BarList({ items, caption, showShareOf }: { items: BarItem[]; cap
       <ul className="flex flex-col gap-3" aria-label={caption}>
         {items.map((item) => {
           const share = showShareOf ? fmtPercent(item.value, showShareOf) : null;
-          const tooltip = `${item.label}: ${fmtInt(item.value)}${share ? ` (${share})` : ""}`;
+          const tooltip = `${item.label}: ${item.display ?? fmtInt(item.value)}${share ? ` (${share})` : ""}`;
           return (
             <li key={item.label} className="group flex flex-col gap-1" title={tooltip}>
               <div className="flex items-baseline justify-between gap-3 text-sm">
                 <span className="text-ink">{item.label}</span>
                 <span className="shrink-0 text-muted">
-                  <span className="font-bold text-ink tabular-nums">{fmtInt(item.value)}</span>
+                  <span className="font-bold text-ink tabular-nums">{item.display ?? fmtInt(item.value)}</span>
                   {share ? <span className="ms-1 tabular-nums">· {share}</span> : null}
                   {item.note ? <span className="ms-1">· {item.note}</span> : null}
                 </span>
@@ -65,7 +67,7 @@ export function BarList({ items, caption, showShareOf }: { items: BarItem[]; cap
                 <th scope="row" className="py-1 text-start font-normal">
                   {item.label}
                 </th>
-                <td className="py-1 tabular-nums">{fmtInt(item.value)}</td>
+                <td className="py-1 tabular-nums">{item.display ?? fmtInt(item.value)}</td>
                 {showShareOf ? <td className="py-1 tabular-nums">{fmtPercent(item.value, showShareOf)}</td> : null}
               </tr>
             ))}

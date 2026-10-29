@@ -501,6 +501,11 @@ export const ENDPOINTS: EndpointSpec[] = [
           salesforce_emails: { type: ["integer", "null"] },
           salesforce_calls: { type: ["integer", "null"] },
           total_tasks: int,
+          cases_opened: {
+            type: ["array", "null"],
+            description: "Cases opened in the month whose current owner is the employee, by record type",
+            items: obj({ case_type: str, record_type: strOrNull, count: int }),
+          },
         }),
       },
     }),

@@ -33,7 +33,7 @@ export const STAFF_TOOLS: Tool[] = [
     name: "staff_monthly",
     title: "Staff hours and tasks by month",
     description:
-      "Per employee linked to monday.com or Salesforce, for one month: hours and done tasks from the monday board(s), and the Salesforce tasks they own (of them emails sent and calls logged). Staff data: only for staff managers who turned it on for this connection.",
+      "Per employee linked to monday.com or Salesforce, for one month: hours and done tasks from the monday board(s), the Salesforce tasks they own (of them emails sent and calls logged), and the Cases opened that month that they own, by type (applications, inquiries…). Staff data: only for staff managers who turned it on for this connection.",
     minRole: "viewer",
     staff: true,
     people: (r) => (r as { employees?: unknown[] }).employees?.length ?? 0,
@@ -60,10 +60,11 @@ export const STAFF_TOOLS: Tool[] = [
           salesforce_emails: r.sfName ? r.sfEmails : null,
           salesforce_calls: r.sfName ? r.sfCalls : null,
           total_tasks: r.mondayTasks + r.sfTasks,
+          cases_opened: r.sfName ? r.cases.map((c) => ({ case_type: c.caseType, record_type: c.developerName, count: c.count })) : null,
           admin_url: link(ctx, `/staff/${r.id}?month=${month}`),
         })),
         definitions:
-          "monday: tasks in status Done on the board, by their 'תאריך ביצוע'; hours = the task's hours label. Salesforce: Tasks owned by the employee's Salesforce user, by creation date; emails = TaskSubtype Email (one per email sent from Salesforce), calls = TaskSubtype Call.",
+          "monday: tasks in status Done on the board, by their 'תאריך ביצוע'; hours = the task's hours label. Salesforce: Tasks owned by the employee's Salesforce user, by creation date; emails = TaskSubtype Email (one per email sent from Salesforce), calls = TaskSubtype Call. cases_opened: Salesforce Cases opened in the month whose current owner is the employee's Salesforce user, by record type.",
         admin_url: link(ctx, `/staff?month=${month}`),
       };
     },

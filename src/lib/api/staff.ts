@@ -44,6 +44,7 @@ export async function staffMonthlyJson(monthParam: string | null) {
       salesforce_emails: r.sfName ? r.sfEmails : null,
       salesforce_calls: r.sfName ? r.sfCalls : null,
       total_tasks: r.mondayTasks + r.sfTasks,
+      cases_opened: r.sfName ? r.cases.map((c) => ({ case_type: c.caseType, record_type: c.developerName, count: c.count })) : null,
     })),
   };
 }

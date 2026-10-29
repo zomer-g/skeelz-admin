@@ -106,6 +106,41 @@ async function monthCounts(people: { id: string; sfUserId: string | null }[], mo
   return out;
 }
 
+/** Cases of one record type an employee owns that were opened in the month. */
+export interface OwnedCases {
+  /** The record type's label ("הגשות קמביום", "פניות"…), or "בלי סוג". */
+  caseType: string;
+  developerName: string | null;
+  count: number;
+}
+
+/**
+ * Cases opened in a month (Israel time; null: ever) whose owner is the employee's linked Salesforce user, by
+ * record type, keyed by site user id. The owner is the Case's current owner: a Case passed on to
+ * someone else counts for them.
+ */
+export async function loadOwnedCases(people: { id: string; sfUserId: string | null }[], month: string | null): Promise<Map<string, OwnedCases[]>> {
+  const out = new Map<string, OwnedCases[]>();
+  const bySf = new Map(people.filter((p) => p.sfUserId).map((p) => [p.sfUserId!, p.id]));
+  if (!bySf.size) return out;
+  const rows = await run<{ owner_id: string; developer_name: string | null; type_label: string | null; n: number }>(sql`
+    SELECT c.owner_id, rt.developer_name, rt.name AS type_label, count(*)::int AS n
+      FROM sf_case c
+      LEFT JOIN sf_record_type rt ON rt.id = c.record_type_id
+     WHERE c.owner_id IN ${[...bySf.keys()]} AND NOT c.is_deleted AND c.created_date IS NOT NULL
+       ${month ? sql`AND to_char(c.created_date AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM') = ${month}` : sql``}
+     GROUP BY 1, 2, 3
+     ORDER BY n DESC`);
+  for (const r of rows) {
+    const userId = bySf.get(r.owner_id);
+    if (!userId) continue;
+    const list = out.get(userId) ?? [];
+    list.push({ caseType: r.type_label ?? "בלי סוג", developerName: r.developer_name, count: Number(r.n) });
+    out.set(userId, list);
+  }
+  return out;
+}
+
 export interface StaffMonthRow extends MonthCounts {
   id: string;
   name: string | null;
@@ -113,6 +148,8 @@ export interface StaffMonthRow extends MonthCounts {
   active: boolean;
   mondayLinked: boolean;
   sfName: string | null;
+  /** Cases opened in the month that the employee owns, by type, most first; empty when not linked to Salesforce. */
+  cases: OwnedCases[];
 }
 
 /** Every employee linked to monday or Salesforce, with their counts for one month. */
@@ -131,7 +168,7 @@ export async function loadStaffMonth(month: string): Promise<StaffMonthRow[]> {
     .leftJoin(sfUser, eq(sfUser.id, users.sfUserId))
     .where(or(isNotNull(users.mondayUserId), isNotNull(users.sfUserId)))
     .orderBy(desc(users.active), asc(users.name));
-  const counts = await monthCounts(people, [month]);
+  const [counts, cases] = await Promise.all([monthCounts(people, [month]), loadOwnedCases(people, month)]);
   return people.map((p) => ({
     id: p.id,
     name: p.name,
@@ -140,6 +177,7 @@ export async function loadStaffMonth(month: string): Promise<StaffMonthRow[]> {
     mondayLinked: Boolean(p.mondayUserId),
     sfName: p.sfName ?? (p.sfUserId ? p.sfUserId : null),
     ...(counts.get(`${p.id}|${month}`) ?? EMPTY),
+    cases: cases.get(p.id) ?? [],
   }));
 }
 

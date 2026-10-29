@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { BarList, type BarItem } from "@/components/dashboard/BarList";
 import { Badge, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
 import { pageAuthStaff } from "@/lib/auth/guard";
-import { loadStaffMonth, parseMonth, recentMonths, type MonthCounts } from "@/lib/staff/data";
+import { loadStaffMonth, parseMonth, recentMonths, type MonthCounts, type StaffMonthRow } from "@/lib/staff/data";
 import { mondayConfigured, staffSourceStatus } from "@/lib/staff/monday";
 import { fmtCount, fmtHours, monthLabel } from "./format";
 import { SyncButton } from "./SyncButton";
@@ -12,7 +13,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * The staff area: only staff managers (pageAuthStaff — never a role, never during a preview).
- * Per employee and month: hours and tasks from monday, emails and calls logged in Salesforce. Who is
+ * Per employee and month: hours and tasks from monday, emails and calls logged in Salesforce, and the
+ * Cases opened that month that they own, by type — as bars, each with its table. Who is
  * which user is set at /admin/staff-links. Nothing here is offered over MCP or the API (docs/staff.md).
  */
 export default async function StaffPage({ searchParams }: { searchParams: Promise<{ month?: string }> }) {
@@ -53,6 +55,19 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
       </nav>
 
       <div className="flex flex-col gap-8">
+        <Card title={`פעילות לפי עובד · ${monthLabel(picked)}`}>
+          <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+            <Bars title="שעות (מאנדיי)" items={bars(rows.filter((r) => r.mondayLinked), (r) => r.hours, (r) => fmtHours(r.hours))} />
+            <Bars title="משימות מאנדיי" items={bars(rows.filter((r) => r.mondayLinked), (r) => r.mondayTasks)} />
+            <Bars title="משימות Salesforce" items={bars(rows.filter((r) => r.sfName), (r) => r.sfTasks)} />
+            <Bars title="מיילים שנשלחו" items={bars(rows.filter((r) => r.sfName), (r) => r.sfEmails)} />
+            <Bars title="שיחות" items={bars(rows.filter((r) => r.sfName), (r) => r.sfCalls)} />
+            <Bars title="מקרים שנפתחו (כל הסוגים)" items={bars(rows.filter((r) => r.sfName), caseTotal)} />
+          </div>
+        </Card>
+
+        <CasesByType rows={rows} month={picked} />
+
         <Card title={`משימות ושעות · ${monthLabel(picked)}`}>
           <p className="mb-4 text-sm text-muted">
             מאנדיי: המשימות ותת-המשימות שהעובד סגר (Done) בכל לוח שיש בו עמודת &quot;שעות (בחירה)&quot;, לפי &quot;תאריך ביצוע&quot;, והשעות שסומנו בהן. Salesforce: המשימות שהעובד תיעד לפי
@@ -63,7 +78,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
             .
           </p>
           <Table
-            head={["עובד", "שעות", "משימות מאנדיי", "משימות Salesforce", "מיילים", "שיחות", "סה״כ משימות"]}
+            head={["עובד", "שעות", "משימות מאנדיי", "משימות Salesforce", "מיילים", "שיחות", "סה״כ משימות", "מקרים שנפתחו"]}
             empty={rows.length ? undefined : "אף עובד עוד לא מקושר למאנדיי או ל-Salesforce"}
           >
             {rows.map((r) => (
@@ -88,6 +103,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
                 <td className="px-3 py-3 tabular-nums">{r.sfName ? fmtCount(r.sfEmails) : "—"}</td>
                 <td className="px-3 py-3 tabular-nums">{r.sfName ? fmtCount(r.sfCalls) : "—"}</td>
                 <td className="px-3 py-3 font-medium tabular-nums">{fmtCount(r.mondayTasks + r.sfTasks)}</td>
+                <td className="px-3 py-3 tabular-nums">{r.sfName ? fmtCount(caseTotal(r)) : "—"}</td>
               </tr>
             ))}
             {rows.length > 1 ? (
@@ -99,6 +115,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
                 <td className="px-3 py-3 tabular-nums">{fmtCount(total.sfEmails)}</td>
                 <td className="px-3 py-3 tabular-nums">{fmtCount(total.sfCalls)}</td>
                 <td className="px-3 py-3 tabular-nums">{fmtCount(total.mondayTasks + total.sfTasks)}</td>
+                <td className="px-3 py-3 tabular-nums">{fmtCount(rows.reduce((t, r) => t + caseTotal(r), 0))}</td>
               </tr>
             ) : null}
           </Table>
@@ -131,6 +148,80 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
         </Card>
       </div>
     </>
+  );
+}
+
+const who = (r: StaffMonthRow) => r.name ?? r.email;
+const caseTotal = (r: StaffMonthRow) => r.cases.reduce((t, c) => t + c.count, 0);
+
+/** One bar per employee, most first. */
+function bars(rows: StaffMonthRow[], value: (r: StaffMonthRow) => number, display?: (r: StaffMonthRow) => string): BarItem[] {
+  return rows.map((r) => ({ label: who(r), value: value(r), display: display?.(r) })).sort((a, b) => b.value - a.value);
+}
+
+function Bars({ title, items }: { title: string; items: BarItem[] }) {
+  return (
+    <div>
+      <h3 className="mb-3 font-medium">{title}</h3>
+      {items.length ? <BarList items={items} caption={title} /> : <p className="text-sm text-muted">אף עובד לא מקושר למקור הזה</p>}
+    </div>
+  );
+}
+
+/**
+ * The Cases each employee owns that were opened in the month, one chart per record type (the
+ * busiest type first), so "who handled how many applications, how many inquiries" reads at a glance.
+ */
+function CasesByType({ rows, month }: { rows: StaffMonthRow[]; month: string }) {
+  const linked = rows.filter((r) => r.sfName);
+  const types = new Map<string, number>();
+  for (const r of linked) for (const c of r.cases) types.set(c.caseType, (types.get(c.caseType) ?? 0) + c.count);
+  const ordered = [...types.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+  const countOf = (r: StaffMonthRow, type: string) => r.cases.find((c) => c.caseType === type)?.count ?? 0;
+  return (
+    <Card title={`מקרים שנפתחו לפי סוג · ${monthLabel(month)}`}>
+      <p className="mb-6 text-sm text-muted">
+        מקרים (Cases) ב-Salesforce שנפתחו בחודש, לפי סוג הרשומה, אצל העובד שהוא הבעלים שלהם היום. מקרה שהועבר לעובד אחר נספר אצל הבעלים הנוכחי.
+      </p>
+      {!linked.length ? (
+        <p className="text-sm text-muted">אף עובד לא מקושר למשתמש Salesforce</p>
+      ) : !ordered.length ? (
+        <p className="text-sm text-muted">לא נפתחו בחודש הזה מקרים שבבעלות העובדים המקושרים</p>
+      ) : (
+        <>
+          <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
+            {ordered.map((type) => (
+              <Bars
+                key={type}
+                title={`${type} (${fmtCount(types.get(type) ?? 0)})`}
+                items={bars(
+                  linked.filter((r) => countOf(r, type) > 0),
+                  (r) => countOf(r, type),
+                )}
+              />
+            ))}
+          </div>
+          <details className="mt-8 text-sm">
+            <summary className="cursor-pointer text-accent-dark underline-offset-4 hover:underline">כל הסוגים בטבלה אחת</summary>
+            <div className="mt-3">
+              <Table head={["עובד", ...ordered, "סה״כ"]}>
+                {linked.map((r) => (
+                  <tr key={r.id}>
+                    <td className="px-3 py-2">{who(r)}</td>
+                    {ordered.map((t) => (
+                      <td key={t} className="px-3 py-2 tabular-nums">
+                        {fmtCount(countOf(r, t))}
+                      </td>
+                    ))}
+                    <td className="px-3 py-2 font-medium tabular-nums">{fmtCount(caseTotal(r))}</td>
+                  </tr>
+                ))}
+              </Table>
+            </div>
+          </details>
+        </>
+      )}
+    </Card>
   );
 }
 

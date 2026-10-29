@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BarList } from "@/components/dashboard/BarList";
 import { Badge, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
 import { pageAuthStaff } from "@/lib/auth/guard";
-import { loadEmployeeHours, loadSfActivity } from "@/lib/staff/data";
+import { loadEmployeeHours, loadOwnedCases, loadSfActivity } from "@/lib/staff/data";
 import { dayLabel, fmtCount, fmtHours, monthLabel } from "../format";
 
 export const metadata: Metadata = { title: "שעות עובד" };
@@ -23,7 +24,9 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
   if (!data) notFound();
   const { person, byMonth, months, summary, tasks } = data;
   const sf = data.month ? byMonth.find((m) => m.month === data.month) : null;
-  const activity = person.sfUserId ? await loadSfActivity(person.sfUserId, data.month) : null;
+  const [activity, owned] = person.sfUserId
+    ? await Promise.all([loadSfActivity(person.sfUserId, data.month), loadOwnedCases([person], data.month).then((m) => m.get(person.id) ?? [])])
+    : [null, null];
   const title = person.name ?? person.email;
   const period = data.month ? monthLabel(data.month) : "כל התקופה";
 
@@ -134,6 +137,17 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
                 </tr>
               ))}
             </Table>
+          </Card>
+        ) : null}
+
+        {owned ? (
+          <Card title={`מקרים שנפתחו בבעלותו · ${period}`}>
+            <p className="mb-4 text-sm text-muted">מקרים (Cases) שנפתחו בתקופה ושהעובד הוא הבעלים הנוכחי שלהם ב-Salesforce, לפי סוג.</p>
+            <BarList
+              items={owned.map((c) => ({ label: c.caseType, value: c.count }))}
+              caption={`מקרים שנפתחו בבעלות ${title}, לפי סוג`}
+              showShareOf={owned.reduce((t, c) => t + c.count, 0)}
+            />
           </Card>
         ) : null}
 
