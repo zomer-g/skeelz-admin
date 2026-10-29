@@ -44,6 +44,13 @@
   --color-series-1: #2a78d6;
   --color-series-2: #eb6834;
   --color-series-3: #1baf7a;
+  /* Slots 4–8, for charts with one series per person (staff trends): adjacent forms only
+     (stacks, lines), always with a legend and a table, since 4, 5 and 2–3 sit under 3:1. */
+  --color-series-4: #eda100;
+  --color-series-5: #e87ba4;
+  --color-series-6: #008300;
+  --color-series-7: #6250d6;
+  --color-series-8: #e34948;
 
   /* Where a case stands today (applications funnel and its timeline): hired, still
      moving, stuck (open but idle), closed without a hire. Every value is also in text. */

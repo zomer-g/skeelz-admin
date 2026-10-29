@@ -77,7 +77,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   demand, `MONDAY_TOKEN` secret, queries only, state in `staff_source_state` — never `sync_runs`/`sync_state`), plus the `sf_task`
   rows they own by Israel month: emails = TaskSubtype Email (Salesforce logs every sent email so), calls = Call, also by the type of
   Case they sit on (`loadSfActivity`), and the Cases opened that month they currently own, by record type (`loadOwnedCases`;
-  charts per metric and per case type with their tables, `BarList`). monday tasks keep their board and when they entered Done (`done_at`, the status changed_at). monday also shows
+  charts per metric and per case type with their tables, `BarList`; 12-month stacked areas per employee of Cases and of
+  emails (dark) / calls (light) of the same colour, `loadStaffTrend` + `StackedAreaChart`). monday tasks keep their board and when they entered Done (`done_at`, the status changed_at). monday also shows
   on `/admin/integrations` (board check only) and `/admin/sync`. Employees don't see their own.
 - **Salesforce is read-only in phase 1.** The SF client must expose no write methods. Candidates/employer
   contacts = Contact, companies = Account, jobs/applications/leads = Case by RecordType.

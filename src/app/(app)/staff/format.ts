@@ -5,6 +5,11 @@ export const fmtHours = (n: number | null) => (n == null ? "—" : `${hours.form
 
 const MONTHS = ["ינואר", "פברואר", "מרץ", "אפריל", "מאי", "יוני", "יולי", "אוגוסט", "ספטמבר", "אוקטובר", "נובמבר", "דצמבר"];
 
+const SHORT_MONTHS = ["ינו׳", "פבר׳", "מרץ", "אפר׳", "מאי", "יוני", "יולי", "אוג׳", "ספט׳", "אוק׳", "נוב׳", "דצמ׳"];
+
+/** "אוק׳ 26" from "2026-10", for chart axes. */
+export const shortMonthLabel = (month: string) => `${SHORT_MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(2, 4)}`;
+
 /** "אוקטובר 2026" from "2026-10". */
 export const monthLabel = (month: string) => `${MONTHS[Number(month.slice(5, 7)) - 1] ?? month} ${month.slice(0, 4)}`;
 

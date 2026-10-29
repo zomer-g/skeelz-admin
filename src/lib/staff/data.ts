@@ -181,6 +181,70 @@ export async function loadStaffMonth(month: string): Promise<StaffMonthRow[]> {
   }));
 }
 
+export interface StaffTrend {
+  /** Oldest first. */
+  months: string[];
+  /** Employees linked to Salesforce, in the staff list's order (active first, by name), so each keeps its colour. */
+  people: {
+    id: string;
+    name: string;
+    emails: number[];
+    calls: number[];
+    /** Cases opened each month that they own now, every type together. */
+    cases: number[];
+    /** The same by record type label. */
+    casesByType: Record<string, number[]>;
+  }[];
+  /** Every case type seen in the range, the most Cases first. */
+  caseTypes: string[];
+}
+
+/** Month by month for every employee linked to Salesforce: emails, calls and the Cases they own, for the trend charts. */
+export async function loadStaffTrend(months: string[]): Promise<StaffTrend> {
+  const people = (
+    await getDb()
+      .select({ id: users.id, name: users.name, email: users.email, sfUserId: users.sfUserId })
+      .from(users)
+      .where(isNotNull(users.sfUserId))
+      .orderBy(desc(users.active), asc(users.name))
+  ).map((p) => ({ ...p, name: p.name ?? p.email }));
+  if (!people.length || !months.length) return { months, people: [], caseTypes: [] };
+  const bySf = new Map(people.map((p) => [p.sfUserId!, p.id]));
+  const [counts, caseRows] = await Promise.all([
+    monthCounts(people, months),
+    run<{ owner_id: string; month: string; type_label: string | null; n: number }>(sql`
+      SELECT c.owner_id, to_char(c.created_date AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM') AS month, rt.name AS type_label, count(*)::int AS n
+        FROM sf_case c
+        LEFT JOIN sf_record_type rt ON rt.id = c.record_type_id
+       WHERE c.owner_id IN ${[...bySf.keys()]} AND NOT c.is_deleted AND c.created_date IS NOT NULL
+         AND to_char(c.created_date AT TIME ZONE 'Asia/Jerusalem', 'YYYY-MM') IN ${months}
+       GROUP BY 1, 2, 3`),
+  ]);
+  const index = new Map(months.map((m, i) => [m, i]));
+  const zeros = () => months.map(() => 0);
+  const out = people.map((p) => ({
+    id: p.id,
+    name: p.name,
+    emails: months.map((m) => counts.get(`${p.id}|${m}`)?.sfEmails ?? 0),
+    calls: months.map((m) => counts.get(`${p.id}|${m}`)?.sfCalls ?? 0),
+    cases: zeros(),
+    casesByType: {} as Record<string, number[]>,
+  }));
+  const byId = new Map(out.map((p) => [p.id, p]));
+  const typeTotals = new Map<string, number>();
+  for (const r of caseRows) {
+    const person = byId.get(bySf.get(r.owner_id) ?? "");
+    const i = index.get(r.month);
+    if (!person || i === undefined) continue;
+    const type = r.type_label ?? "בלי סוג";
+    const n = Number(r.n);
+    person.cases[i]! += n;
+    (person.casesByType[type] ??= zeros())[i]! += n;
+    typeTotals.set(type, (typeTotals.get(type) ?? 0) + n);
+  }
+  return { months, people: out, caseTypes: [...typeTotals.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t) };
+}
+
 /** A valid YYYY-MM, or null. */
 export const parseMonth = (month: string): string | null => (MONTH.test(month) ? month : null);
 
