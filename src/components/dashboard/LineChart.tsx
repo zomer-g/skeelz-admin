@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { bucket, GRAINS, periodStart, type Bucket, type Grain } from "@/lib/dashboard/periods";
 
 export interface SeriesPoint {
   day: string; // YYYY-MM-DD
@@ -20,7 +21,6 @@ const WEEKLY_AFTER_DAYS = 120;
 const LABEL_MIN_GAP = 16;
 
 const fmt = (n: number) => new Intl.NumberFormat("he-IL").format(Math.round(n));
-const shortDay = (day: string) => `${day.slice(8, 10)}.${day.slice(5, 7)}.${day.slice(2, 4)}`;
 
 function niceMax(v: number): number {
   if (v <= 0) return 1;
@@ -29,25 +29,16 @@ function niceMax(v: number): number {
   return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * exp;
 }
 
-/** Long ranges are summed into weeks starting on Sunday, the Israeli work week. */
-function bucket(points: SeriesPoint[], weekly: boolean): { label: string; start: string; value: number }[] {
-  if (!weekly) return points.map((p) => ({ label: shortDay(p.day), start: p.day, value: p.value }));
-  const weeks = new Map<string, number>();
-  for (const p of points) {
-    const d = new Date(`${p.day}T12:00:00Z`);
-    d.setUTCDate(d.getUTCDate() - d.getUTCDay());
-    const key = d.toISOString().slice(0, 10);
-    weeks.set(key, (weeks.get(key) ?? 0) + p.value);
-  }
-  return [...weeks.entries()].map(([start, value]) => ({ label: `שבוע ${shortDay(start)}`, start, value }));
-}
+const withPartial = (b: Bucket) => (b.partial ? `${b.label} (חלקי)` : b.label);
 
 /**
  * Line chart for one to four series on one axis: 2px strokes, a 10% wash under
  * a single series, hairline grid. The crosshair snaps to the nearest date and
  * the tooltip lists every series there; arrow keys move it too, and a live
  * region reads it out. Two or more series get a legend, plus end labels when
- * those don't collide. The table view holds every value and mailing.
+ * those don't collide. The table view holds every value and mailing. A toggle sums the days into
+ * weeks, months or years (only grains that give two points or more are offered); the default is
+ * days, or weeks past WEEKLY_AFTER_DAYS. Periods the range covers only in part say so.
  */
 export interface ChartMarker {
   day: string;
@@ -69,8 +60,13 @@ export function LineChart({
   const svgRef = useRef<SVGSVGElement>(null);
   const liveId = useId();
   const [hover, setHover] = useState<number | null>(null);
-  const weekly = (series[0]?.points.length ?? 0) > WEEKLY_AFTER_DAYS;
-  const data = useMemo(() => series.map((s) => ({ ...s, buckets: bucket(s.points, weekly) })), [series, weekly]);
+  const days = series[0]?.points ?? [];
+  const [grain, setGrain] = useState<Grain>(days.length > WEEKLY_AFTER_DAYS ? "week" : "day");
+  const grains = GRAINS.filter(
+    (g) => g.key === grain || new Set(days.map((p) => periodStart(p.day, g.key))).size >= 2,
+  );
+  const grainLabel = GRAINS.find((g) => g.key === grain)!.label;
+  const data = useMemo(() => series.map((s) => ({ ...s, buckets: bucket(s.points, grain) })), [series, grain]);
 
   // Escape dismisses the tooltip wherever the pointer or focus is (WCAG 1.4.13).
   useEffect(() => {
@@ -111,13 +107,7 @@ export function LineChart({
   const bucketIndex = new Map(buckets.map((b, i) => [b.start, i]));
   const markersAt = new Map<number, string[]>();
   for (const m of markers) {
-    let start = m.day;
-    if (weekly) {
-      const d = new Date(`${m.day}T12:00:00Z`);
-      d.setUTCDate(d.getUTCDate() - d.getUTCDay());
-      start = d.toISOString().slice(0, 10);
-    }
-    const i = bucketIndex.get(start);
+    const i = bucketIndex.get(periodStart(m.day, grain));
     if (i !== undefined) markersAt.set(i, [...(markersAt.get(i) ?? []), m.label]);
   }
 
@@ -132,12 +122,32 @@ export function LineChart({
   const spoken =
     hover === null
       ? ""
-      : `${buckets[hover]!.label}: ${data.map((s) => `${multi ? s.label : unit} ${fmt(s.buckets[hover]!.value)}`).join(", ")}${(markersAt.get(hover) ?? [])
+      : `${withPartial(buckets[hover]!)}: ${data.map((s) => `${multi ? s.label : unit} ${fmt(s.buckets[hover]!.value)}`).join(", ")}${(markersAt.get(hover) ?? [])
           .map((l) => `, דיוור: ${l}`)
           .join("")}`;
 
   return (
     <figure className="flex flex-col gap-2">
+      {grains.length > 1 ? (
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="חתך זמן">
+          {grains.map((g) => (
+            <button
+              key={g.key}
+              type="button"
+              aria-pressed={g.key === grain}
+              onClick={() => {
+                setGrain(g.key);
+                setHover(null);
+              }}
+              className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
+                g.key === grain ? "bg-ink text-white" : "bg-white text-ink ring-1 ring-field hover:bg-surface"
+              }`}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
       {multi ? (
         <ul className="flex flex-wrap gap-x-5 gap-y-1 text-sm text-ink" aria-label="מקרא">
           {data.map((s) => (
@@ -236,7 +246,7 @@ export function LineChart({
             dir="rtl"
             aria-hidden
           >
-            <p className="mb-1 text-white/80">{buckets[hover]!.label}</p>
+            <p className="mb-1 text-white/80">{withPartial(buckets[hover]!)}</p>
             {data.map((s) => (
               <p key={s.label} className="flex items-center gap-2">
                 {multi ? <span className="inline-block h-0.5 w-3 rounded-full" style={{ background: s.color }} /> : null}
@@ -265,11 +275,11 @@ export function LineChart({
         <summary className="cursor-pointer text-accent-dark underline-offset-4 hover:underline">הצגה כטבלה</summary>
         <div className="relative mt-2 max-h-64 overflow-auto" tabIndex={0}>
           <table className="w-full text-start">
-            <caption className="sr-only">{`${unit} לפי ${weekly ? "שבוע" : "יום"}`}</caption>
+            <caption className="sr-only">{`${unit} לפי ${grainLabel}`}</caption>
             <thead>
               <tr className="border-b border-line text-muted">
                 <th scope="col" className="py-1 text-start font-medium">
-                  {weekly ? "שבוע" : "יום"}
+                  {grainLabel}
                 </th>
                 {data.map((s) => (
                   <th key={s.label} scope="col" className="py-1 text-start font-medium">
@@ -287,7 +297,7 @@ export function LineChart({
               {buckets.map((b, i) => (
                 <tr key={b.start} className="border-b border-line/60">
                   <th scope="row" className="py-1 text-start font-normal">
-                    {b.label}
+                    {withPartial(b)}
                   </th>
                   {data.map((s) => (
                     <td key={s.label} className="py-1 tabular-nums">
