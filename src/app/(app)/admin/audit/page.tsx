@@ -46,6 +46,7 @@ const ACTION_LABELS: Record<string, string> = {
   "cvs.text_search": "חיפוש בתוך קורות חיים",
   "candidates.contacts_copied": "העתקת פרטי קשר של מועמדים",
   "cvs.contacts_copied": "העתקת פרטי קשר מרשימת קורות החיים",
+  "emails.contacts_copied": "העתקת פרטי קשר מרשימת כתובות הדוא״ל",
   "text.updated": "עדכון טקסט",
   "text.restored": "שחזור גרסת טקסט",
   "preview.started": "צפייה בהרשאה נמוכה",

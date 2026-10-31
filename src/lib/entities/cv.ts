@@ -56,8 +56,8 @@ export interface EmailCvs {
 }
 
 /** A file this size or smaller is a mail signature image, not a CV. */
-const MIN_SIZE = 8_000;
-const SKIP_EXTENSIONS = new Set(["png", "gif", "jpg", "jpeg", "bmp", "svg", "ics", "vcf", "p7s", "gz", "eml"]);
+export const MIN_SIZE = 8_000;
+export const SKIP_EXTENSIONS = new Set(["png", "gif", "jpg", "jpeg", "bmp", "svg", "ics", "vcf", "p7s", "gz", "eml"]);
 const CV_NAME = /\bcv\b|c\.v|resume|קו"?ח|קוח|קורות/i;
 /** Enough for anyone's history; a Contact with more email than this is a mailing list, not a candidate. */
 const MAX_EMAILS = 300;
