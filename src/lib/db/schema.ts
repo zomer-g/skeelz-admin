@@ -82,6 +82,34 @@ export const staffWorkItems = pgTable(
   (t) => [index("staff_work_items_user_idx").on(t.userId, t.doneOn)],
 );
 
+/**
+ * Staff data (docs/staff.md): one employee's work window from a timesheet, from-hour to-hour on an
+ * Israel day. `source`: 'demo' (a fictitious timesheet built from the employee's own Salesforce
+ * tasks), 'sheet' (a real file loaded on /staff/windows), 'api' or 'manual'. Read only by
+ * src/lib/staff/timesheet.ts behind requireStaffManager / pageAuthStaff.
+ */
+export const staffTimeEntries = pgTable(
+  "staff_time_entries",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The Israel day the window belongs to. */
+    workDate: date("work_date", { mode: "string" }).notNull(),
+    startAt: ts("start_at").notNull(),
+    endAt: ts("end_at").notNull(),
+    source: text("source").notNull(),
+    note: text("note"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("staff_time_entries_user_start_idx").on(t.userId, t.startAt),
+    check("staff_time_entries_source_check", sql`${t.source} in ('demo', 'sheet', 'api', 'manual')`),
+    check("staff_time_entries_order_check", sql`${t.endAt} > ${t.startAt}`),
+  ],
+);
+
 /** When each staff source last synced. Kept apart from sync_runs / sync_state, which admins and MCP read. */
 export const staffSourceState = pgTable("staff_source_state", {
   source: text("source").primaryKey(),
