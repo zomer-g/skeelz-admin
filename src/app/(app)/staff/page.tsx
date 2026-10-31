@@ -6,6 +6,7 @@ import { pageAuthStaff } from "@/lib/auth/guard";
 import { loadStaffMonth, loadStaffTrend, parseMonth, recentMonths, type MonthCounts, type StaffMonthRow, type StaffTrend } from "@/lib/staff/data";
 import { mondayConfigured, staffSourceStatus } from "@/lib/staff/monday";
 import { fmtCount, fmtHours, monthLabel, shortMonthLabel } from "./format";
+import { StaffNav } from "./StaffNav";
 import { StaffTrends } from "./StaffTrends";
 import { SyncButton } from "./SyncButton";
 
@@ -41,6 +42,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
   return (
     <>
       <PageHeader title="עובדים" subtitle="שעות ומשימות לפי עובד ולפי חודש. גלוי למנהלי עובדים בלבד" />
+      <StaffNav active="month" />
 
       <nav aria-label="חודש" className="mb-6 flex flex-wrap gap-2">
         {months.map((m) => (

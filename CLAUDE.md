@@ -78,7 +78,11 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   rows they own by Israel month: emails = TaskSubtype Email (Salesforce logs every sent email so), calls = Call, also by the type of
   Case they sit on (`loadSfActivity`), and the Cases opened that month they currently own, by record type (`loadOwnedCases`;
   charts per metric and per case type with their tables, `BarList`; 12-month stacked areas per employee of Cases and of
-  emails (dark) / calls (light) of the same colour, `loadStaffTrend` + `StackedAreaChart`). monday tasks keep their board and when they entered Done (`done_at`, the status changed_at). monday also shows
+  emails (dark) / calls (light) of the same colour, `loadStaffTrend` + `StackedAreaChart`). monday tasks keep their board and when they entered Done (`done_at`, the status changed_at).
+  `/staff/windows` ("פעולות ביחידת זמן", in the `StaffNav` sub-nav): timesheet windows (`staff_time_entries`, source demo | sheet | api |
+  manual, replaced per employee and source by `replaceTimeEntries`) against the `sf_task` rows created inside them; the attribution model
+  (minutes since the previous action, capped at 45, the rest unassigned), the CV-request / employer / candidate categories and the demo
+  timesheet rules are pure functions in `src/lib/staff/windows.ts` (`windows.test.ts`). A real timesheet day hides that day's demo rows. monday also shows
   on `/admin/integrations` (board check only) and `/admin/sync`. Employees don't see their own.
 - **Salesforce is read-only in phase 1.** The SF client must expose no write methods. Candidates/employer
   contacts = Contact, companies = Account, jobs/applications/leads = Case by RecordType.
