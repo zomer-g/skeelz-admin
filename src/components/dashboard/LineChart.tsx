@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Download } from "@/components/Download";
 import { bucket, GRAINS, periodStart, type Bucket, type Grain } from "@/lib/dashboard/periods";
 
 export interface SeriesPoint {
@@ -50,12 +51,15 @@ export function LineChart({
   unit,
   height = 240,
   markers = [],
+  download,
 }: {
   series: ChartSeries[];
   unit: string;
   height?: number;
   /** Events to mark on the time axis, e.g. mailing send days. */
   markers?: ChartMarker[];
+  /** Offers the table and the chart (as an image) for download under this name. Only where there is no personal data (docs/exports.md). */
+  download?: string;
 }) {
   const svgRef = useRef<SVGSVGElement>(null);
   const liveId = useId();
@@ -127,7 +131,7 @@ export function LineChart({
           .join("")}`;
 
   return (
-    <figure className="flex flex-col gap-2">
+    <figure data-export={download ? "" : undefined} className="flex flex-col gap-2">
       {grains.length > 1 ? (
         <div className="flex flex-wrap items-center gap-2" role="group" aria-label="חתך זמן">
           {grains.map((g) => (
@@ -315,6 +319,7 @@ export function LineChart({
           </table>
         </div>
       </details>
+      {download ? <Download name={download} image={{ legend: data.map((s) => ({ label: s.label, color: s.color })) }} /> : null}
     </figure>
   );
 }

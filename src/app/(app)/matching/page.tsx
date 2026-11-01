@@ -5,7 +5,7 @@ import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { regionListHref } from "@/components/dashboard/PlaceMapCard";
 import { LevelSwitch, RegionMap } from "@/components/dashboard/RegionMap";
-import { Badge, Card, StatCard, Table } from "@/components/ui";
+import { Badge, Card, Exportable, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { EXPLAIN } from "@/lib/dashboard/explain";
 import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
@@ -117,7 +117,7 @@ export default async function MatchingPage({ searchParams }: { searchParams: Pro
             <LevelSwitch level={level} hrefFor={(l) => href({ level: l, region: null }, "#regions")} />
           </div>
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <RegionMap
+            <RegionMap download="מועמדים למשרה לפי אזור"
               id="matching-map"
               level={level}
               mode="balance"
@@ -145,7 +145,7 @@ export default async function MatchingPage({ searchParams }: { searchParams: Pro
             />
             <div className="flex flex-col gap-4">
               <h4 className="text-sm font-bold">הכי חסרים מועמדים</h4>
-              <Table head={[unit, "משרות", "מועמדים", "למשרה", "רשימות"]} empty={shortages.length ? undefined : "אין משרות פעילות עם אזור"}>
+              <Table download={{ name: "מחסור לפי אזור" }} head={[unit, "משרות", "מועמדים", "למשרה", "רשימות"]} empty={shortages.length ? undefined : "אין משרות פעילות עם אזור"}>
                 {shortages.slice(0, 8).map((r) => {
                   const lists = listExtra(r.code, level);
                   return (
@@ -222,38 +222,40 @@ export default async function MatchingPage({ searchParams }: { searchParams: Pro
                   </li>
                 ))}
               </ul>
-              <details className="mt-4 text-sm">
-                <summary className="cursor-pointer text-accent-dark underline-offset-4 hover:underline">הצגה כטבלה</summary>
-                <div className="relative mt-2 overflow-x-auto">
-                  <table className="w-full text-start">
-                    <caption className="sr-only">כישורים: ביקוש מול היצע</caption>
-                    <thead>
-                      <tr className="border-b border-line text-muted">
-                        {["כישור", "משרות שדורשות", "שיעור מהמשרות", "מועמדים שמחזיקים", "שיעור מהמועמדים", "מועמדים למשרה", "מצב"].map((h) => (
-                          <th key={h} scope="col" className="px-2 py-1 text-start font-medium">
-                            {h}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {m.skills.map((g) => (
-                        <tr key={g.skill} className="border-b border-line/60">
-                          <th scope="row" className="px-2 py-1 text-start font-medium">
-                            {g.skill}
-                          </th>
-                          <td className="px-2 py-1 tabular-nums">{fmtInt(g.jobs)}</td>
-                          <td className="px-2 py-1 tabular-nums">{fmtPercent(g.jobShare, 1)}</td>
-                          <td className="px-2 py-1 tabular-nums">{fmtInt(g.candidates)}</td>
-                          <td className="px-2 py-1 tabular-nums">{fmtPercent(g.candidateShare, 1)}</td>
-                          <td className="px-2 py-1 tabular-nums">{g.perJob != null ? fmtDecimal(g.perJob) : "—"}</td>
-                          <td className="px-2 py-1">{balanceBadge(g.balance)}</td>
+              <Exportable name="כישורים ביקוש מול היצע" className="mt-4">
+                <details className="text-sm">
+                  <summary className="cursor-pointer text-accent-dark underline-offset-4 hover:underline">הצגה כטבלה</summary>
+                  <div className="relative mt-2 overflow-x-auto">
+                    <table className="w-full text-start">
+                      <caption className="sr-only">כישורים: ביקוש מול היצע</caption>
+                      <thead>
+                        <tr className="border-b border-line text-muted">
+                          {["כישור", "משרות שדורשות", "שיעור מהמשרות", "מועמדים שמחזיקים", "שיעור מהמועמדים", "מועמדים למשרה", "מצב"].map((h) => (
+                            <th key={h} scope="col" className="px-2 py-1 text-start font-medium">
+                              {h}
+                            </th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </details>
+                      </thead>
+                      <tbody>
+                        {m.skills.map((g) => (
+                          <tr key={g.skill} className="border-b border-line/60">
+                            <th scope="row" className="px-2 py-1 text-start font-medium">
+                              {g.skill}
+                            </th>
+                            <td className="px-2 py-1 tabular-nums">{fmtInt(g.jobs)}</td>
+                            <td className="px-2 py-1 tabular-nums">{fmtPercent(g.jobShare, 1)}</td>
+                            <td className="px-2 py-1 tabular-nums">{fmtInt(g.candidates)}</td>
+                            <td className="px-2 py-1 tabular-nums">{fmtPercent(g.candidateShare, 1)}</td>
+                            <td className="px-2 py-1 tabular-nums">{g.perJob != null ? fmtDecimal(g.perJob) : "—"}</td>
+                            <td className="px-2 py-1">{balanceBadge(g.balance)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
+              </Exportable>
             </>
           ) : (
             <p className="py-4 text-center text-sm text-muted">אין כאן משרות פעילות או מועמדים עם כישורים</p>
@@ -269,7 +271,7 @@ export default async function MatchingPage({ searchParams }: { searchParams: Pro
           מוקדי מחסור
         </SectionTitle>
         <Card level={3} title="איפה ובמה חסרים מועמדים">
-          <Table head={[unit, "כישור", "משרות פעילות", "מועמדים", "מועמדים למשרה", "רשימות"]} empty={m.hotspots.length ? undefined : "אין מספיק משרות פעילות עם אזור וכישורים"}>
+          <Table download={{ name: "איפה ובמה חסרים מועמדים" }} head={[unit, "כישור", "משרות פעילות", "מועמדים", "מועמדים למשרה", "רשימות"]} empty={m.hotspots.length ? undefined : "אין מספיק משרות פעילות עם אזור וכישורים"}>
             {m.hotspots.map((h) => {
               const lists = listExtra(h.region, level, h.skill);
               return (

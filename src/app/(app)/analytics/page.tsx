@@ -279,7 +279,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         </div>
 
         <Card level={3} title="לאורך זמן" className="mt-4">
-          <LineChart
+          <LineChart download="Analytics לאורך זמן"
             unit="אירועים"
             series={[
               { label: "כניסות לאתר", color: "var(--color-series-1)", points: days.map((day) => ({ day, value: sessionsByDay.get(day) ?? 0 })) },
@@ -292,14 +292,14 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         <SectionTitle hint="מאיפה הגיעו הכניסות">מקורות תנועה</SectionTitle>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title="לפי ערוץ">
-            <BarList
+            <BarList download
               caption="כניסות לפי ערוץ"
               showShareOf={sessions}
               items={(channels.rows as Row[]).map((r) => ({ label: CHANNEL_LABELS[String(r.channel_group)] ?? String(r.channel_group), value: num(r.sessions) }))}
             />
           </Card>
           <Card level={3} title="לפי מקור ומדיום" tone="accent-light">
-            <Table head={["מקור", "מדיום", "כניסות", "חדשים", "מעורבות"]} empty={sources.rows.length ? undefined : "אין נתונים"} caption="כניסות לפי מקור ומדיום">
+            <Table download={{ name: "Analytics לפי מקור ומדיום" }} head={["מקור", "מדיום", "כניסות", "חדשים", "מעורבות"]} empty={sources.rows.length ? undefined : "אין נתונים"} caption="כניסות לפי מקור ומדיום">
               {(sources.rows as Row[]).map((r) => (
                 <tr key={`${r.source}/${r.medium}`}>
                   <td className="px-3 py-2" dir="ltr">{String(r.source)}</td>
@@ -316,7 +316,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         <SectionTitle hint={jobLevel ? JOB_LEVELS[jobLevel] : "כל האתר"}>אירועים ודפים</SectionTitle>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title={`כל האירועים · ${fmtInt(events.groups_total)}`}>
-            <Table head={["אירוע", "שם ב-GA", "כמות", "משתמשים"]} empty={events.rows.length ? undefined : "אין אירועים"} caption="אירועים">
+            <Table download={{ name: "Analytics אירועים" }} head={["אירוע", "שם ב-GA", "כמות", "משתמשים"]} empty={events.rows.length ? undefined : "אין אירועים"} caption="אירועים">
               {(events.rows as Row[]).map((r) => (
                 <tr key={String(r.event_name)}>
                   <td className="px-3 py-2">
@@ -334,7 +334,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             </Table>
           </Card>
           <Card level={3} title="הדפים הנצפים" tone="accent-light">
-            <Table head={["דף", "צפיות", "כניסות"]} empty={topPages.rows.length ? undefined : "אין נתונים"} caption="הדפים הנצפים">
+            <Table download={{ name: "Analytics דפים נצפים" }} head={["דף", "צפיות", "כניסות"]} empty={topPages.rows.length ? undefined : "אין נתונים"} caption="הדפים הנצפים">
               {(topPages.rows as Row[]).map((r) => {
                 const key = /\/job\/([0-9a-f]{24})/i.exec(String(r.page_path))?.[1]?.toLowerCase();
                 const job = key ? byKey.get(key) : undefined;
@@ -360,7 +360,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         <SectionTitle hint="תגיות UTM: כניסות, ומה עשו באתר">קמפיינים</SectionTitle>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title={`קמפיינים · ${fmtInt(campaigns.groups_total)}`}>
-            <Table head={["קמפיין", "כניסות", "חדשים", "פתיחות משרות", "לחיצות הגשה", "אישורים"]} empty={campaigns.rows.length ? undefined : "אין קמפיינים"} caption="קמפיינים">
+            <Table download={{ name: "Analytics קמפיינים" }} head={["קמפיין", "כניסות", "חדשים", "פתיחות משרות", "לחיצות הגשה", "אישורים"]} empty={campaigns.rows.length ? undefined : "אין קמפיינים"} caption="קמפיינים">
               {(campaigns.rows as Row[]).map((r) => {
                 const ev = (name: string) => num((campaignEvents.rows as Row[]).find((e) => e.campaign === r.campaign && e.event_name === name)?.event_count);
                 return (
@@ -381,7 +381,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             </Table>
           </Card>
           <Card level={3} title="דפי נחיתה של קמפיינים" tone="accent-light">
-            <Table head={["קמפיין", "דף נחיתה", "כניסות"]} empty={landing.rows.length ? undefined : "אין נתונים"} caption="דפי נחיתה של קמפיינים">
+            <Table download={{ name: "Analytics דפי נחיתה של קמפיינים" }} head={["קמפיין", "דף נחיתה", "כניסות"]} empty={landing.rows.length ? undefined : "אין נתונים"} caption="דפי נחיתה של קמפיינים">
               {(landing.rows as Row[]).map((r) => (
                 <tr key={`${r.campaign}|${r.landing_page}`}>
                   <td className="px-3 py-2" dir="auto">{String(r.campaign)}</td>
@@ -395,7 +395,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
 
         <SectionTitle hint={params.scope === "all" ? "כל המשרות" : "משרות בתשלום בלבד"}>ברמת המשרה</SectionTitle>
         <Card level={3} title={`משרות שנפתחו באתר בטווח · ${fmtInt(jobRows.length)}`}>
-          <Table
+          <Table download={{ name: "Analytics משרות שנפתחו באתר" }}
             head={["משרה", "צפיות", "פתיחות", "לחיצות הגשה", "אישורים", "מפתיחה לאישור"]}
             empty={jobRows.length ? undefined : "אין משרות עם פעילות באתר בטווח"}
             caption="Google Analytics לפי משרה"
@@ -482,7 +482,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                 {Object.keys(explorer.filters).length || explorer.job_scope ? <Badge>מסונן</Badge> : null}
               </p>
               {explorer.group_by.length ? (
-                <Table
+                <Table download={{ name: "Analytics דוח" }}
                   head={[...explorer.group_by.map((g) => GA_DIM_LABELS[g] ?? g), ...Object.keys(explorer.totals).map((m) => GA_METRIC_LABELS[m] ?? m)]}
                   empty={explorer.rows.length ? undefined : "אין נתונים"}
                   caption={`דוח ${GA_REPORT_LABELS[explorer.report] ?? explorer.report}`}

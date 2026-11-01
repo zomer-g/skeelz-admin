@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "@/components/Download";
 import type { ReactNode } from "react";
 import { fmtInt } from "@/lib/format";
 import { DISTRICT_OUTLINES, SUBDISTRICT_OUTLINES, type Outline } from "@/lib/geo/map";
@@ -53,6 +54,7 @@ export function RegionMap({
   selected = null,
   caption,
   table,
+  download,
 }: {
   /** Unique on the page: names the inset's clip path. */
   id: string;
@@ -63,6 +65,8 @@ export function RegionMap({
   selected?: number | null;
   caption: string;
   table: { head: string[]; rows: { code: number; cells: ReactNode[] }[] };
+  /** Offers the table and the map (as an image) for download under this name. Only where there is no personal data (docs/exports.md). */
+  download?: string;
 }) {
   const outlines = level === "district" ? DISTRICT_OUTLINES : SUBDISTRICT_OUTLINES;
   const byCode = new Map(values.map((v) => [v.code, v]));
@@ -96,7 +100,7 @@ export function RegionMap({
   };
 
   return (
-    <figure className="flex flex-col gap-3">
+    <figure data-export={download ? "" : undefined} className="flex flex-col gap-3">
       <div className="relative mx-auto w-full max-w-[460px]">
         <svg viewBox="-160 60 585 860" className="h-auto w-full" role="img" aria-label={caption}>
           <rect x={-160} y={60} width={585} height={860} fill="transparent" />
@@ -185,6 +189,7 @@ export function RegionMap({
           </table>
         </div>
       </details>
+      {download ? <Download name={download} image={{}} /> : null}
     </figure>
   );
 }

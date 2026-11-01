@@ -104,11 +104,11 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         </div>
 
         <Card level={3} title="כניסות לאורך זמן" className="mt-4">
-          <LineChart series={[{ label: "כניסות", color: "var(--color-accent)", points: series }]} unit="כניסות" markers={mailingMarkers} />
+          <LineChart download="כניסות לאתר" series={[{ label: "כניסות", color: "var(--color-accent)", points: series }]} unit="כניסות" markers={mailingMarkers} />
         </Card>
 
         <Card level={3} title={`דיוורים בטווח · ${fmtInt(mailings.length)}`} className="mt-4">
-          <Table head={["דיוור", "ערוץ", "יום שליחה", "כניסות", "פתיחות משרה", "לחיצות הגשה"]} empty={mailings.length === 0 ? "לא זוהו דיוורים בטווח" : undefined}>
+          <Table download={{ name: "דיוורים בטווח" }} head={["דיוור", "ערוץ", "יום שליחה", "כניסות", "פתיחות משרה", "לחיצות הגשה"]} empty={mailings.length === 0 ? "לא זוהו דיוורים בטווח" : undefined}>
             {mailings.slice(0, 10).map((c) => (
               <tr key={c.key}>
                 <td className="px-3 py-2">
@@ -132,14 +132,14 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         <SectionTitle hint="מאיפה מגיעים">ערוצים ומקורות</SectionTitle>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title="ערוצי הגעה">
-            <BarList
+            <BarList download
               caption="כניסות לפי ערוץ"
               showShareOf={m.sessions || undefined}
               items={m.channels.map((c) => ({ label: CHANNEL_LABELS[c.channel] ? `${CHANNEL_LABELS[c.channel]} (${c.channel})` : c.channel, value: c.sessions }))}
             />
           </Card>
           <Card level={3} title="מקורות מובילים">
-            <Table head={["מקור / אמצעי", "כניסות", "חדשים", "מעורבות"]} empty={m.sources.length === 0 ? "אין נתונים" : undefined}>
+            <Table download={{ name: "מקורות מובילים" }} head={["מקור / אמצעי", "כניסות", "חדשים", "מעורבות"]} empty={m.sources.length === 0 ? "אין נתונים" : undefined}>
               {m.sources.map((s) => (
                 <tr key={`${s.source}/${s.medium}`}>
                   <td className="px-3 py-2" dir="ltr">
@@ -168,7 +168,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         </div>
 
         <Card level={3} title="הגשות לאורך זמן · Salesforce מול Analytics" className="mt-4">
-          <LineChart
+          <LineChart download="הגשות מול אישורים והשמות"
             unit="הגשות"
             markers={mailingMarkers}
             series={[
@@ -183,7 +183,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         </Card>
 
         <Card level={3} title="מועמדים לפי Account ב-Salesforce" className="mt-4">
-          <Table head={["Account", "מועמדים", "נוספו בטווח", "הגישו בטווח", "שיעור מגישים"]} empty={m.candidateAccounts.length === 0 ? "לא נמצאו Accounts של מועמדים" : undefined}>
+          <Table download={{ name: "מועמדים לפי Account ב-Salesforce" }} head={["Account", "מועמדים", "נוספו בטווח", "הגישו בטווח", "שיעור מגישים"]} empty={m.candidateAccounts.length === 0 ? "לא נמצאו Accounts של מועמדים" : undefined}>
             {m.candidateAccounts.map((a) => (
               <tr key={a.account}>
                 <td className="px-3 py-2 font-medium">{a.account}</td>
@@ -226,7 +226,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title="משפך האתר">
-            <BarList
+            <BarList download
               caption="משפך האתר"
               showShareOf={m.sessions || undefined}
               items={[
@@ -245,7 +245,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
             </p>
           </Card>
           <Card level={3} title="הרשמה לאתר">
-            <BarList
+            <BarList download
               caption="משפך ההרשמה"
               showShareOf={ev(SITE_EVENTS.signUpFirst) || undefined}
               items={[
@@ -262,7 +262,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title="חיפוש וסינון">
-            <BarList
+            <BarList download
               caption="שימוש בחיפוש וסינון"
               items={[
                 { label: "חיפוש", value: ev(SITE_EVENTS.search) },
@@ -272,7 +272,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
             />
           </Card>
           <Card level={3} title="דפים מובילים">
-            <Table head={["דף", "צפיות"]}>
+            <Table download={{ name: "דפים מובילים" }} head={["דף", "צפיות"]}>
               <tr>
                 <td className="px-3 py-2">
                   דפי משרות{paidOnly ? " בתשלום" : ""} <span className="text-xs text-muted">({fmtInt(m.jobPages.jobs)} משרות)</span>

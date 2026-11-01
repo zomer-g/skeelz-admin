@@ -72,7 +72,7 @@ export function ApplicationPipeline({ m, basis, callsAvailable }: { m: Candidate
           <Meter label='שלחו קו"ח מתוך אלה שהתבקשו' part={m.cvReceived} whole={m.requestedCv} partLabel="שלחו" restLabel="לא שלחו (עדיין)" />
         </Card>
         <Card level={3} title={`נדחו על ידינו · ${fmtInt(m.rejectedByUs)}`} className="lg:col-span-2">
-          <BarList caption="נדחו על ידינו לפי סיבת הדחייה" items={m.rejectReasons.map((r) => ({ label: r.reason, value: r.count }))} />
+          <BarList download caption="נדחו על ידינו לפי סיבת הדחייה" items={m.rejectReasons.map((r) => ({ label: r.reason, value: r.count }))} />
           <p className="mt-3 text-xs text-muted">הגשה עם כמה סיבות נספרת בכל אחת מהן.</p>
         </Card>
       </div>
@@ -114,7 +114,7 @@ export function ApplicationPipeline({ m, basis, callsAvailable }: { m: Candidate
 
       <SectionTitle hint={basis === "application" ? "ההגשות שנוצרו בטווח" : "האירועים שקרו בטווח"}>משפך ההגשות</SectionTitle>
       <Card>
-        <BarList caption="משפך ההגשות" items={funnel} showShareOf={m.applications || undefined} />
+        <BarList download caption="משפך ההגשות" items={funnel} showShareOf={m.applications || undefined} />
       </Card>
 
       <SectionTitle hint={`נשלחו קו"ח לפני יותר מ-${WAITING_DAYS} ימים ואין עדיין תגובה · בכל ההגשות, לא רק בטווח`}>ממתינים לתגובת מעסיק</SectionTitle>

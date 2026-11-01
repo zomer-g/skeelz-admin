@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Children, cloneElement, isValidElement, type ReactElement, type ReactNode } from "react";
+import { Download } from "./Download";
 import { Explained } from "./Explained";
 
 type ButtonVariant = "primary" | "secondary" | "quiet" | "danger";
@@ -131,6 +132,7 @@ export function Table({
   empty,
   caption,
   sort,
+  download,
 }: {
   head: readonly HeadCell[];
   children: ReactNode;
@@ -138,8 +140,13 @@ export function Table({
   caption?: string;
   /** Makes the columns that carry a `sort` key into sorting links. */
   sort?: TableSort;
+  /**
+   * Offers the table as CSV / Excel. Only for tables with no personal data (docs/exports.md): candidates' and
+   * employees' details never. `list` + `query` download the whole filtered list from the server, not the page.
+   */
+  download?: { name: string; list?: string; query?: string };
 }) {
-  return (
+  const table = (
     // `relative` keeps visually-hidden text (absolutely positioned) inside the scroll box instead of widening the page.
     <div className="table-cards relative overflow-x-auto" tabIndex={0} role={caption ? "region" : undefined} aria-label={caption}>
       {sort ? <SortBar head={head} sort={sort} /> : null}
@@ -167,6 +174,13 @@ export function Table({
         <tbody className="divide-y divide-line">{labelCells(children, head)}</tbody>
       </table>
       {empty ? <p className="px-3 py-6 text-center text-muted">{empty}</p> : null}
+    </div>
+  );
+  if (!download) return table;
+  return (
+    <div data-export className="flex flex-col gap-2">
+      <Download name={download.name} list={download.list} query={download.query} />
+      {table}
     </div>
   );
 }
@@ -228,6 +242,19 @@ function SortLink({ label, column, sort, active }: { label: string; column: stri
         {active ? `ממוין ${sort.dirLabel(column, sort.dir)} · מיון ${sort.dirLabel(column, next!)}` : `מיון לפי ${label}`}
       </span>
     </Link>
+  );
+}
+
+/**
+ * Download buttons for a table (or SVG chart) inside `children` that is not a `Table`: same rules as `Table`'s
+ * `download` — only where there is no personal data (docs/exports.md).
+ */
+export function Exportable({ name, image, children, className }: { name: string; image?: boolean; children: ReactNode; className?: string }) {
+  return (
+    <div data-export className={`flex flex-col gap-2 ${className ?? ""}`}>
+      {children}
+      <Download name={name} image={image ? {} : undefined} />
+    </div>
   );
 }
 

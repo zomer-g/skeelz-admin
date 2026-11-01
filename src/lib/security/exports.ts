@@ -7,7 +7,8 @@ import { raiseAlert } from "./files";
 
 /**
  * How many people's details one person may take out of the system in a day (Israel time): the
- * copy buttons on /candidates and /cvs hand over emails or phones in bulk, and the MCP tools
+ * copy buttons on /candidates and /cvs hand over emails or phones in bulk, the payments download names the
+ * hired candidates, and the MCP tools
  * that list people (and API keys with people:read, under their issuer) return names, emails
  * and phones a page at a time. Each is logged with how
  * many people it returned, and the day's total is counted from those log entries, like the file
@@ -18,7 +19,7 @@ import { raiseAlert } from "./files";
 export const EXPORT_LIMITS = { daily: 10_000, alertAt: 5_000, grant: 10_000 } as const;
 
 /** The log entries that carry people out, each with `details.count`. */
-export const EXPORT_ACTIONS = ["candidates.contacts_copied", "cvs.contacts_copied", "emails.contacts_copied", "mcp.people_listed", "api.people_listed"] as const;
+export const EXPORT_ACTIONS = ["candidates.contacts_copied", "cvs.contacts_copied", "emails.contacts_copied", "payments.exported", "mcp.people_listed", "api.people_listed"] as const;
 export const MCP_PEOPLE_LISTED = "mcp.people_listed";
 /** An API answer with `include=people`, counted under the key's issuer (lib/api/people.ts). */
 export const API_PEOPLE_LISTED = "api.people_listed";
@@ -110,7 +111,7 @@ export async function loadExportUsageToday(): Promise<ExportUsageRow[]> {
     await getDb().execute<{ email: string; exported: number; screen: number; mcp: number; api: number; refused: number; extra: number }>(sql`
       SELECT a.actor AS email,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action IN ${EXPORT_ACTIONS}), 0)::int AS exported,
-             coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action IN ('candidates.contacts_copied', 'cvs.contacts_copied', 'emails.contacts_copied')), 0)::int AS screen,
+             coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action IN ('candidates.contacts_copied', 'cvs.contacts_copied', 'emails.contacts_copied', 'payments.exported')), 0)::int AS screen,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action = ${MCP_PEOPLE_LISTED}), 0)::int AS mcp,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action = ${API_PEOPLE_LISTED}), 0)::int AS api,
              count(*) FILTER (WHERE a.action = ${EXPORT_REFUSED})::int AS refused,

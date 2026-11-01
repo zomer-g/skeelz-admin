@@ -4,8 +4,9 @@ import { Pager, SearchForm } from "@/components/entities/Search";
 import { Badge, Card, PageHeader, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
-import { COMPANY_SORTS, searchCompanies, type CompanyFilters } from "@/lib/entities/companies";
-import { choice, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
+import { COMPANY_SORTS, companyFilters, searchCompanies } from "@/lib/entities/companies";
+import { PAGE_SIZE, pageParam, type SearchParams } from "@/lib/entities/search";
+import { listQuery } from "@/lib/export/query";
 import { sortParam, tableSort } from "@/lib/entities/sort";
 import { fmtDate, fmtInt } from "@/lib/format";
 
@@ -20,12 +21,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
   const auth = await pageAuth("viewer", viewPath(ACTION, search, KEYS));
   if (!auth.ok) return auth.render;
 
-  const filters: CompanyFilters = {
-    q: param(search, "q"),
-    location: param(search, "location"),
-    paid: choice(search, "paid", ["paid"] as const),
-    all: param(search, "all") === "1",
-  };
+  const filters = companyFilters(search);
   const page = pageParam(search);
   const sort = sortParam(search, COMPANY_SORTS, "active");
   const { rows, total, withoutActive } = await searchCompanies(filters, { page, sort });
@@ -63,6 +59,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
             "מיקומים",
           ]}
           sort={tableSort(COMPANY_SORTS, sort, ACTION, values)}
+          download={{ name: "מעסיקים", list: "companies", query: listQuery({ ...values, sort: sort.key, dir: sort.dir }) }}
           empty={rows.length === 0 ? "לא נמצאו מעסיקים" : undefined}
         >
           {rows.map((c) => (

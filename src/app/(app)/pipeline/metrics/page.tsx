@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ApplicationPipeline, SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
-import { Card } from "@/components/ui";
+import { Card, Exportable } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { formatDay, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtInt, fmtRelative } from "@/lib/format";
@@ -94,36 +94,38 @@ export default async function MetricsPage({ searchParams }: { searchParams: Prom
         level={3}
         title={basis === "event" ? `סטטוסים · ${fmtInt(statuses.total)} הגשות שהסטטוס שלהן השתנה בטווח` : `סטטוסים · ${fmtInt(statuses.total)} הגשות שנוצרו בטווח`}
       >
-        <div className="relative overflow-x-auto">
-          <table className="w-full text-start text-sm">
-            <caption className="sr-only">הגשות לפי סטטוס</caption>
-            <thead>
-              <tr className="border-b border-line text-muted">
-                <th scope="col" className="px-3 py-2 text-start font-medium">
-                  סטטוס
-                </th>
-                <th scope="col" className="px-3 py-2 text-start font-medium">
-                  {basis === "event" ? "עברו אליו בטווח" : "נמצאות בו כרגע"}
-                </th>
-                <th scope="col" className="px-3 py-2 text-start font-medium">
-                  {basis === "event" ? "מהן עדיין בו" : "עברו בו (גם אם המשיכו)"}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {statuses.rows.map((s) => (
-                <tr key={s.status} className="border-b border-line/60">
-                  <th scope="row" className="px-3 py-2 text-start font-medium">
-                    {s.status}
+        <Exportable name="הגשות לפי סטטוס">
+          <div className="relative overflow-x-auto">
+            <table className="w-full text-start text-sm">
+              <caption className="sr-only">הגשות לפי סטטוס</caption>
+              <thead>
+                <tr className="border-b border-line text-muted">
+                  <th scope="col" className="px-3 py-2 text-start font-medium">
+                    סטטוס
                   </th>
-                  <td className="px-3 py-2 font-bold tabular-nums">{fmtInt(basis === "event" ? s.entered : s.current)}</td>
-                  <td className="px-3 py-2 tabular-nums">{fmtInt(basis === "event" ? s.current : s.entered)}</td>
+                  <th scope="col" className="px-3 py-2 text-start font-medium">
+                    {basis === "event" ? "עברו אליו בטווח" : "נמצאות בו כרגע"}
+                  </th>
+                  <th scope="col" className="px-3 py-2 text-start font-medium">
+                    {basis === "event" ? "מהן עדיין בו" : "עברו בו (גם אם המשיכו)"}
+                  </th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {statuses.rows.length === 0 ? <p className="py-4 text-center text-sm text-muted">אין הגשות בטווח ובמסננים</p> : null}
-        </div>
+              </thead>
+              <tbody>
+                {statuses.rows.map((s) => (
+                  <tr key={s.status} className="border-b border-line/60">
+                    <th scope="row" className="px-3 py-2 text-start font-medium">
+                      {s.status}
+                    </th>
+                    <td className="px-3 py-2 font-bold tabular-nums">{fmtInt(basis === "event" ? s.entered : s.current)}</td>
+                    <td className="px-3 py-2 tabular-nums">{fmtInt(basis === "event" ? s.current : s.entered)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {statuses.rows.length === 0 ? <p className="py-4 text-center text-sm text-muted">אין הגשות בטווח ובמסננים</p> : null}
+          </div>
+        </Exportable>
         <ul className="mt-3 flex flex-col gap-1 text-xs text-muted">
           {basis === "event" ? (
             <li>הגשה נספרת בכל סטטוס שעברה אליו בטווח (או שנוצרה בו בטווח), לפי היסטוריית הסטטוסים. &quot;מהן עדיין בו&quot;: הסטטוס שלהן עכשיו.</li>

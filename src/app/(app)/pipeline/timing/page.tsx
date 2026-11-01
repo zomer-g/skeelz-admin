@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { Histogram } from "@/components/dashboard/Histogram";
-import { Card, StatCard, smallFieldClass } from "@/components/ui";
+import { Card, Exportable, smallFieldClass, StatCard } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { EXPLAIN } from "@/lib/dashboard/explain";
 import { formatDay, rangeQuery, viewPath } from "@/lib/dashboard/params";
@@ -119,7 +119,7 @@ function TimingSection({ timing, color }: { timing: EventTiming; color: string }
       <SectionTitle hint={`כמה זמן מיום ההגשה עד ש${timing.label === "התקבלו לעבודה" ? "המועמד התקבל לעבודה" : 'קורות החיים נשלחו למעסיק'}`}>{timing.label}</SectionTitle>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_16rem]">
         <Card level={3} title={`${fmtInt(timing.reached)} הגשות הגיעו לשלב, לפי שבוע מיום ההגשה`}>
-          <Histogram
+          <Histogram download
             bins={timing.bins.map((b, i) => ({
               tick: i < WEEKS ? String(i + 1) : `${WEEKS}+`,
               label: b.toDay === null ? `${b.label} (יום ${b.fromDay} ואילך)` : `${b.label} (ימים ${b.fromDay}–${b.toDay - 1})`,
@@ -168,36 +168,38 @@ function ForecastCard({ f, n }: { f: Forecast; n: number }) {
 function ForecastTable({ forecasts }: { forecasts: Forecast[] }) {
   const weeks = forecasts[0]?.byWeek.length ?? 0;
   return (
-    <div className="relative overflow-x-auto">
-      <table className="w-full text-start text-sm">
-        <caption className="sr-only">כמה צפויים להגיע לכל שלב עד סוף כל שבוע</caption>
-        <thead>
-          <tr className="border-b border-line text-muted">
-            <th scope="col" className="px-3 py-2 text-start font-medium">
-              עד סוף
-            </th>
-            {forecasts.map((f) => (
-              <th key={f.key} scope="col" className="px-3 py-2 text-start font-medium">
-                {FORECAST_LABEL[f.key]} (מצטבר)
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {Array.from({ length: weeks }, (_, w) => (
-            <tr key={w} className="border-b border-line/60">
-              <th scope="row" className="px-3 py-2 text-start font-normal">
-                {w < WEEKS ? `שבוע ${w + 1}` : `אחרי ${WEEKS} שבועות`}
+    <Exportable name="צפי קמפיין לפי שבוע">
+        <div className="relative overflow-x-auto">
+        <table className="w-full text-start text-sm">
+          <caption className="sr-only">כמה צפויים להגיע לכל שלב עד סוף כל שבוע</caption>
+          <thead>
+            <tr className="border-b border-line text-muted">
+              <th scope="col" className="px-3 py-2 text-start font-medium">
+                עד סוף
               </th>
               {forecasts.map((f) => (
-                <td key={f.key} className="px-3 py-2 tabular-nums">
-                  {f.rate === null ? "—" : about(f.byWeek[w]!)}
-                </td>
+                <th key={f.key} scope="col" className="px-3 py-2 text-start font-medium">
+                  {FORECAST_LABEL[f.key]} (מצטבר)
+                </th>
               ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {Array.from({ length: weeks }, (_, w) => (
+              <tr key={w} className="border-b border-line/60">
+                <th scope="row" className="px-3 py-2 text-start font-normal">
+                  {w < WEEKS ? `שבוע ${w + 1}` : `אחרי ${WEEKS} שבועות`}
+                </th>
+                {forecasts.map((f) => (
+                  <td key={f.key} className="px-3 py-2 tabular-nums">
+                    {f.rate === null ? "—" : about(f.byWeek[w]!)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        </div>
+    </Exportable>
   );
 }

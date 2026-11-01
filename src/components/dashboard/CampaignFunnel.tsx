@@ -49,7 +49,7 @@ export function CampaignFunnel({
       <Card level={3} title={`המשפך: ${title}`}>
         {rows.length ? (
           <>
-            <BarList items={items} caption={`המשפך של ${title}`} />
+            <BarList download items={items} caption={`המשפך של ${title}`} />
             {selected ? (
               <p className="mt-3 text-sm">
                 <Link href={hrefFor(null)} scroll={false} className="font-medium text-accent-dark underline underline-offset-4">

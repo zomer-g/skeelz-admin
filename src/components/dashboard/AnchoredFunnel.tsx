@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Download } from "@/components/Download";
 import { fmtDecimal, fmtInt } from "@/lib/format";
 import type { FunnelResult, StageKey, StageRow } from "@/lib/metrics/funnel";
 
@@ -45,7 +46,16 @@ function Bar({ row, max, color, next }: { row: StageRow; max: number; color: str
  * thousands of visits. Rows below the anchor follow the same cases and split
  * into moved on / in progress / stuck / closed; rows above it are context.
  */
-export function AnchoredFunnel({ funnel, anchorHrefs }: { funnel: FunnelResult; anchorHrefs: Partial<Record<StageKey, string>> }) {
+export function AnchoredFunnel({
+  funnel,
+  anchorHrefs,
+  download,
+}: {
+  funnel: FunnelResult;
+  anchorHrefs: Partial<Record<StageKey, string>>;
+  /** Offers the table for download under this name. Only where there is no personal data (docs/exports.md). */
+  download?: string;
+}) {
   const ga = funnel.rows.filter((r) => r.source === "ga");
   const sf = funnel.rows.filter((r) => r.source === "sf");
   const maxGa = Math.max(1, ...ga.map((r) => r.count));
@@ -131,7 +141,7 @@ export function AnchoredFunnel({ funnel, anchorHrefs }: { funnel: FunnelResult; 
   };
 
   return (
-    <figure className="flex flex-col gap-4">
+    <figure data-export={download ? "" : undefined} className="flex flex-col gap-4">
       {ga.length ? (
         <div>
           <p className="mb-2 text-sm font-bold text-muted">באתר · Google Analytics</p>
@@ -182,6 +192,7 @@ export function AnchoredFunnel({ funnel, anchorHrefs }: { funnel: FunnelResult; 
           </table>
         </div>
       </details>
+      {download ? <Download name={download} /> : null}
     </figure>
   );
 }

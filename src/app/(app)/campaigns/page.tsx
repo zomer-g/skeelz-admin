@@ -62,7 +62,7 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
         </div>
 
         <Card title={`קמפיינים · ${fmtInt(campaigns.length)}`} className="mt-8">
-          <Table
+          <Table download={{ name: "קמפיינים" }}
             head={["קמפיין", "ערוץ", "יום שליחה", "כניסות", "מעורבות", "פתיחות משרה", "לחיצות הגשה", "משרות מקושרות", "SMOOV"]}
             empty={campaigns.length === 0 ? "אין קמפיינים בטווח" : undefined}
           >

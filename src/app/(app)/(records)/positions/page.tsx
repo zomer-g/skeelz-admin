@@ -6,10 +6,11 @@ import { Badge, Card, PageHeader, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
 import { JOB_STATUS_LABELS, jobStatusLabel } from "@/lib/entities/companies";
-import { JOB_STATUS_VALUES, POSITION_SORTS, searchPositions, type PositionFilters } from "@/lib/entities/positions";
-import { choice, dayParam, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
+import { POSITION_SORTS, positionFilters, searchPositions } from "@/lib/entities/positions";
+import { PAGE_SIZE, pageParam, type SearchParams } from "@/lib/entities/search";
+import { listQuery } from "@/lib/export/query";
 import { sortParam, tableSort } from "@/lib/entities/sort";
-import { AREA_VALUES, areaOptions, NAPA_VALUES, napaOptions, placeText } from "@/lib/geo/filters";
+import { areaOptions, napaOptions, placeText } from "@/lib/geo/filters";
 import { fmtDate, fmtInt } from "@/lib/format";
 import { SKILLS } from "@/lib/skills";
 
@@ -24,16 +25,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
   const auth = await pageAuth("viewer", viewPath(ACTION, search, KEYS));
   if (!auth.ok) return auth.render;
 
-  const filters: PositionFilters = {
-    q: param(search, "q"),
-    status: choice(search, "status", JOB_STATUS_VALUES),
-    paid: choice(search, "paid", ["paid", "free"] as const),
-    area: choice(search, "area", AREA_VALUES),
-    napa: choice(search, "napa", NAPA_VALUES),
-    skill: choice(search, "skill", SKILLS.map((s) => s.label)),
-    fromDay: dayParam(search, "from"),
-    toDay: dayParam(search, "to"),
-  };
+  const filters = positionFilters(search);
   const page = pageParam(search);
   const sort = sortParam(search, POSITION_SORTS, "created");
   const { rows, total } = await searchPositions(filters, { page, sort });
@@ -83,6 +75,7 @@ export default async function PositionsPage({ searchParams }: { searchParams: Pr
             { label: "נפתחה", sort: "created" },
           ]}
           sort={tableSort(POSITION_SORTS, sort, ACTION, values)}
+          download={{ name: "משרות", list: "positions", query: listQuery({ ...values, sort: sort.key, dir: sort.dir }) }}
           empty={rows.length === 0 ? "לא נמצאו משרות" : undefined}
         >
           {rows.map((j) => (

@@ -1,3 +1,4 @@
+import { Download } from "@/components/Download";
 import { fmtInt, fmtPercent } from "@/lib/format";
 
 export interface HistogramBin {
@@ -12,12 +13,25 @@ export interface HistogramBin {
  * Columns from a shared baseline, one per bin, the value over each and the share of the total in
  * its tooltip; data ends rounded (4px), a 2px gap between columns. The table view holds every bin.
  */
-export function Histogram({ bins, caption, axis, color = "var(--color-accent)" }: { bins: HistogramBin[]; caption: string; axis: string; color?: string }) {
+export function Histogram({
+  bins,
+  caption,
+  axis,
+  color = "var(--color-accent)",
+  download,
+}: {
+  bins: HistogramBin[];
+  caption: string;
+  axis: string;
+  color?: string;
+  /** Offers the table for download under this name (`true`: the caption). Only where there is no personal data (docs/exports.md). */
+  download?: string | boolean;
+}) {
   const total = bins.reduce((t, b) => t + b.value, 0);
   if (!total) return <p className="py-8 text-center text-sm text-muted">אין נתונים בטווח הזה</p>;
   const max = Math.max(...bins.map((b) => b.value));
   return (
-    <figure className="flex flex-col gap-2">
+    <figure data-export={download ? "" : undefined} className="flex flex-col gap-2">
       {/* Time runs left to right, as on the other charts. */}
       <div dir="ltr" className="flex h-48 items-end gap-[2px] border-b border-line" role="list" aria-label={caption}>
         {bins.map((b) => (
@@ -76,6 +90,7 @@ export function Histogram({ bins, caption, axis, color = "var(--color-accent)" }
           </tbody>
         </table>
       </details>
+      {download ? <Download name={download === true ? caption : download} /> : null}
     </figure>
   );
 }

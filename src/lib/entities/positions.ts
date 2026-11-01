@@ -7,7 +7,8 @@ import { jobPlaceSql } from "@/lib/metrics/geo";
 import { jobPaidSql } from "@/lib/metrics/paid";
 import { skillNames, SKILLS } from "@/lib/skills";
 import { JOB_STATUS_LABELS } from "./companies";
-import { asDate, containsPattern, dayBounds, isTrue, num, PAGE_SIZE, run, str } from "./search";
+import { AREA_VALUES, NAPA_VALUES } from "@/lib/geo/filters";
+import { asDate, choice, containsPattern, dayBounds, dayParam, isTrue, num, PAGE_SIZE, param, run, str, type SearchParams } from "./search";
 import { orderBy, type Sort, type SortColumn } from "./sort";
 
 /**
@@ -29,6 +30,20 @@ export interface PositionFilters {
   skill: string;
   fromDay: string;
   toDay: string;
+}
+
+/** The list's filters as the URL carries them, read here so the page and its download agree. */
+export function positionFilters(search: SearchParams): PositionFilters {
+  return {
+    q: param(search, "q"),
+    status: choice(search, "status", JOB_STATUS_VALUES),
+    paid: choice(search, "paid", ["paid", "free"] as const),
+    area: choice(search, "area", AREA_VALUES),
+    napa: choice(search, "napa", NAPA_VALUES),
+    skill: choice(search, "skill", SKILLS.map((s) => s.label)),
+    fromDay: dayParam(search, "from"),
+    toDay: dayParam(search, "to"),
+  };
 }
 
 export interface PositionRow {

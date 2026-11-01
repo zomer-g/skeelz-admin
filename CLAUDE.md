@@ -119,7 +119,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   **Copying contact details:** `/candidates` hands over the emails or phones behind the *whole* filter (not the page) through
   `/api/candidates/contacts` + `CopyContacts` — `candidateFilters()` parses the URL once for both the page and that route, each
   value appears once (phones compared by digits), it stops at 5,000, and every copy writes `candidates.contacts_copied` with the
-  filter and the count. **Daily export budget** (`src/lib/security/exports.ts`): those counts, `cvs.contacts_copied` and
+  filter and the count. **Daily export budget** (`src/lib/security/exports.ts`): those counts, `cvs.contacts_copied`, `payments.exported` and
   `mcp.people_listed` (every MCP tool that returns people declares `people(result)`) and `api.people_listed` (API keys with
   `people:read`, under the issuer) are summed per user per Israel day:
   10,000 a day, admin alert at 5,000, past it a copy is cut then refused and a tool call refused, until an admin grants
@@ -156,6 +156,13 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   The record pages' timeline (`loadFullCaseTimeline`) adds, live from Salesforce and never mirrored, the case's Chatter
   posts, case comments and email texts; the mirror keeps email metadata only. Task/Event descriptions come from the mirror.
   Anything interpolated into SOQL must pass `isSfId` first.
+- **Downloads** (`docs/exports.md`, `src/lib/export/`): a table or chart offers CSV / XLSX (and PNG for SVG charts: `LineChart`,
+  `RegionMap`) only when marked — `Table` / `BarList` / `Histogram` / `AnchoredFunnel` / `LineChart` / `RegionMap` / `PlaceMapCard`
+  `download`, or `Exportable` around any other table; never on candidates' or employees' (`/staff`) data or admin screens. Employer
+  details are not personal data here. Record lists download whole by their filter from `/api/lists/[list]/export` (`LIST_EXPORTS`:
+  positions, companies, leads, payments — each page and the route share `xFilters()`); payments names candidates, so it is logged as
+  `payments.exported` and counts in the daily export budget. Every download is logged (`report.exported`, `logExport`). Files are
+  built by hand (no library): CSV with BOM, RTL xlsx, formula-like text prefixed with `'`.
 - **Places and skills** (`docs/geo-and-skills.md`): regions are CBS districts (מחוז) and sub-districts (נפה), resolved from
   `citySymbol_cambium__c` (CBS locality code) then the city name (`src/lib/geo/localities.ts`, SQL via `GEO_CTES` + `geoPlaceSql`);
   map outlines in `src/lib/geo/map.ts`, drawn by `RegionMap`. Skills are Mongo ids on jobs (`PSkills_cambium__c`) and candidates

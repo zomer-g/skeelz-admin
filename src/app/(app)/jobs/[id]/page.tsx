@@ -148,7 +148,7 @@ export default async function JobPage({
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card title="באתר">
             {key ? (
-              <BarList
+              <BarList download
                 caption="משפך המשרה באתר"
                 showShareOf={ga.opens || undefined}
                 items={[
@@ -163,7 +163,7 @@ export default async function JobPage({
             )}
           </Card>
           <Card title="תהליך ההגשה">
-            <BarList
+            <BarList download
               caption="משפך תהליך ההגשה"
               showShareOf={funnel.applications || undefined}
               items={[
@@ -180,19 +180,19 @@ export default async function JobPage({
 
         {key ? (
           <Card title="פתיחות המשרה לאורך זמן" className="mt-4">
-            <LineChart series={[{ label: "פתיחות משרה", color: "var(--color-accent)", points: series }]} unit="פתיחות משרה" />
+            <LineChart download="פתיחות המשרה לפי יום" series={[{ label: "פתיחות משרה", color: "var(--color-accent)", points: series }]} unit="פתיחות משרה" />
           </Card>
         ) : null}
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card title="סטטוס נוכחי של ההגשות">
-            <BarList
+            <BarList download
               caption="הגשות לפי סטטוס נוכחי"
               items={[...statuses.entries()].sort((a, b) => b[1] - a[1]).map(([label, value]) => ({ label, value }))}
             />
           </Card>
           <Card title="כל האירועים באתר">
-            <Table head={["אירוע", "כמות"]} empty={events.length === 0 ? "אין אירועים בטווח" : undefined}>
+            <Table download={{ name: "אירועי המשרה באתר" }} head={["אירוע", "כמות"]} empty={events.length === 0 ? "אין אירועים בטווח" : undefined}>
               {events.map((e) => (
                 <tr key={e.event}>
                   <td className="px-3 py-2" dir="ltr">

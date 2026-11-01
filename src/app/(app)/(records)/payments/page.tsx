@@ -4,9 +4,10 @@ import { SearchForm } from "@/components/entities/Search";
 import { Badge, Card, NewTabNote, PageHeader, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { israelDay, viewPath } from "@/lib/dashboard/params";
-import { AUTO_SUBJECT, loadPaymentStatuses, loadPayments, PAYMENTS_SINCE, type PaymentFilters, type PaymentRow } from "@/lib/entities/payments";
-import { choice, param, type SearchParams } from "@/lib/entities/search";
-import { fieldSorts, sortParam, sortRows, tableSort, type SortField } from "@/lib/entities/sort";
+import { AUTO_SUBJECT, loadPaymentStatuses, loadPayments, PAYMENT_SORT_FIELDS, PAYMENT_SORTS, paymentFilters, PAYMENTS_SINCE } from "@/lib/entities/payments";
+import { type SearchParams } from "@/lib/entities/search";
+import { listQuery } from "@/lib/export/query";
+import { sortParam, sortRows, tableSort } from "@/lib/entities/sort";
 import { fmtInt } from "@/lib/format";
 
 export const metadata: Metadata = { title: "מעקב תשלומים" };
@@ -26,23 +27,6 @@ function daysBetween(a: string, b: string): number {
 }
 
 /** The columns the list can be sorted by; the newest start date first, as the Salesforce view has it. */
-const SORT_FIELDS: readonly SortField<PaymentRow>[] = [
-  { key: "start", kind: "date", value: (r) => r.startDate },
-  { key: "candidate", kind: "text", value: (r) => r.candidateName },
-  { key: "paid", kind: "number", value: (r) => r.paid },
-  { key: "case", kind: "text", value: (r) => r.caseNumber },
-  { key: "subject", kind: "text", value: (r) => r.subject },
-  { key: "company", kind: "text", value: (r) => r.company },
-  { key: "contact", kind: "text", value: (r) => r.employerContact },
-  { key: "invoice", kind: "date", value: (r) => r.invoiceDate },
-  { key: "percent", kind: "number", value: (r) => r.salaryPercent },
-  { key: "collection", kind: "number", value: (r) => r.collection },
-  { key: "commission", kind: "number", value: (r) => r.commission },
-  { key: "cstatus", kind: "text", value: (r) => r.candidateStatus },
-  { key: "pstatus", kind: "text", value: (r) => r.projectStatus },
-  { key: "due", kind: "date", value: (r) => r.paymentDate },
-];
-const PAYMENT_SORTS = fieldSorts(SORT_FIELDS);
 
 /**
  * Payment tracking: the placements the company invoices for, as in the
@@ -53,15 +37,11 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const auth = await pageAuth("viewer", viewPath(ACTION, search, KEYS));
   if (!auth.ok) return auth.render;
 
-  const filters: PaymentFilters = {
-    q: param(search, "q"),
-    paid: choice(search, "paid", ["yes", "no"] as const),
-    candidateStatus: param(search, "cstatus"),
-  };
+  const filters = paymentFilters(search);
   const sort = sortParam(search, PAYMENT_SORTS, "start");
   const values: Record<string, string> = { q: filters.q, paid: filters.paid, cstatus: filters.candidateStatus };
   const [loaded, statuses] = await Promise.all([loadPayments(filters), loadPaymentStatuses()]);
-  const rows = sortRows(loaded, SORT_FIELDS, sort);
+  const rows = sortRows(loaded, PAYMENT_SORT_FIELDS, sort);
 
   const today = israelDay();
   const sfBase = process.env.SF_LOGIN_URL?.replace(/\/+$/, "");
@@ -98,6 +78,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
         <Table
           caption="מעקב תשלומים"
           sort={tableSort(PAYMENT_SORTS, sort, ACTION, values)}
+          download={{ name: "מעקב תשלומים", list: "payments", query: listQuery({ ...values, sort: sort.key, dir: sort.dir }) }}
           head={[
             { label: "מועמד", sort: "candidate" },
             { label: "שולם", sort: "paid" },

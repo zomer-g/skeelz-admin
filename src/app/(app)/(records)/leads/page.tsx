@@ -6,6 +6,7 @@ import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
 import { LEAD_SORTS, loadLeadFilterOptions, searchLeads, type LeadFilters } from "@/lib/entities/leads";
 import { dayParam, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
+import { listQuery } from "@/lib/export/query";
 import { sortParam, tableSort } from "@/lib/entities/sort";
 import { fmtDate, fmtInt } from "@/lib/format";
 
@@ -58,6 +59,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: Promis
             { label: "שינוי סטטוס אחרון", sort: "changed" },
           ]}
           sort={tableSort(LEAD_SORTS, sort, ACTION, values)}
+          download={{ name: "לידי מעסיקים", list: "leads", query: listQuery({ ...values, sort: sort.key, dir: sort.dir }) }}
           empty={rows.length === 0 ? "לא נמצאו לידים" : undefined}
         >
           {rows.map((l) => (

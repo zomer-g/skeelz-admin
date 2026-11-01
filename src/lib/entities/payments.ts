@@ -1,7 +1,8 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { RECORD_TYPES, STATUS } from "@/lib/metrics/candidates";
-import { containsPattern } from "./search";
+import { choice, containsPattern, param, type SearchParams } from "./search";
+import { fieldSorts, type SortField } from "./sort";
 
 /**
  * Payment tracking: the placements the company invoices for. Mirrors the
@@ -132,3 +133,30 @@ export async function loadPaymentStatuses(): Promise<string[]> {
      ORDER BY 1`);
   return result.rows.map((r) => String(r.s));
 }
+
+/** The list's filters as the URL carries them, read here so the page and its download agree. */
+export function paymentFilters(search: SearchParams): PaymentFilters {
+  return {
+    q: param(search, "q"),
+    paid: choice(search, "paid", ["yes", "no"] as const),
+    candidateStatus: param(search, "cstatus"),
+  };
+}
+
+export const PAYMENT_SORT_FIELDS: readonly SortField<PaymentRow>[] = [
+  { key: "start", kind: "date", value: (r) => r.startDate },
+  { key: "candidate", kind: "text", value: (r) => r.candidateName },
+  { key: "paid", kind: "number", value: (r) => r.paid },
+  { key: "case", kind: "text", value: (r) => r.caseNumber },
+  { key: "subject", kind: "text", value: (r) => r.subject },
+  { key: "company", kind: "text", value: (r) => r.company },
+  { key: "contact", kind: "text", value: (r) => r.employerContact },
+  { key: "invoice", kind: "date", value: (r) => r.invoiceDate },
+  { key: "percent", kind: "number", value: (r) => r.salaryPercent },
+  { key: "collection", kind: "number", value: (r) => r.collection },
+  { key: "commission", kind: "number", value: (r) => r.commission },
+  { key: "cstatus", kind: "text", value: (r) => r.candidateStatus },
+  { key: "pstatus", kind: "text", value: (r) => r.projectStatus },
+  { key: "due", kind: "date", value: (r) => r.paymentDate },
+];
+export const PAYMENT_SORTS = fieldSorts(PAYMENT_SORT_FIELDS);

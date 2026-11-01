@@ -5,7 +5,7 @@ import { jobPaidSql } from "@/lib/metrics/paid";
 import { districtName, districtOf, subdistrictName } from "@/lib/geo/map";
 import { PLACE_KIND_LABELS, resolvePlace } from "@/lib/geo/localities";
 import { skillNames } from "@/lib/skills";
-import { ageInDays, asDate, dayOf, containsPattern, htmlToText, isSfId, isTrue, num, PAGE_SIZE, run, str } from "./search";
+import { ageInDays, asDate, choice, dayOf, containsPattern, htmlToText, isSfId, isTrue, num, PAGE_SIZE, param, run, str, type SearchParams } from "./search";
 import { orderBy, type Sort, type SortColumn } from "./sort";
 
 /**
@@ -86,6 +86,16 @@ export interface CompanyFilters {
   all: boolean;
   paid: "paid" | "";
   location: string;
+}
+
+/** The list's filters as the URL carries them, read here so the page and its download agree. */
+export function companyFilters(search: SearchParams): CompanyFilters {
+  return {
+    q: param(search, "q"),
+    location: param(search, "location"),
+    paid: choice(search, "paid", ["paid"] as const),
+    all: param(search, "all") === "1",
+  };
 }
 
 export interface CompanyRow {

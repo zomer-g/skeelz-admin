@@ -20,6 +20,7 @@ export function PlaceMapCard({
   extra,
   regionHref,
   note,
+  download,
 }: {
   id: string;
   title: string;
@@ -31,6 +32,8 @@ export function PlaceMapCard({
   extra?: { label: string; facts: PlaceFact[] };
   regionHref: (code: number, level: Level) => string;
   note?: string;
+  /** Offers the map (as an image) and its tables for download. Only where there is no personal data (docs/exports.md). */
+  download?: boolean;
 }) {
   const counts = countByRegion(facts, level);
   const extraCounts = extra ? countByRegion(extra.facts, level) : null;
@@ -49,6 +52,7 @@ export function PlaceMapCard({
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <RegionMap
+          download={download ? title : undefined}
           id={id}
           level={level}
           caption={`${title} לפי ${level === "district" ? "מחוז" : "נפה"}`}
@@ -71,6 +75,7 @@ export function PlaceMapCard({
           <div>
             <h4 className="mb-3 text-sm font-bold">{level === "district" ? "המחוזות" : "הנפות"} הגדולים</h4>
             <BarList
+              download={download}
               caption={`${unit} לפי ${level === "district" ? "מחוז" : "נפה"}`}
               items={[...regions]
                 .sort((a, b) => (counts.get(b.code) ?? 0) - (counts.get(a.code) ?? 0))

@@ -47,6 +47,8 @@ const ACTION_LABELS: Record<string, string> = {
   "candidates.contacts_copied": "העתקת פרטי קשר של מועמדים",
   "cvs.contacts_copied": "העתקת פרטי קשר מרשימת קורות החיים",
   "emails.contacts_copied": "העתקת פרטי קשר מרשימת כתובות הדוא״ל",
+  "report.exported": "הורדת טבלה, רשימה או גרף",
+  "payments.exported": "הורדת רשימת מעקב תשלומים",
   "text.updated": "עדכון טקסט",
   "text.restored": "שחזור גרסת טקסט",
   "preview.started": "צפייה בהרשאה נמוכה",

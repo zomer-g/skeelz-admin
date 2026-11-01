@@ -134,7 +134,7 @@ export default async function CampaignPage({
       </div>
 
       <Card title="כניסות מהקמפיין לאורך זמן" className="mt-4">
-        <LineChart
+        <LineChart download="כניסות מהקמפיין"
           series={[{ label: "כניסות מהקמפיין", color: "var(--color-accent)", points: series }]}
           unit="כניסות"
           markers={[{ day: summary.sendDay, label: `יום השליחה · ${campaignLabel(summary)}` }]}
@@ -145,7 +145,7 @@ export default async function CampaignPage({
         <p className="mb-3 text-sm text-muted">
           {IMPACT_DAYS} הימים שמיום השליחה ({formatDay(summary.sendDay)}–{formatDay(afterTo)}) מול {IMPACT_DAYS} הימים שלפניו. פתיחות ולחיצות מכל התנועה לאתר, לא רק מהקמפיין.
         </p>
-        <Table
+        <Table download={{ name: "משרות מקושרות לקמפיין" }}
           head={["משרה", "כניסות מהקמפיין לדף המשרה", "פתיחות משרה", "לחיצות הגשה", "הגשות", ""]}
           empty={impacts.length === 0 ? "עדיין לא קושרו משרות לקמפיין" : undefined}
         >
@@ -184,7 +184,7 @@ export default async function CampaignPage({
       </Card>
 
       <Card title="דפי נחיתה מהקמפיין" tone="accent-light" className="mt-4">
-        <Table head={["דף", "כניסות", ""]} empty={landing.length === 0 ? "אין נתונים" : undefined}>
+        <Table download={{ name: "דפי נחיתה מהקמפיין" }} head={["דף", "כניסות", ""]} empty={landing.length === 0 ? "אין נתונים" : undefined}>
           {landing.map((l) => {
             const job = l.siteJobKey ? jobByKey.get(l.siteJobKey) : undefined;
             return (

@@ -136,14 +136,14 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
         </div>
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title="שלבי הפנייה · הלידים שנכנסו בטווח">
-            <BarList caption="לידים לפי השלבים שהגיעו אליהם" items={pipeline} showShareOf={m.newLeads || undefined} />
+            <BarList download caption="לידים לפי השלבים שהגיעו אליהם" items={pipeline} showShareOf={m.newLeads || undefined} />
             <p className="mt-3 text-xs text-muted">
               ליד נספר בכל שלב שהגיע אליו, לפי היסטוריית &quot;סטטוס מעסיק&quot;. שלב אחרי החתימה (פורסמו משרות, אין משרות פתוחות, חוזה נסגר) נחשב גם כחתימה וגם
               כחוזה שנשלח.
             </p>
           </Card>
           <Card level={3} title="תוצאות וסטטוס נוכחי">
-            <BarList
+            <BarList download
               caption="לידים שנכנסו בטווח והגיעו לתוצאה אחרת"
               items={[
                 { label: "לפנות בהמשך", value: m.stages.later },
@@ -154,7 +154,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
               ]}
             />
             <p className="mb-2 mt-5 text-sm font-medium text-muted">הסטטוס כרגע · כל המעסיקים עם סטטוס, נכון להיום</p>
-            <BarList caption="מעסיקים לפי סטטוס מעסיק נוכחי" items={m.currentStatus.map((s) => ({ label: s.status, value: s.count }))} />
+            <BarList download caption="מעסיקים לפי סטטוס מעסיק נוכחי" items={m.currentStatus.map((s) => ({ label: s.status, value: s.count }))} />
           </Card>
         </div>
 
@@ -187,7 +187,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
         </div>
 
         <Card level={3} title={`חוזים שלא יצאה מהם משרה · ${fmtInt(noJob.length)}`} className="mt-4">
-          <Table
+          <Table download={{ name: "חוזים שלא יצאה מהם משרה" }}
             head={["מעסיק", "נחתם", "ימים מאז החתימה", "סטטוס מעסיק", "מטפל", ""]}
             empty={noJob.length === 0 ? (employers.length ? "לכל המעסיקים שחתמו נפתחה משרה" : "עדיין אין מעסיקים שחתמו") : undefined}
           >
@@ -209,7 +209,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
         </Card>
 
         <Card level={3} title={`מעסיקים בלי מגע מעל ${NO_TOUCH_DAYS} יום · ${fmtInt(noTouch.length)}`} tone="accent-light" className="mt-4">
-          <Table
+          <Table download={{ name: "מעסיקים בלי מגע" }}
             head={["מעסיק", "נחתם", "מגע אחרון", "ימים בלי מגע", "משרות פעילות", "מטפל", ""]}
             empty={noTouch.length === 0 ? (employers.length ? `עם כל המעסיקים היה מגע ב-${NO_TOUCH_DAYS} הימים האחרונים` : "עדיין אין מעסיקים שחתמו") : undefined}
           >
@@ -244,7 +244,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
           />
         </div>
         <Card level={3} title={`משרות פעילות לפי אימות אחרון · ${fmtInt(activeJobs.length)}`} className="mt-4">
-          <Table head={["משרה", "נפתחה", "אימות אחרון", "ימים מאז", ""]} empty={activeJobs.length === 0 ? "אין משרות פעילות" : undefined}>
+          <Table download={{ name: "משרות פעילות לפי אימות אחרון" }} head={["משרה", "נפתחה", "אימות אחרון", "ימים מאז", ""]} empty={activeJobs.length === 0 ? "אין משרות פעילות" : undefined}>
             {activeJobs.slice(0, MAX_ROWS).map(({ position: p, last }) => {
               const days = daysSince(last?.at ?? null, now);
               return (

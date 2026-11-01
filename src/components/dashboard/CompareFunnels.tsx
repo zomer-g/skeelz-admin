@@ -1,5 +1,5 @@
 import { AnchoredFunnel } from "@/components/dashboard/AnchoredFunnel";
-import { Card } from "@/components/ui";
+import { Card, Exportable } from "@/components/ui";
 import { formatDay } from "@/lib/dashboard/params";
 import { fmtDecimal, fmtInt } from "@/lib/format";
 import type { FunnelResult, StageKey } from "@/lib/metrics/funnel";
@@ -46,63 +46,65 @@ export function CompareFunnels({ a, b, anchorHrefs }: { a: Period; b: Period; an
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card level={3} title={`תקופה א׳ · ${rangeLabel(a)}`}>
-          <AnchoredFunnel funnel={a.funnel} anchorHrefs={anchorHrefs} />
+          <AnchoredFunnel funnel={a.funnel} anchorHrefs={anchorHrefs} download={`משפך תקופה א ${rangeLabel(a)}`} />
         </Card>
         <Card level={3} title={`תקופה ב׳ · ${rangeLabel(b)}`} tone="accent-light">
-          <AnchoredFunnel funnel={b.funnel} anchorHrefs={anchorHrefs} />
+          <AnchoredFunnel funnel={b.funnel} anchorHrefs={anchorHrefs} download={`משפך תקופה ב ${rangeLabel(b)}`} />
         </Card>
       </div>
 
       <Card level={3} title="ההבדלים בין התקופות">
-        <div className="relative overflow-x-auto">
-          <table className="w-full min-w-[40rem] text-start text-sm">
-            <caption className="sr-only">
-              השוואת המשפך: תקופה א׳ {rangeLabel(a)} מול תקופה ב׳ {rangeLabel(b)}
-            </caption>
-            <thead>
-              <tr className="border-b-2 border-line text-muted">
-                <th scope="col" className="px-3 py-2 text-start font-medium">שלב</th>
-                <th scope="col" className="px-3 py-2 text-start font-medium">תקופה א׳</th>
-                <th scope="col" className="px-3 py-2 text-start font-medium">מהעוגן</th>
-                <th scope="col" className="px-3 py-2 text-start font-medium">תקופה ב׳</th>
-                <th scope="col" className="px-3 py-2 text-start font-medium">מהעוגן</th>
-                <th scope="col" className="px-3 py-2 text-start font-medium">שינוי (א׳ מול ב׳)</th>
-              </tr>
-            </thead>
-            <tbody>
-              {a.funnel.rows.map((ra) => {
-                const rb = rowsB.get(ra.key);
-                return (
-                  <tr key={ra.key} className={`border-b border-line/60 ${ra.isAnchor ? "bg-accent/10 font-medium" : ""}`}>
-                    <th scope="row" className="px-3 py-2 text-start font-normal">
-                      {ra.label}
-                      {ra.isAnchor ? <span className="ms-2 text-xs text-muted">(עוגן)</span> : null}
-                    </th>
-                    <td className="px-3 py-2 tabular-nums">{fmtInt(ra.count)}</td>
-                    <td className="px-3 py-2 tabular-nums text-muted">{pct(ra.ofAnchor)}</td>
-                    <td className="px-3 py-2 tabular-nums">{rb ? fmtInt(rb.count) : "—"}</td>
-                    <td className="px-3 py-2 tabular-nums text-muted">{pct(rb?.ofAnchor ?? null)}</td>
-                    <td className="px-3 py-2">{rb ? <Change a={ra.count} b={rb.count} /> : "—"}</td>
-                  </tr>
-                );
-              })}
-              {summary.map(([label, va, vb]) => (
-                <tr key={label} className="border-b border-line/60">
-                  <th scope="row" className="px-3 py-2 text-start font-normal text-muted">
-                    {label}
-                  </th>
-                  <td className="px-3 py-2 tabular-nums">{fmtInt(va)}</td>
-                  <td />
-                  <td className="px-3 py-2 tabular-nums">{fmtInt(vb)}</td>
-                  <td />
-                  <td className="px-3 py-2">
-                    <Change a={va} b={vb} />
-                  </td>
+        <Exportable name="השוואת תקופות">
+          <div className="relative overflow-x-auto">
+            <table className="w-full min-w-[40rem] text-start text-sm">
+              <caption className="sr-only">
+                השוואת המשפך: תקופה א׳ {rangeLabel(a)} מול תקופה ב׳ {rangeLabel(b)}
+              </caption>
+              <thead>
+                <tr className="border-b-2 border-line text-muted">
+                  <th scope="col" className="px-3 py-2 text-start font-medium">שלב</th>
+                  <th scope="col" className="px-3 py-2 text-start font-medium">תקופה א׳</th>
+                  <th scope="col" className="px-3 py-2 text-start font-medium">מהעוגן</th>
+                  <th scope="col" className="px-3 py-2 text-start font-medium">תקופה ב׳</th>
+                  <th scope="col" className="px-3 py-2 text-start font-medium">מהעוגן</th>
+                  <th scope="col" className="px-3 py-2 text-start font-medium">שינוי (א׳ מול ב׳)</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {a.funnel.rows.map((ra) => {
+                  const rb = rowsB.get(ra.key);
+                  return (
+                    <tr key={ra.key} className={`border-b border-line/60 ${ra.isAnchor ? "bg-accent/10 font-medium" : ""}`}>
+                      <th scope="row" className="px-3 py-2 text-start font-normal">
+                        {ra.label}
+                        {ra.isAnchor ? <span className="ms-2 text-xs text-muted">(עוגן)</span> : null}
+                      </th>
+                      <td className="px-3 py-2 tabular-nums">{fmtInt(ra.count)}</td>
+                      <td className="px-3 py-2 tabular-nums text-muted">{pct(ra.ofAnchor)}</td>
+                      <td className="px-3 py-2 tabular-nums">{rb ? fmtInt(rb.count) : "—"}</td>
+                      <td className="px-3 py-2 tabular-nums text-muted">{pct(rb?.ofAnchor ?? null)}</td>
+                      <td className="px-3 py-2">{rb ? <Change a={ra.count} b={rb.count} /> : "—"}</td>
+                    </tr>
+                  );
+                })}
+                {summary.map(([label, va, vb]) => (
+                  <tr key={label} className="border-b border-line/60">
+                    <th scope="row" className="px-3 py-2 text-start font-normal text-muted">
+                      {label}
+                    </th>
+                    <td className="px-3 py-2 tabular-nums">{fmtInt(va)}</td>
+                    <td />
+                    <td className="px-3 py-2 tabular-nums">{fmtInt(vb)}</td>
+                    <td />
+                    <td className="px-3 py-2">
+                      <Change a={va} b={vb} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Exportable>
         <ul className="mt-3 flex flex-col gap-1 text-xs text-muted">
           <li>שתי התקופות עם אותו עוגן ואותם מסננים. &quot;מהעוגן&quot;: איזה חלק מהמקרים בעוגן הגיע לשלב.</li>
           <li>

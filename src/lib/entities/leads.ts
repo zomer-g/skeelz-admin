@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { asDate, containsPattern, dayBounds, isSfId, num, PAGE_SIZE, run, str } from "./search";
+import { asDate, containsPattern, dayBounds, dayParam, isSfId, num, PAGE_SIZE, param, run, str, type SearchParams } from "./search";
 import { orderBy, type Sort, type SortColumn } from "./sort";
 
 /**
@@ -16,6 +16,20 @@ export interface LeadFilters {
   owner: string;
   fromDay: string;
   toDay: string;
+}
+
+/**
+ * The list's filters as the URL carries them, read here so the page and its download agree. A status or
+ * owner the leads don't have finds nothing, as on the page (which also offers only the existing ones).
+ */
+export function leadFilters(search: SearchParams): LeadFilters {
+  return {
+    q: param(search, "q"),
+    status: param(search, "status"),
+    owner: param(search, "owner"),
+    fromDay: dayParam(search, "from"),
+    toDay: dayParam(search, "to"),
+  };
 }
 
 export interface LeadRow {

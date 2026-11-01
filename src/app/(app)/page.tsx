@@ -150,7 +150,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
             {hasGa ? (
               <>
                 <p className="mb-3 text-sm font-medium text-muted">חשיפה · כל האתר</p>
-                <BarList
+                <BarList download
                   caption="חשיפה לאתר ולדפי המשרות"
                   items={[
                     { label: "כניסות לאתר", value: marketing.sessions, color: FUNNEL[0] },
@@ -160,7 +160,7 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
                 <p className="mb-3 mt-6 text-sm font-medium text-muted">מהגשה ועד השמה · האחוזים מתוך ההגשות</p>
               </>
             ) : null}
-            <BarList
+            <BarList download
               caption="מהגשה ועד השמה"
               showShareOf={pipeline.applications || undefined}
               items={[
@@ -215,10 +215,10 @@ export default async function SummaryPage({ searchParams }: { searchParams: Prom
               </div>
               <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <Card level={3} title="כניסות לאתר">
-                  <LineChart unit="כניסות" markers={markers} series={[{ label: "כניסות", color: "var(--color-accent)", points: days.map((day) => ({ day, value: marketing.dailySessions.get(day) ?? 0 })) }]} />
+                  <LineChart download="כניסות לאתר" unit="כניסות" markers={markers} series={[{ label: "כניסות", color: "var(--color-accent)", points: days.map((day) => ({ day, value: marketing.dailySessions.get(day) ?? 0 })) }]} />
                 </Card>
                 <Card level={3} title="הגשות והשמות">
-                  <LineChart
+                  <LineChart download="הגשות והשמות"
                     unit="הגשות"
                     markers={markers}
                     series={[

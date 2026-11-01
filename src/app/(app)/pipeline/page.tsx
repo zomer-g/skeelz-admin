@@ -5,7 +5,7 @@ import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { CompareFunnels } from "@/components/dashboard/CompareFunnels";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { PaidSplit } from "@/components/dashboard/PaidSplit";
-import { Badge, Card, smallFieldClass, StatCard, Table } from "@/components/ui";
+import { Badge, Card, Exportable, smallFieldClass, StatCard, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { EXPLAIN } from "@/lib/dashboard/explain";
 import { addDays, formatDay, israelMidnight, rangeQuery, viewPath } from "@/lib/dashboard/params";
@@ -164,7 +164,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
 
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         <Card level={3} title="המשפך" className="xl:col-span-2">
-          <AnchoredFunnel funnel={funnel} anchorHrefs={anchorHrefs} />
+          <AnchoredFunnel download="משפך ההגשות" funnel={funnel} anchorHrefs={anchorHrefs} />
           <ul className="mt-4 flex flex-col gap-1 text-xs text-muted">
             <li>
               מתחת לעוגן: אותם מקרים בדיוק, עד היום, גם אם התקדמו אחרי הטווח. מעליו: מה שקרה באותו טווח, לא בהכרח לאותם אנשים.
@@ -192,27 +192,29 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
             <p className="mt-3 text-xs text-muted">הפילוח למטה מראה לכל חברה, משרה או מטפל את המעבר החלש ביותר שלו.</p>
           </Card>
           <Card level={3} title="שיעורי השמה היסטוריים">
-            <table className="w-full text-start text-sm">
-              <caption className="sr-only">שיעור ההשמה לפי השלב שהמקרה הגיע אליו</caption>
-              <thead>
-                <tr className="border-b border-line text-muted">
-                  <th scope="col" className="py-1 text-start font-medium">הגיעו ל…</th>
-                  <th scope="col" className="py-1 text-start font-medium">התקבלו</th>
-                  <th scope="col" className="py-1 text-start font-medium">מתוך</th>
-                </tr>
-              </thead>
-              <tbody>
-                {funnel.rates.slice(0, -1).map((r) => (
-                  <tr key={r.stage} className="border-b border-line/60">
-                    <th scope="row" className="py-1 text-start font-normal">
-                      {STAGES.find((s) => s.key === r.stage)!.label}
-                    </th>
-                    <td className="py-1 tabular-nums">{r.rate == null ? "—" : `${fmtDecimal(r.rate * 100)}%`}</td>
-                    <td className="py-1 tabular-nums">{fmtInt(r.base)}</td>
+            <Exportable name="שיעורי השמה היסטוריים">
+              <table className="w-full text-start text-sm">
+                <caption className="sr-only">שיעור ההשמה לפי השלב שהמקרה הגיע אליו</caption>
+                <thead>
+                  <tr className="border-b border-line text-muted">
+                    <th scope="col" className="py-1 text-start font-medium">הגיעו ל…</th>
+                    <th scope="col" className="py-1 text-start font-medium">התקבלו</th>
+                    <th scope="col" className="py-1 text-start font-medium">מתוך</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {funnel.rates.slice(0, -1).map((r) => (
+                    <tr key={r.stage} className="border-b border-line/60">
+                      <th scope="row" className="py-1 text-start font-normal">
+                        {STAGES.find((s) => s.key === r.stage)!.label}
+                      </th>
+                      <td className="py-1 tabular-nums">{r.rate == null ? "—" : `${fmtDecimal(r.rate * 100)}%`}</td>
+                      <td className="py-1 tabular-nums">{fmtInt(r.base)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Exportable>
             <p className="mt-2 text-xs text-muted">
               מהגשות בנות 120 יום ומעלה ({params.scope === "paid" ? "בתשלום" : "כל המשרות"}, בלי שאר המסננים). מהם מחושב הפוטנציאל של המקרים שבתהליך.
             </p>
@@ -276,7 +278,7 @@ export default async function PipelinePage({ searchParams }: { searchParams: Pro
         ))}
       </nav>
       <Card level={3} title={`${dim.label} · ${fmtInt(breakdown.length)} קבוצות`}>
-        <Table
+        <Table download={{ name: "הגשות לפי קבוצה" }}
           caption={`המשפך לפי ${dim.label}`}
           head={[
             dim.label,

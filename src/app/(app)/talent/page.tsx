@@ -103,7 +103,7 @@ export default async function TalentPage({ searchParams }: { searchParams: Promi
         </div>
 
         <Card level={3} title="מועמדים לפי Account" className="mt-4">
-          <Table head={["Account", "מועמדים", "חדשים בטווח", "פעילים", "הגישו", 'עם קו"ח', "שיעור מגישים"]} empty={t.accounts.length === 0 ? "אין מועמדים" : undefined}>
+          <Table download={{ name: "מועמדים לפי Account" }} head={["Account", "מועמדים", "חדשים בטווח", "פעילים", "הגישו", 'עם קו"ח', "שיעור מגישים"]} empty={t.accounts.length === 0 ? "אין מועמדים" : undefined}>
             {t.accounts.map((a) => (
               <tr key={a.account}>
                 <td className="px-3 py-2 font-medium">{a.account === OTHER_ACCOUNT ? "מגישים מחוץ ל-Accounts של המועמדים" : a.account}</td>
@@ -119,7 +119,7 @@ export default async function TalentPage({ searchParams }: { searchParams: Promi
         </Card>
 
         <SectionTitle id="map" hint="איפה גרים המועמדים, לפי מחוזות ונפות של הלמ״ס">מועמדים על המפה</SectionTitle>
-        <PlaceMapCard
+        <PlaceMapCard download
           id="talent-map"
           title="מאגר המועמדים לפי אזור"
           unit="מועמדים"
@@ -138,7 +138,7 @@ export default async function TalentPage({ searchParams }: { searchParams: Promi
 
         <SectionTitle hint="לפי יום, עם ימי הדיוור">לאורך זמן</SectionTitle>
         <Card level={3} title="מועמדים חדשים ומגישים">
-          <LineChart
+          <LineChart download="מועמדים חדשים ומגישים"
             unit="מועמדים"
             markers={markers}
             series={[
@@ -151,10 +151,10 @@ export default async function TalentPage({ searchParams }: { searchParams: Promi
         <SectionTitle hint="המועמדים שהגישו בטווח">מי מגיש</SectionTitle>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title="לפי אזור באתר">
-            <BarList caption="מגישים לפי האזור שהאתר רושם" items={t.districts.map((d) => ({ label: d.district, value: d.count }))} showShareOf={t.applicants || undefined} />
+            <BarList download caption="מגישים לפי האזור שהאתר רושם" items={t.districts.map((d) => ({ label: d.district, value: d.count }))} showShareOf={t.applicants || undefined} />
           </Card>
           <Card level={3} title="כישורים נפוצים">
-            <BarList caption="כישורים נפוצים אצל המגישים" items={t.skills.map((s) => ({ label: s.skill, value: s.count }))} showShareOf={t.applicants || undefined} />
+            <BarList download caption="כישורים נפוצים אצל המגישים" items={t.skills.map((s) => ({ label: s.skill, value: s.count }))} showShareOf={t.applicants || undefined} />
             <p className="mt-3 text-xs text-muted">מתוך הכישורים שהמועמד סימן באתר. מועמד עם כמה כישורים נספר בכל אחד.</p>
           </Card>
         </div>

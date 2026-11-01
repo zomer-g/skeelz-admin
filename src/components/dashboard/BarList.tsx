@@ -1,3 +1,4 @@
+import { Download } from "@/components/Download";
 import { fmtInt, fmtPercent } from "@/lib/format";
 
 export interface BarItem {
@@ -16,13 +17,24 @@ export interface BarItem {
  * labelled and valued in text, so the tooltip only restates what is visible; the
  * table view is the accessible twin.
  */
-export function BarList({ items, caption, showShareOf }: { items: BarItem[]; caption: string; showShareOf?: number }) {
+export function BarList({
+  items,
+  caption,
+  showShareOf,
+  download,
+}: {
+  items: BarItem[];
+  caption: string;
+  showShareOf?: number;
+  /** Offers the table for download under this name (`true`: the caption). Only where there is no personal data (docs/exports.md). */
+  download?: string | boolean;
+}) {
   const max = Math.max(1, ...items.map((i) => i.value));
 
   if (!items.length) return <p className="py-4 text-center text-sm text-muted">אין נתונים בטווח הזה</p>;
 
   return (
-    <figure className="flex flex-col gap-3">
+    <figure data-export={download ? "" : undefined} className="flex flex-col gap-3">
       <ul className="flex flex-col gap-3" aria-label={caption}>
         {items.map((item) => {
           const share = showShareOf ? fmtPercent(item.value, showShareOf) : null;
@@ -74,6 +86,7 @@ export function BarList({ items, caption, showShareOf }: { items: BarItem[]; cap
           </tbody>
         </table>
       </details>
+      {download ? <Download name={download === true ? caption : download} /> : null}
     </figure>
   );
 }

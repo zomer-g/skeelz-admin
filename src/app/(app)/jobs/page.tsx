@@ -125,7 +125,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         </p>
 
         <SectionTitle id="map" hint="המשרות הפעילות באתר עכשיו, לפי מחוזות ונפות של הלמ״ס">משרות על המפה</SectionTitle>
-        <PlaceMapCard
+        <PlaceMapCard download
           id="jobs-map"
           title="משרות פעילות לפי אזור"
           unit="משרות פעילות"
@@ -157,7 +157,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
               מסומנות בכתר בלבד
             </Link>
           </nav>
-          <Table
+          <Table download={{ name: "משרות" }}
             head={["משרה", "נפתחה", "פתיחות", "לחיצות הגשה", "הגשות", "נשלחו", "ראיון", "התקבלו"]}
             empty={rows.length === 0 ? (markedOnly ? "אין משרות מסומנות בכתר בתצוגה הזו" : q ? "לא נמצאו משרות" : "אין משרות עם פעילות בטווח") : undefined}
           >
