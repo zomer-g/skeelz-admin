@@ -82,7 +82,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `/staff/windows` ("פעולות ביחידת זמן", in the `StaffNav` sub-nav): timesheet windows (`staff_time_entries`, source demo | sheet | api |
   manual, replaced per employee and source by `replaceTimeEntries`) against the `sf_task` rows created inside them; the attribution model
   (minutes since the previous action, capped at 45, the rest unassigned), the CV-request / employer / candidate categories and the demo
-  timesheet rules are pure functions in `src/lib/staff/windows.ts` (`windows.test.ts`). A real timesheet day hides that day's demo rows. monday also shows
+  timesheet rules are pure functions in `src/lib/staff/windows.ts` (`windows.test.ts`). A real timesheet day hides that day's demo rows. A timesheet rebuilt after the fact (no report handed in) is imported with "שחזור" ticked: source `manual` + `RECONSTRUCTED_NOTE`, shown with a "דוח שעות משוחזר" banner, never as reported; the import also takes a Salesforce user id as `who`. monday also shows
   on `/admin/integrations` (board check only) and `/admin/sync`. Employees don't see their own.
 - **Salesforce is read-only in phase 1.** The SF client must expose no write methods. Candidates/employer
   contacts = Contact, companies = Account, jobs/applications/leads = Case by RecordType.

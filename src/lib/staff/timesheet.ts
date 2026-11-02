@@ -25,6 +25,16 @@ import {
 /** שרית שביט's Salesforce user: the demo timesheet is made from her own tasks. */
 export const DEMO_SF_USER_ID = "0058d0000085h1lAAA";
 
+/**
+ * A timesheet rebuilt after the fact (e.g. from Salesforce activity when no report was handed in):
+ * stored as source 'manual' with this note, and flagged on screen as a reconstruction, never as a
+ * report the employee submitted.
+ */
+export const RECONSTRUCTED_NOTE = "שחזור מפעילות ב-Salesforce, לא דוח שהוגש";
+
+/** A Salesforce user id as people paste it (the file is lower-cased while parsing, so compared case-insensitively). */
+const SF_USER = /^005[a-z0-9]{12}([a-z0-9]{3})?$/;
+
 export interface NewTimeEntry {
   workDate: string;
   start: Date;
@@ -91,26 +101,34 @@ export interface SheetImportResult {
  * for each employee, the days the file lists replace that employee's 'sheet' rows of those days.
  * Unknown people are errors and nothing of theirs is kept.
  */
-export async function importTimesheet(text: string): Promise<SheetImportResult> {
+export async function importTimesheet(text: string, { reconstructed = false }: { reconstructed?: boolean } = {}): Promise<SheetImportResult> {
   const { rows, errors } = parseTimesheet(text);
   const whos = [...new Set(rows.map((r) => r.who))];
   const ids = whos.filter((w) => UUID.test(w));
+  const sfIds = whos.filter((w) => SF_USER.test(w));
   const known = whos.length
     ? await getDb()
-        .select({ id: users.id, email: users.email })
+        .select({ id: users.id, email: users.email, sfUserId: users.sfUserId })
         .from(users)
-        .where(or(inArray(users.email, whos), ids.length ? inArray(users.id, ids) : undefined))
+        .where(
+          or(
+            inArray(users.email, whos),
+            ids.length ? inArray(users.id, ids) : undefined,
+            sfIds.length ? inArray(sql`lower(${users.sfUserId})`, sfIds) : undefined,
+          ),
+        )
     : [];
   const byWho = new Map<string, string>();
   for (const u of known) {
     byWho.set(u.email.toLowerCase(), u.id);
     byWho.set(u.id.toLowerCase(), u.id);
+    if (u.sfUserId) byWho.set(u.sfUserId.toLowerCase(), u.id);
   }
   const perUser = new Map<string, typeof rows>();
   for (const r of rows) {
     const userId = byWho.get(r.who);
     if (!userId) {
-      errors.push({ line: r.line, message: `אין משתמש במערכת עם המייל או המזהה "${r.who}"` });
+      errors.push({ line: r.line, message: `אין משתמש במערכת עם המייל, המזהה או משתמש ה-Salesforce "${r.who}"` });
       continue;
     }
     perUser.set(userId, [...(perUser.get(userId) ?? []), r]);
@@ -120,7 +138,8 @@ export async function importTimesheet(text: string): Promise<SheetImportResult> 
   for (const [userId, list] of perUser) {
     const listDays = [...new Set(list.map((r) => r.workDate))];
     days += listDays.length;
-    stored += await replaceTimeEntries(userId, "sheet", list, listDays);
+    const entries = reconstructed ? list.map((r) => ({ ...r, note: RECONSTRUCTED_NOTE })) : list;
+    stored += await replaceTimeEntries(userId, reconstructed ? "manual" : "sheet", entries, listDays);
   }
   return { rows: stored, people: perUser.size, days, errors: errors.sort((a, b) => a.line - b.line) };
 }
@@ -134,6 +153,8 @@ export interface EmployeeWindows {
   sfLinked: boolean;
   /** Some windows shown are from the demo timesheet. */
   demo: boolean;
+  /** Some windows shown were reconstructed after the fact (RECONSTRUCTED_NOTE), not reported. */
+  reconstructed: boolean;
   summary: WindowsSummary;
 }
 
@@ -143,6 +164,8 @@ export interface WindowsDashboard {
   positions: Map<string, { title: string | null; caseNumber: string | null }>;
   /** Anybody in the range is on the demo timesheet. */
   demo: boolean;
+  /** Anybody in the range has a reconstructed timesheet. */
+  reconstructed: boolean;
 }
 
 /**
@@ -160,6 +183,7 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
       workDate: staffTimeEntries.workDate,
       start: staffTimeEntries.startAt,
       end: staffTimeEntries.endAt,
+      note: staffTimeEntries.note,
     })
     .from(staffTimeEntries)
     .where(and(gte(staffTimeEntries.workDate, fromDay), lte(staffTimeEntries.workDate, toDay)));
@@ -226,6 +250,7 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
       active: p.active,
       sfLinked: Boolean(p.sfUserId),
       demo: windows.some((w) => w.demo),
+      reconstructed: used.some((e) => e.userId === p.id && e.source === "manual" && e.note === RECONSTRUCTED_NOTE),
       summary: summarizeWindows(windows, actions),
     };
   });
@@ -241,5 +266,6 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
     employees,
     positions: new Map(positionRows.map((r) => [r.id, { title: r.title, caseNumber: r.case_number }])),
     demo: employees.some((e) => e.demo),
+    reconstructed: employees.some((e) => e.reconstructed),
   };
 }

@@ -68,6 +68,13 @@ export function SheetImport() {
         <span className="font-medium">או קובץ CSV</span>
         <input type="file" name="file" accept=".csv,.tsv,.txt,text/csv,text/plain" className="text-sm" />
       </label>
+      <label className="flex items-start gap-2 text-sm">
+        <input type="checkbox" name="reconstructed" className="mt-1" />
+        <span>
+          <span className="font-medium">שחזור, לא דוח שהוגש</span>
+          <span className="block text-muted">דוח שנבנה בדיעבד (למשל מהפעילות ב-Salesforce). נשמר כ&quot;ידני&quot; ומסומן במסך כשחזור.</span>
+        </span>
+      </label>
       <div>
         <button type="submit" disabled={pending} className={buttonClass("primary", "sm")}>
           {pending ? "קולט…" : "קליטת הדוח"}

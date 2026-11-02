@@ -39,8 +39,15 @@ export async function importSheet(_prev: TimesheetActionState, form: FormData): 
   const text = file instanceof File && file.size ? await file.text() : pasted;
   if (!text.trim()) return { ok: false, message: "לא הודבק טקסט ולא נבחר קובץ" };
   if (text.length > MAX_TEXT) return { ok: false, message: "הקובץ גדול מדי" };
-  const r = await importTimesheet(text);
-  await writeAudit(manager.email, "staff.timesheet_imported", "sheet", { rows: r.rows, people: r.people, days: r.days, errors: r.errors.length });
+  const reconstructed = form.get("reconstructed") === "on";
+  const r = await importTimesheet(text, { reconstructed });
+  await writeAudit(manager.email, "staff.timesheet_imported", reconstructed ? "manual" : "sheet", {
+    rows: r.rows,
+    people: r.people,
+    days: r.days,
+    errors: r.errors.length,
+    reconstructed,
+  });
   revalidatePath("/staff/windows");
   const errors = r.errors.slice(0, 50);
   if (!r.rows) return { ok: false, message: "לא נשמרה אף שורה", errors };

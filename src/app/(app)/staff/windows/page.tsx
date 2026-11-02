@@ -63,6 +63,15 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
               </p>
             </div>
           ) : null}
+          {data.reconstructed ? (
+            <div className="rounded-card border-2 border-hot bg-hot/15 px-5 py-4" role="note">
+              <p className="font-bold text-ink">דוח שעות משוחזר</p>
+              <p className="mt-1 text-sm text-ink">
+                דוח השעות של {data.employees.filter((e) => e.reconstructed).map(who).join(", ")} בטווח הזה נבנה בדיעבד מהפעילות שלהם ב-Salesforce, כי לא הוגש דוח. השעות
+                היומיות הן הערכה שתואמת את הפעילות ואת סך השעות החודשי, ולא דיווח של העובדים.
+              </p>
+            </div>
+          ) : null}
 
           <section aria-labelledby="totals" className="flex flex-col gap-4">
             <h2 id="totals" className="sr-only">
@@ -119,6 +128,12 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
                               <>
                                 {" "}
                                 <Badge tone="warning">דמו</Badge>
+                              </>
+                            ) : null}
+                            {e.reconstructed ? (
+                              <>
+                                {" "}
+                                <Badge tone="warning">שחזור</Badge>
                               </>
                             ) : null}
                           </td>
@@ -239,7 +254,7 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
               <div>
                 <h3 className="mb-2 font-bold">קליטת דוח אמיתי</h3>
                 <p className="mb-4 text-sm text-muted">
-                  שורה לכל חלון עבודה, ארבע עמודות מופרדות בפסיק, טאב או נקודה-פסיק: מייל העובד במערכת (או מזהה המשתמש), תאריך (2026-10-25 או 25.10.2026), משעה ועד שעה (09:00, שעון ישראל).
+                  שורה לכל חלון עבודה, ארבע עמודות מופרדות בפסיק, טאב או נקודה-פסיק: מייל העובד במערכת (או מזהה המשתמש, או מזהה משתמש ה-Salesforce שלו), תאריך (2026-10-25 או 25.10.2026), משעה ועד שעה (09:00, שעון ישראל).
                   שורת כותרת מדולגת. לכל עובד, הימים שבקובץ מחליפים את מה שנקלט קודם מדוח לאותם ימים, ויום שיש לו דוח אמיתי מתעלם מהדמו של אותו יום.
                 </p>
                 <SheetImport />
