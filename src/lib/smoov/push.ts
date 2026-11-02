@@ -86,9 +86,9 @@ export async function runSmoovPush(trigger: string): Promise<{ rows: number; not
 }
 
 /**
- * When SMOOV rejects a batch as a whole ("Schema is invalid") it does not say which field. Sends the
- * batch's first contact again, one field more each time, and logs the first field SMOOV refuses —
- * by name only. Each accepted step imports that contact, which the run was sending anyway.
+ * When SMOOV rejects the first contact ("Schema is invalid") it does not say which field. Sends that
+ * contact again, one field more each time, and logs the first field SMOOV refuses — by name only.
+ * Each accepted step imports that contact, which the run was sending anyway.
  */
 async function probeRejectedField(list: number, contact: SmoovBulkContact): Promise<void> {
   const steps: [string, SmoovBulkContact][] = [];
@@ -111,7 +111,7 @@ async function probeRejectedField(list: number, contact: SmoovBulkContact): Prom
       return;
     }
   }
-  console.error("[smoov-push] probe: the first contact alone is accepted; the batch fails for another contact or for its size");
+  console.error("[smoov-push] probe: every field is accepted one at a time; the full contact fails for another reason");
 }
 
 async function push(
@@ -134,13 +134,15 @@ async function push(
 
   const totals = { inserted: 0, updated: 0, invalids: 0, blacklisted: 0, quotaExceeded: 0 };
   progress.of = changed.length;
-  for (let i = 0; i < changed.length; i += BULK_IMPORT_MAX) {
-    const batch = changed.slice(i, i + BULK_IMPORT_MAX);
+  // One contact goes first, alone: only once SMOOV accepts it do the batches of 500 follow.
+  // The rest of the loop is the same import, so the first "batch" is that single contact.
+  for (let i = 0; i < changed.length; i = i === 0 ? 1 : i + BULK_IMPORT_MAX) {
+    const batch = changed.slice(i, i === 0 ? 1 : i + BULK_IMPORT_MAX);
     const { importReport } = await smoov.bulkImport(list, batch.map((b) => b.contact)).catch(async (err: unknown) => {
       // SMOOV's error text can echo the contacts; the sync log (shown at /admin/sync) gets the status only,
       // and the server log the reason with addresses and numbers masked.
-      console.error(`[smoov-push] batch ${i / BULK_IMPORT_MAX + 1}: ${redactSmoovError(err instanceof Error ? err.message : String(err))}`);
-      if (err instanceof SmoovError && err.status === 400) await probeRejectedField(list, batch[0]!.contact);
+      console.error(`[smoov-push] ${i === 0 ? "first contact" : `batch from ${i}`}: ${redactSmoovError(err instanceof Error ? err.message : String(err))}`);
+      if (i === 0 && err instanceof SmoovError && err.status === 400) await probeRejectedField(list, batch[0]!.contact);
       throw new Error(`SMOOV bulk import failed (HTTP ${err instanceof SmoovError ? err.status : "?"}) after ${i} of ${changed.length}`);
     });
     for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += Number(importReport?.[k] ?? 0);
