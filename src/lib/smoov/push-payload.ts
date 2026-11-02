@@ -92,6 +92,14 @@ export function contactHash(contact: SmoovBulkContact): string {
     .digest("hex");
 }
 
+/** SMOOV's error text with what could identify a person masked: addresses, and runs of digits that may be phones. */
+export function redactSmoovError(text: string): string {
+  return text
+    .replace(/[^\s"'<>,;:]+@[^\s"'<>,;:]+/g, "<email>")
+    .replace(/\+?\d[\d\s-]{6,}\d/g, "<digits>")
+    .slice(0, 1000);
+}
+
 /** A plain address check: SMOOV rejects malformed ones, and they would be retried every run. */
 export function isPlausibleEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { contactHash, isPlausibleEmail, resolveFieldKeys, smoovDate, toBulkContact, type PushCandidate } from "./push-payload";
+import { contactHash, isPlausibleEmail, redactSmoovError, resolveFieldKeys, smoovDate, toBulkContact, type PushCandidate } from "./push-payload";
 
 const FIELDS = [
   { key: "email", label: "אימייל", custom: false },
@@ -62,6 +62,13 @@ describe("SMOOV push payload", () => {
     const a = toBulkContact(base, KEYS);
     assert.equal(contactHash(a), contactHash(toBulkContact({ ...base }, KEYS)));
     assert.notEqual(contactHash(a), contactHash(toBulkContact({ ...base, hasCv: false }, KEYS)));
+  });
+
+  it("masks addresses and phone numbers in SMOOV's errors, keeping the reason", () => {
+    assert.equal(
+      redactSmoovError('SMOOV 400: {"contacts[3].email":"dana@example.com is invalid","cellPhone":"050-1234567","customFields[i69]":"bad date"}'),
+      'SMOOV 400: {"contacts[3].email":"<email> is invalid","cellPhone":"<digits>","customFields[i69]":"bad date"}',
+    );
   });
 
   it("filters out addresses SMOOV would reject", () => {

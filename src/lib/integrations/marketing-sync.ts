@@ -264,7 +264,7 @@ const SOURCES: {
   configured: () => boolean;
   /** For a source slower than the marketing cadence: skipped (and not recorded) until it is due. */
   due?: () => Promise<boolean>;
-  run: () => Promise<{ rows: number; note: string }>;
+  run: (trigger: string) => Promise<{ rows: number; note: string }>;
 }[] = [
   { source: "GA4", configured: ga4Configured, run: syncGa4 },
   { source: "GTM", configured: gtmConfigured, run: syncGtm },
@@ -285,7 +285,7 @@ export async function runMarketingSync(trigger: string): Promise<MarketingResult
     const [row] = await db.insert(syncRuns).values({ object: source, mode: "marketing", trigger }).returning({ id: syncRuns.id });
     await saveState(source, { lastStartedAt: new Date() });
     try {
-      const { rows, note } = await run();
+      const { rows, note } = await run(trigger);
       await saveState(source, { lastSuccessAt: new Date(), lastError: null });
       await db.update(syncRuns).set({ finishedAt: new Date(), upserted: rows, deleted: 0, error: note || null }).where(eq(syncRuns.id, row!.id));
       results.push({ source, rows, note, ms: Date.now() - started });

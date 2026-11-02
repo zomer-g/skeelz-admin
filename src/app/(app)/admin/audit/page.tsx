@@ -37,6 +37,8 @@ const ACTION_LABELS: Record<string, string> = {
   "integration.test": "בדיקת חיבור",
   "smoov.campaign_added": "קמפיין SMOOV נוסף למעקב",
   "smoov.campaign_removed": "קמפיין SMOOV הוסר ממעקב",
+  "smoov.contacts_pushed": "דחיפת מועמדים לרשימת SMOOV",
+  "smoov.push_failed": "דחיפת מועמדים ל-SMOOV נכשלה",
   "campaign.updated": "עדכון הגדרות קמפיין",
   "candidate.file_opened": "פתיחת קובץ של מועמד",
   "candidate.file_rate_limited": "פתיחת קובץ נחסמה (מגבלה יומית)",

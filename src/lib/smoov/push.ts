@@ -5,8 +5,9 @@ import { smoovPushed, syncState } from "@/lib/db/schema";
 import { CANDIDATES } from "@/lib/entities/candidates";
 import { asDate, isTrue, run, str } from "@/lib/entities/search";
 import { placeLabel } from "@/lib/geo/filters";
+import { safeErrorMessage } from "@/lib/log";
 import { BULK_IMPORT_MAX, smoov, smoovConfigured, SmoovError, type SmoovBulkContact } from "./client";
-import { contactHash, isPlausibleEmail, resolveFieldKeys, toBulkContact } from "./push-payload";
+import { contactHash, isPlausibleEmail, redactSmoovError, resolveFieldKeys, toBulkContact } from "./push-payload";
 
 /**
  * Fills the SMOOV list "מחפשי עבודה 2026" with every candidate who has an email
@@ -65,9 +66,29 @@ async function loadCandidates() {
   });
 }
 
-export async function runSmoovPush(): Promise<{ rows: number; note: string }> {
+/**
+ * Every push is written to the activity log — also one that sent nothing, and one that failed —
+ * under the person who asked for it at /admin/sync, or the sync worker when it ran on schedule.
+ */
+export async function runSmoovPush(trigger: string): Promise<{ rows: number; note: string }> {
   const list = listId();
   if (list === null) throw new Error("SMOOV_PUSH_LIST_ID is not set");
+  const actor = trigger.startsWith("manual:") ? trigger.slice("manual:".length) : "system:sync-worker";
+  const progress = { sent: 0, of: 0 };
+  try {
+    const result = await push(list, progress);
+    await writeAudit(actor, "smoov.contacts_pushed", String(list), { trigger, ...result.details });
+    return result;
+  } catch (err) {
+    await writeAudit(actor, "smoov.push_failed", String(list), { trigger, ...progress, error: safeErrorMessage(err).slice(0, 200) });
+    throw err;
+  }
+}
+
+async function push(
+  list: number,
+  progress: { sent: number; of: number },
+): Promise<{ rows: number; note: string; details: Record<string, number> }> {
   const db = getDb();
 
   const keys = resolveFieldKeys(await smoov.contactFields());
@@ -83,10 +104,13 @@ export async function runSmoovPush(): Promise<{ rows: number; note: string }> {
   }
 
   const totals = { inserted: 0, updated: 0, invalids: 0, blacklisted: 0, quotaExceeded: 0 };
+  progress.of = changed.length;
   for (let i = 0; i < changed.length; i += BULK_IMPORT_MAX) {
     const batch = changed.slice(i, i + BULK_IMPORT_MAX);
     const { importReport } = await smoov.bulkImport(list, batch.map((b) => b.contact)).catch((err: unknown) => {
-      // SMOOV's error text can echo the contacts; the sync log (shown at /admin/sync) gets the status only.
+      // SMOOV's error text can echo the contacts; the sync log (shown at /admin/sync) gets the status only,
+      // and the server log the reason with addresses and numbers masked.
+      console.error(`[smoov-push] batch ${i / BULK_IMPORT_MAX + 1}: ${redactSmoovError(err instanceof Error ? err.message : String(err))}`);
       throw new Error(`SMOOV bulk import failed (HTTP ${err instanceof SmoovError ? err.status : "?"}) after ${i} of ${changed.length}`);
     });
     for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += Number(importReport?.[k] ?? 0);
@@ -96,6 +120,7 @@ export async function runSmoovPush(): Promise<{ rows: number; note: string }> {
       .insert(smoovPushed)
       .values(batch.map((b) => ({ email: b.contact.email, hash: b.hash, pushedAt: now })))
       .onConflictDoUpdate({ target: smoovPushed.email, set: { hash: sql`excluded.hash`, pushedAt: now } });
+    progress.sent += batch.length;
   }
 
   // Addresses no longer among the candidates are forgotten here (so they are sent again if they come back), not removed in SMOOV.
@@ -107,11 +132,9 @@ export async function runSmoovPush(): Promise<{ rows: number; note: string }> {
     .insert(syncState)
     .values({ object: PUSH_OBJECT, rowCount: contacts.length })
     .onConflictDoUpdate({ target: syncState.object, set: { rowCount: contacts.length } });
-  if (changed.length) {
-    await writeAudit("system:sync-worker", "smoov.contacts_pushed", String(list), { sent: changed.length, ...totals });
-  }
   return {
     rows: changed.length,
+    details: { sent: changed.length, candidates: contacts.length, ...totals },
     note: `${changed.length}/${contacts.length} sent to list ${list}: ${totals.inserted} new, ${totals.updated} updated, ` +
       `${totals.blacklisted} unsubscribed/blacklisted, ${totals.invalids} invalid` +
       (candidates.length > contacts.length ? `; ${candidates.length - contacts.length} malformed addresses skipped` : ""),
