@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { contactHash, isPlausibleEmail, redactSmoovError, resolveFieldKeys, smoovDate, toBulkContact, type PushCandidate } from "./push-payload";
+import { contactHash, isPlausibleEmail, redactSmoovError, resolveFieldKeys, smoovCellPhone, smoovDate, toBulkContact, type PushCandidate } from "./push-payload";
 
 const FIELDS = [
   { key: "email", label: "אימייל", custom: false },
@@ -45,7 +45,7 @@ describe("SMOOV push payload", () => {
       email: "dana@example.com",
       firstName: "דנה",
       lastName: "כהן לוי",
-      cellPhone: "050-1234567",
+      cellPhone: "972501234567",
       customFields: { i65: "רמת גן", i66: "רמת גן", i67: "תל אביב", i68: true, i69: "02/03/2026 00:30" },
     });
   });
@@ -62,6 +62,17 @@ describe("SMOOV push payload", () => {
     const a = toBulkContact(base, KEYS);
     assert.equal(contactHash(a), contactHash(toBulkContact({ ...base }, KEYS)));
     assert.notEqual(contactHash(a), contactHash(toBulkContact({ ...base, hasCv: false }, KEYS)));
+  });
+
+  it("writes mobiles the way SMOOV's examples do, and leaves out anything else", () => {
+    assert.equal(smoovCellPhone("050-1234567"), "972501234567");
+    assert.equal(smoovCellPhone("+972 50 123 4567"), "972501234567");
+    assert.equal(smoovCellPhone("00972501234567"), "972501234567");
+    assert.equal(smoovCellPhone("501234567"), "972501234567");
+    assert.equal(smoovCellPhone("03-1234567"), null);
+    assert.equal(smoovCellPhone("050-1234567 / 052-7654321"), null);
+    assert.equal(smoovCellPhone("אין"), null);
+    assert.equal(smoovCellPhone(null), null);
   });
 
   it("masks addresses and phone numbers in SMOOV's errors, keeping the reason", () => {

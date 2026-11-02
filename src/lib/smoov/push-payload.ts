@@ -70,16 +70,31 @@ function names(c: PushCandidate): { firstName?: string; lastName?: string } {
   return at < 0 ? { firstName: full } : { firstName: full.slice(0, at), lastName: full.slice(at + 1).trim() };
 }
 
+/**
+ * An Israeli mobile in SMOOV's form, digits only with the country code ("972501234567", as the API's
+ * examples write it), or null. Numbers are typed by hand in Salesforce — dashes, spaces, +972, two
+ * numbers in one field — and anything that is not one clear mobile is left out rather than sent.
+ */
+export function smoovCellPhone(phone: string | null): string | null {
+  if (!phone) return null;
+  let d = phone.replace(/\D/g, "");
+  if (d.startsWith("00972")) d = d.slice(2);
+  if (/^05\d{8}$/.test(d)) d = `972${d.slice(1)}`;
+  if (/^5\d{8}$/.test(d)) d = `972${d}`;
+  return /^9725\d{8}$/.test(d) ? d : null;
+}
+
 export function toBulkContact(c: PushCandidate, keys: PushFieldKeys): SmoovBulkContact {
   const custom: Record<string, string | boolean> = { [keys.cv]: c.hasCv };
   if (c.city) custom[keys.city] = c.city;
   if (c.subdistrict) custom[keys.subdistrict] = c.subdistrict;
   if (c.district) custom[keys.district] = c.district;
   if (c.createdAt) custom[keys.createdAt] = smoovDate(c.createdAt);
+  const cellPhone = smoovCellPhone(c.phone);
   return {
     email: c.email,
     ...names(c),
-    ...(c.phone?.trim() ? { cellPhone: c.phone.trim() } : {}),
+    ...(cellPhone ? { cellPhone } : {}),
     customFields: custom,
   };
 }
