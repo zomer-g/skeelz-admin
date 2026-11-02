@@ -136,7 +136,7 @@ async function push(
   progress.of = changed.length;
   for (let i = 0; i < changed.length; i += BULK_IMPORT_MAX) {
     const batch = changed.slice(i, i + BULK_IMPORT_MAX);
-    const { importReport } = await smoov.bulkImport(list, batch.map((b) => b.contact)).catch((err: unknown) => {
+    const { importReport } = await smoov.bulkImport(list, batch.map((b) => b.contact)).catch(async (err: unknown) => {
       // SMOOV's error text can echo the contacts; the sync log (shown at /admin/sync) gets the status only,
       // and the server log the reason with addresses and numbers masked.
       console.error(`[smoov-push] batch ${i / BULK_IMPORT_MAX + 1}: ${redactSmoovError(err instanceof Error ? err.message : String(err))}`);
