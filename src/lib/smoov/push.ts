@@ -118,6 +118,7 @@ async function push(
   list: number,
   progress: { sent: number; of: number },
 ): Promise<{ rows: number; note: string; details: Record<string, number> }> {
+  const started = Date.now();
   const db = getDb();
 
   const keys = resolveFieldKeys(await smoov.contactFields());
@@ -176,7 +177,10 @@ async function push(
   // One contact goes first, alone: only once SMOOV accepts it do the batches of 500 follow.
   for (let i = 0; i < changed.length; i = i === 0 ? 1 : i + BULK_IMPORT_MAX) {
     const batch = changed.slice(i, i === 0 ? 1 : i + BULK_IMPORT_MAX);
+    const batchStarted = Date.now();
     await importSplitting(batch, i);
+    // How long SMOOV takes per batch: counts and times only, so a slow run can be told from a stuck one.
+    console.log(`[smoov-push] contacts ${i + 1}–${i + batch.length} of ${changed.length} in ${((Date.now() - batchStarted) / 1000).toFixed(1)}s`);
     if (i === 0 && totals.rejected) throw new Error("SMOOV refused the first contact (HTTP 400); no batch was sent");
     // Recorded batch by batch: a run that fails halfway resumes where it stopped. A refused contact is
     // recorded too, so it is not retried until its details change.
@@ -209,7 +213,8 @@ async function push(
   return {
     rows: changed.length,
     details: { sent: changed.length, candidates: contacts.length, ...totals },
-    note: `${changed.length}/${contacts.length} sent to list ${list}: ${totals.inserted} new, ${totals.updated} updated, ` +
+    note: `${changed.length}/${contacts.length} sent to list ${list} in ${Math.round((Date.now() - started) / 1000)}s: ` +
+      `${totals.inserted} new, ${totals.updated} updated, ` +
       `${totals.blacklisted} unsubscribed/blacklisted, ${totals.invalids} invalid, ${totals.rejected} refused (see server log)` +
       (candidates.length > contacts.length ? `; ${candidates.length - contacts.length} malformed addresses skipped` : ""),
   };
