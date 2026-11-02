@@ -86,8 +86,8 @@ export async function runSmoovPush(trigger: string): Promise<{ rows: number; not
 }
 
 /**
- * When SMOOV rejects the first contact ("Schema is invalid") it does not say which field. Sends that
- * contact again, one field more each time, and logs the first field SMOOV refuses — by name only.
+ * When SMOOV refuses a contact ("Schema is invalid") it does not say which field. Sends that contact
+ * again, one field more each time, and logs the first field SMOOV refuses — by name only.
  * Each accepted step imports that contact, which the run was sending anyway.
  */
 async function probeRejectedField(list: number, contact: SmoovBulkContact): Promise<void> {
@@ -136,21 +136,50 @@ async function push(
   const [state] = await db.select({ ok: syncState.lastSuccessAt }).from(syncState).where(eq(syncState.object, PUSH_OBJECT));
   if (!state?.ok) changed.splice(1);
 
-  const totals = { inserted: 0, updated: 0, invalids: 0, blacklisted: 0, quotaExceeded: 0 };
+  const totals = { inserted: 0, updated: 0, invalids: 0, blacklisted: 0, quotaExceeded: 0, rejected: 0 };
   progress.of = changed.length;
-  // One contact goes first, alone: only once SMOOV accepts it do the batches of 500 follow.
-  // The rest of the loop is the same import, so the first "batch" is that single contact.
-  for (let i = 0; i < changed.length; i = i === 0 ? 1 : i + BULK_IMPORT_MAX) {
-    const batch = changed.slice(i, i === 0 ? 1 : i + BULK_IMPORT_MAX);
-    const { importReport } = await smoov.bulkImport(list, batch.map((b) => b.contact)).catch(async (err: unknown) => {
+  let probed = false;
+
+  /**
+   * Imports a batch. SMOOV refuses a whole batch ("Schema is invalid") for one bad contact without
+   * naming it, so a refused batch is halved until the contact is alone; that contact is skipped (and,
+   * the first time in a run, probed field by field) and every other one goes through.
+   */
+  const importSplitting = async (items: typeof changed, at: number): Promise<void> => {
+    try {
+      const { importReport } = await smoov.bulkImport(list, items.map((b) => b.contact));
+      for (const k of ["inserted", "updated", "invalids", "blacklisted", "quotaExceeded"] as const) totals[k] += Number(importReport?.[k] ?? 0);
+    } catch (err) {
       // SMOOV's error text can echo the contacts; the sync log (shown at /admin/sync) gets the status only,
       // and the server log the reason with addresses and numbers masked.
-      console.error(`[smoov-push] ${i === 0 ? "first contact" : `batch from ${i}`}: ${redactSmoovError(err instanceof Error ? err.message : String(err))}`);
-      if (i === 0 && err instanceof SmoovError && err.status === 400) await probeRejectedField(list, batch[0]!.contact);
-      throw new Error(`SMOOV bulk import failed (HTTP ${err instanceof SmoovError ? err.status : "?"}) after ${i} of ${changed.length}`);
-    });
-    for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += Number(importReport?.[k] ?? 0);
-    // Recorded batch by batch: a run that fails halfway resumes where it stopped.
+      if (!(err instanceof SmoovError && err.status === 400)) {
+        console.error(`[smoov-push] batch from ${at}: ${redactSmoovError(err instanceof Error ? err.message : String(err))}`);
+        throw new Error(`SMOOV bulk import failed (HTTP ${err instanceof SmoovError ? err.status : "?"}) after ${progress.sent} of ${changed.length}`);
+      }
+      if (items.length > 1) {
+        const half = Math.ceil(items.length / 2);
+        await importSplitting(items.slice(0, half), at);
+        await importSplitting(items.slice(half), at + half);
+        return;
+      }
+      totals.rejected++;
+      console.error(`[smoov-push] contact #${at} refused: ${redactSmoovError(err.message)}`);
+      if (!probed) {
+        probed = true;
+        await probeRejectedField(list, items[0]!.contact);
+      }
+      // A run of refusals means something is wrong with every contact, not with one: stop.
+      if (totals.rejected > 50) throw new Error(`SMOOV refused more than 50 contacts (HTTP 400); stopped after ${progress.sent} of ${changed.length}`);
+    }
+  };
+
+  // One contact goes first, alone: only once SMOOV accepts it do the batches of 500 follow.
+  for (let i = 0; i < changed.length; i = i === 0 ? 1 : i + BULK_IMPORT_MAX) {
+    const batch = changed.slice(i, i === 0 ? 1 : i + BULK_IMPORT_MAX);
+    await importSplitting(batch, i);
+    if (i === 0 && totals.rejected) throw new Error("SMOOV refused the first contact (HTTP 400); no batch was sent");
+    // Recorded batch by batch: a run that fails halfway resumes where it stopped. A refused contact is
+    // recorded too, so it is not retried until its details change.
     const now = new Date();
     await db
       .insert(smoovPushed)
@@ -181,7 +210,7 @@ async function push(
     rows: changed.length,
     details: { sent: changed.length, candidates: contacts.length, ...totals },
     note: `${changed.length}/${contacts.length} sent to list ${list}: ${totals.inserted} new, ${totals.updated} updated, ` +
-      `${totals.blacklisted} unsubscribed/blacklisted, ${totals.invalids} invalid` +
+      `${totals.blacklisted} unsubscribed/blacklisted, ${totals.invalids} invalid, ${totals.rejected} refused (see server log)` +
       (candidates.length > contacts.length ? `; ${candidates.length - contacts.length} malformed addresses skipped` : ""),
   };
 }
