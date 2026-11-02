@@ -662,6 +662,16 @@ export const smoovCampaignStats = pgTable("smoov_campaign_stats", {
   fetchedAt: ts("fetched_at").notNull().defaultNow(),
 });
 
+/**
+ * What the job-seekers list in SMOOV last received for each address (`src/lib/smoov/push.ts`),
+ * so each run sends only new and changed candidates. Hashes only, no contact details.
+ */
+export const smoovPushed = pgTable("smoov_pushed", {
+  email: text("email").primaryKey(),
+  hash: text("hash").notNull(),
+  pushedAt: ts("pushed_at").notNull().defaultNow(),
+});
+
 /* --------------------------------------------------------------- webhooks */
 
 /** The status each job/application Case had when the webhook last looked, to tell what changed since. */

@@ -7,7 +7,8 @@
  *   1. an admin's request from the sync screen, oldest first
  *   2. the nightly Salesforce reconcile, in the SYNC_RECONCILE_HOUR_UTC hour
  *   3. an incremental Salesforce sync every SYNC_INTERVAL_MIN minutes (default 10)
- *   4. Google Analytics / Tag Manager / SMOOV every MARKETING_SYNC_INTERVAL_MIN (default 360)
+ *   4. Google Analytics / Tag Manager / SMOOV every MARKETING_SYNC_INTERVAL_MIN (default 360),
+ *      and with it, twice a day, the push of candidates to the SMOOV job-seekers list
  * then, beside that job, the staff hours from monday.com every STAFF_SYNC_INTERVAL_MIN (default 60,
  * when MONDAY_TOKEN is set; docs/staff.md — logged as a count only, never what the tasks say), and then, when WEBHOOK_URL is set, delivers due webhook events (src/lib/api/outbound.ts).
  */
@@ -67,7 +68,7 @@ async function chooseScheduled(): Promise<JobMode | null> {
     const states = await getDb()
       .select()
       .from(syncState)
-      .where(inArray(syncState.object, ["GA4", "GTM", "SMOOV"]));
+      .where(inArray(syncState.object, ["GA4", "GTM", "SMOOV", "SMOOV_PUSH"]));
     // A migration that resets the GA mirror (or a first deploy) leaves no cursor: backfill now, not in six hours.
     if (ga4Configured() && !states.find((s) => s.object === "GA4")?.cursor) return "marketing";
     // A source that failed (a key or permission since fixed) is retried every half hour, not every six.

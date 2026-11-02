@@ -189,6 +189,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   safe format (paragraphs, `##`, `- `, `**`, `[text](https|mailto|/path)`), never raw HTML.
 - **Mobile:** every page must work at 320–375px with no sideways page scroll. Wide tables scroll inside `Table`; the main
   nav and dashboard tabs are one sideways-scrolling row on phones (`useActiveInStrip` keeps the current item visible).
+- **SMOOV writes one thing only:** the twice-daily push of candidates with an email into the job-seekers list
+  (`src/lib/smoov/push.ts`, list id `SMOOV_PUSH_LIST_ID`, off when unset; `docs/setup-smoov.md`). The client allows GET plus
+  POST to `/Contacts_BulkImport` and nothing else — never delete, unsubscribe or send a campaign from code.
 - Secrets only via xhostd `set_env(secret=true)`; never log them or send them to the client.
 - No server-side redirects to absolute URLs: behind xhostd the server doesn't know its public host, and Next's
   proxy rejects a relative `Location`. Anonymous page requests render `SignInScreen` (200); `src/proxy.ts` only 401s the API.

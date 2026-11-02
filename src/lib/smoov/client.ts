@@ -1,5 +1,7 @@
 /**
- * SMOOV REST API (https://rest.smoove.io), read-only use.
+ * SMOOV REST API (https://rest.smoove.io): reads lists and campaign statistics,
+ * and writes one thing only — the bulk import that fills the job-seekers list
+ * (`src/lib/smoov/push.ts`). Nothing here deletes, unsubscribes or sends.
  *
  * The spec names an API key in the Authorization header without saying whether
  * it takes a "Bearer " prefix; integrations in the wild use both. The client
@@ -31,7 +33,19 @@ export function smoovAuthScheme(): AuthScheme | null {
   return workingScheme;
 }
 
-async function get<T>(path: string, query: Record<string, string | number | boolean> = {}): Promise<T> {
+/**
+ * The account's key has full permissions, so the client cannot send just any
+ * request: GET anywhere, POST only to the paths named here.
+ */
+const WRITABLE = new Set(["/Contacts_BulkImport"]);
+
+async function request<T>(
+  method: "GET" | "POST",
+  path: string,
+  query: Record<string, string | number | boolean> = {},
+  body?: unknown,
+): Promise<T> {
+  if (method !== "GET" && !WRITABLE.has(path)) throw new SmoovError(`SMOOV ${method} ${path} is not allowed`, 0);
   // Trimmed: a key pasted into an env form easily picks up a trailing newline, which SMOOV rejects as 401.
   const key = process.env.SMOOV_API_KEY?.trim();
   if (!key) throw new SmoovError("SMOOV_API_KEY is not set", 0);
@@ -42,11 +56,14 @@ async function get<T>(path: string, query: Record<string, string | number | bool
   const schemes: AuthScheme[] = workingScheme ? [workingScheme] : ["bearer", "raw"];
   let last: SmoovError | null = null;
   for (const scheme of schemes) {
-    // Read-only by construction: the account's key has full permissions, so this
-    // client must never gain a request method other than GET.
     const res = await fetch(url, {
-      method: "GET",
-      headers: { Authorization: scheme === "bearer" ? `Bearer ${key}` : key, Accept: "application/json" },
+      method,
+      headers: {
+        Authorization: scheme === "bearer" ? `Bearer ${key}` : key,
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });
     if (res.ok) {
@@ -58,6 +75,10 @@ async function get<T>(path: string, query: Record<string, string | number | bool
     if (res.status !== 401 && res.status !== 403) break;
   }
   throw last ?? new SmoovError("SMOOV request failed", 0);
+}
+
+function get<T>(path: string, query: Record<string, string | number | boolean> = {}): Promise<T> {
+  return request<T>("GET", path, query);
 }
 
 async function allPages<T>(path: string, query: Record<string, string | number | boolean> = {}, pageSize = 100): Promise<T[]> {
@@ -80,8 +101,46 @@ export interface SmoovList {
 
 export type SmoovStatistics = Record<string, unknown>;
 
+/** A system or custom contact field; `key` is what payloads use ("email", "i65"). */
+export interface SmoovContactField {
+  key: string;
+  label: string;
+  type?: string;
+  custom: boolean;
+}
+
+/** One contact of a bulk import, as SMOOV names the fields. */
+export interface SmoovBulkContact {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  cellPhone?: string;
+  customFields: Record<string, string | boolean>;
+}
+
+export interface SmoovImportReport {
+  inserted?: number;
+  updated?: number;
+  invalids?: number;
+  blacklisted?: number;
+  quotaExceeded?: number;
+}
+
+/** SMOOV takes at most this many contacts per bulk import, and one import at a time. */
+export const BULK_IMPORT_MAX = 500;
+
 export const smoov = {
   lists: () => allPages<SmoovList>("/Lists", { includeContactsCount: true }),
   campaignStatistics: (campaignId: number) =>
     get<SmoovStatistics>(`/Campaigns/${encodeURIComponent(String(campaignId))}/Statistics`, { by: "CampaignId" }),
+  contactFields: () => get<SmoovContactField[]>("/Account/ContactFields"),
+  /**
+   * Adds or updates contacts and subscribes them to one list. Unsubscribed and
+   * blacklisted addresses stay that way (SMOOV reports them as `blacklisted`).
+   */
+  bulkImport: (listId: number, contacts: SmoovBulkContact[]) =>
+    request<{ status?: string; importReport?: SmoovImportReport }>("POST", "/Contacts_BulkImport", {}, {
+      lists_ToSubscribe: [listId],
+      contacts,
+    }),
 };

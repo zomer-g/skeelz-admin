@@ -18,6 +18,7 @@ import {
 import { ga4Configured, gaDate, jobKeyFromPath, runReport } from "@/lib/google/ga4";
 import { getLiveVersion, gtmConfigured, sendsJobId } from "@/lib/google/gtm";
 import { smoov, smoovConfigured } from "@/lib/smoov/client";
+import { runSmoovPush, smoovPushConfigured, smoovPushDue } from "@/lib/smoov/push";
 import { logError, safeErrorMessage } from "@/lib/log";
 
 /**
@@ -26,7 +27,8 @@ import { logError, safeErrorMessage } from "@/lib/log";
  * sync_state / sync_runs tables so the sync screen shows everything together.
  */
 
-export type MarketingSource = "GA4" | "GTM" | "SMOOV";
+/** SMOOV_PUSH writes the job-seekers list (src/lib/smoov/push.ts); the others only read. */
+export type MarketingSource = "GA4" | "GTM" | "SMOOV" | "SMOOV_PUSH";
 
 export interface MarketingResult {
   source: MarketingSource;
@@ -257,10 +259,17 @@ async function syncSmoov(): Promise<{ rows: number; note: string }> {
   };
 }
 
-const SOURCES: { source: MarketingSource; configured: () => boolean; run: () => Promise<{ rows: number; note: string }> }[] = [
+const SOURCES: {
+  source: MarketingSource;
+  configured: () => boolean;
+  /** For a source slower than the marketing cadence: skipped (and not recorded) until it is due. */
+  due?: () => Promise<boolean>;
+  run: () => Promise<{ rows: number; note: string }>;
+}[] = [
   { source: "GA4", configured: ga4Configured, run: syncGa4 },
   { source: "GTM", configured: gtmConfigured, run: syncGtm },
   { source: "SMOOV", configured: smoovConfigured, run: syncSmoov },
+  { source: "SMOOV_PUSH", configured: smoovPushConfigured, due: smoovPushDue, run: runSmoovPush },
 ];
 
 export function marketingConfigured(): boolean {
@@ -270,8 +279,8 @@ export function marketingConfigured(): boolean {
 export async function runMarketingSync(trigger: string): Promise<MarketingResult[]> {
   const db = getDb();
   const results: MarketingResult[] = [];
-  for (const { source, configured, run } of SOURCES) {
-    if (!configured()) continue;
+  for (const { source, configured, due, run } of SOURCES) {
+    if (!configured() || (due && !(await due()))) continue;
     const started = Date.now();
     const [row] = await db.insert(syncRuns).values({ object: source, mode: "marketing", trigger }).returning({ id: syncRuns.id });
     await saveState(source, { lastStartedAt: new Date() });
