@@ -85,6 +85,35 @@ export async function runSmoovPush(trigger: string): Promise<{ rows: number; not
   }
 }
 
+/**
+ * When SMOOV rejects a batch as a whole ("Schema is invalid") it does not say which field. Sends the
+ * batch's first contact again, one field more each time, and logs the first field SMOOV refuses —
+ * by name only. Each accepted step imports that contact, which the run was sending anyway.
+ */
+async function probeRejectedField(list: number, contact: SmoovBulkContact): Promise<void> {
+  const steps: [string, SmoovBulkContact][] = [];
+  let acc: SmoovBulkContact = { email: contact.email, customFields: {} };
+  steps.push(["email", acc]);
+  for (const k of ["firstName", "lastName", "cellPhone"] as const) {
+    if (contact[k] === undefined) continue;
+    acc = { ...acc, [k]: contact[k] };
+    steps.push([k, acc]);
+  }
+  for (const [k, v] of Object.entries(contact.customFields)) {
+    acc = { ...acc, customFields: { ...acc.customFields, [k]: v } };
+    steps.push([`customFields.${k} (${typeof v})`, acc]);
+  }
+  for (const [name, body] of steps) {
+    try {
+      await smoov.bulkImport(list, [body]);
+    } catch (err) {
+      console.error(`[smoov-push] probe: SMOOV refuses the contact once "${name}" is added: ${redactSmoovError(err instanceof Error ? err.message : String(err))}`);
+      return;
+    }
+  }
+  console.error("[smoov-push] probe: the first contact alone is accepted; the batch fails for another contact or for its size");
+}
+
 async function push(
   list: number,
   progress: { sent: number; of: number },
@@ -111,6 +140,7 @@ async function push(
       // SMOOV's error text can echo the contacts; the sync log (shown at /admin/sync) gets the status only,
       // and the server log the reason with addresses and numbers masked.
       console.error(`[smoov-push] batch ${i / BULK_IMPORT_MAX + 1}: ${redactSmoovError(err instanceof Error ? err.message : String(err))}`);
+      if (err instanceof SmoovError && err.status === 400) await probeRejectedField(list, batch[0]!.contact);
       throw new Error(`SMOOV bulk import failed (HTTP ${err instanceof SmoovError ? err.status : "?"}) after ${i} of ${changed.length}`);
     });
     for (const k of Object.keys(totals) as (keyof typeof totals)[]) totals[k] += Number(importReport?.[k] ?? 0);
