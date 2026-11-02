@@ -132,6 +132,10 @@ async function push(
     if (sent.get(contact.email) !== hash) changed.push({ contact, hash });
   }
 
+  // Until one run has succeeded, a run sends that single contact and stops; the batches start with the next run.
+  const [state] = await db.select({ ok: syncState.lastSuccessAt }).from(syncState).where(eq(syncState.object, PUSH_OBJECT));
+  if (!state?.ok) changed.splice(1);
+
   const totals = { inserted: 0, updated: 0, invalids: 0, blacklisted: 0, quotaExceeded: 0 };
   progress.of = changed.length;
   // One contact goes first, alone: only once SMOOV accepts it do the batches of 500 follow.
@@ -153,6 +157,15 @@ async function push(
       .values(batch.map((b) => ({ email: b.contact.email, hash: b.hash, pushedAt: now })))
       .onConflictDoUpdate({ target: smoovPushed.email, set: { hash: sql`excluded.hash`, pushedAt: now } });
     progress.sent += batch.length;
+  }
+
+  if (!state?.ok) {
+    return {
+      rows: changed.length,
+      details: { sent: changed.length, candidates: contacts.length, ...totals },
+      note: `first run: one contact sent alone to list ${list} (${totals.inserted} new, ${totals.updated} updated, ` +
+        `${totals.blacklisted} unsubscribed/blacklisted, ${totals.invalids} invalid); the rest go with the next run`,
+    };
   }
 
   // Addresses no longer among the candidates are forgotten here (so they are sent again if they come back), not removed in SMOOV.

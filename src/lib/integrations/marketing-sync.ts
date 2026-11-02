@@ -280,7 +280,8 @@ export async function runMarketingSync(trigger: string): Promise<MarketingResult
   const db = getDb();
   const results: MarketingResult[] = [];
   for (const { source, configured, due, run } of SOURCES) {
-    if (!configured() || (due && !(await due()))) continue;
+    // An admin's request from /admin/sync runs every source now, due or not.
+    if (!configured() || (due && !trigger.startsWith("manual:") && !(await due()))) continue;
     const started = Date.now();
     const [row] = await db.insert(syncRuns).values({ object: source, mode: "marketing", trigger }).returning({ id: syncRuns.id });
     await saveState(source, { lastStartedAt: new Date() });
