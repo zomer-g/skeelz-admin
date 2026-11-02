@@ -187,7 +187,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
 - **Editable texts:** `src/lib/texts/registry.ts` lists them (key, page, built-in text). The current text is in
   `site_texts`, every saved version in `site_text_versions` (restorable). Render with `loadText()` + `<RichText>`, a small
   safe format (paragraphs, `##`, `- `, `**`, `[text](https|mailto|/path)`), never raw HTML.
-- **Mobile:** every page must work at 320–375px with no sideways page scroll. Wide tables scroll inside `Table`; the main
+- **Mobile:** installable as an app (Chrome/Android "Install", iPhone "Add to Home Screen"): `app/manifest.ts`, icons in
+  `public/icons` rendered from `app/icon.svg` (192/512 + maskable), `app/apple-icon.png`, theme colour in the root layout's `viewport`.
+  No service worker on purpose: the data is live and personal, nothing is cached offline. Every page must work at 320–375px with no sideways page scroll. Wide tables scroll inside `Table`; the main
   nav and dashboard tabs are one sideways-scrolling row on phones (`useActiveInStrip` keeps the current item visible).
 - **SMOOV writes one thing only:** the twice-daily push of candidates with an email into the job-seekers list
   (`src/lib/smoov/push.ts`, list id `SMOOV_PUSH_LIST_ID`, off when unset; `docs/setup-smoov.md`). The client allows GET plus
