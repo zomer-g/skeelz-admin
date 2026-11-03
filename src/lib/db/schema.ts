@@ -485,6 +485,8 @@ export const syncRuns = pgTable(
     deleted: integer("deleted"),
     apiUsage: text("api_usage"),
     error: text("error"),
+    /** What a run that succeeded reports (Google, SMOOV); `error` is only for a failure. */
+    note: text("note"),
   },
   (t) => [index("sync_runs_started_idx").on(t.startedAt)],
 );

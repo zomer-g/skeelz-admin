@@ -18,7 +18,7 @@ export async function syncStaffNow(_prev: StaffActionState): Promise<StaffAction
     return { ok: false, message: "סנכרון רץ לפני פחות מדקה. אפשר לנסות שוב בעוד רגע" };
   }
   await writeAudit(manager.email, "staff.sync_requested", "monday");
-  const r = await syncMonday();
+  const r = await syncMonday(`manual:${manager.email}`);
   revalidatePath("/staff", "layout");
   revalidatePath("/admin/sync");
   if (r.skipped) return { ok: false, message: "החיבור למאנדיי לא הוגדר: חסר המשתנה MONDAY_TOKEN בשרת" };

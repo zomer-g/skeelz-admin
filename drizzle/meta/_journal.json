@@ -176,6 +176,13 @@
       "when": 1793630113783,
       "tag": "0024_far_shadow_king",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793709633481,
+      "tag": "0025_luxuriant_kree",
+      "breakpoints": true
     }
   ]
 }

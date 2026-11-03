@@ -18,20 +18,23 @@ import { LOG_RETENTION_MONTHS, purgeOldLogs } from "@/lib/audit";
 import { getDb } from "@/lib/db/client";
 import { syncRequests, syncRuns, syncState } from "@/lib/db/schema";
 import { ga4Configured } from "@/lib/google/ga4";
-import { marketingConfigured, runMarketingSync } from "@/lib/integrations/marketing-sync";
+import { isMarketingGroup, marketingConfigured, runMarketingSync, type MarketingGroup } from "@/lib/integrations/marketing-sync";
 import { salesforceConfigured } from "@/lib/sf/client";
 import { runSync, type SyncMode } from "@/lib/sf/sync";
 import { safeErrorMessage } from "@/lib/log";
 import { mondayConfigured, staffSourceStatus, syncMonday } from "@/lib/staff/monday";
 
-type JobMode = SyncMode | "marketing";
+/** "marketing:SMOOV" and the like: one source's refresh button on /admin/sync. */
+type JobMode = SyncMode | "marketing" | `marketing:${MarketingGroup}`;
 
 const INTERVAL_MIN = Number(process.env.SYNC_INTERVAL_MIN ?? 10);
 const MARKETING_INTERVAL_MIN = Number(process.env.MARKETING_SYNC_INTERVAL_MIN ?? 360);
 const FAILED_RETRY_MIN = 30;
 const STAFF_INTERVAL_MIN = Number(process.env.STAFF_SYNC_INTERVAL_MIN ?? 60);
 const RECONCILE_HOUR_UTC = Number(process.env.SYNC_RECONCILE_HOUR_UTC ?? 0); // 02:00–03:00 Israel time
-const MODES = new Set<JobMode>(["incremental", "full", "reconcile", "marketing"]);
+const MODES = new Set<string>(["incremental", "full", "reconcile", "marketing"]);
+const isJobMode = (mode: string): mode is JobMode =>
+  MODES.has(mode) || (mode.startsWith("marketing:") && isMarketingGroup(mode.slice("marketing:".length)));
 
 const log = (msg: string) => console.log(`[sync-worker] ${new Date().toISOString()} ${msg}`);
 
@@ -87,9 +90,11 @@ async function run(mode: JobMode, trigger: string): Promise<void> {
   const started = Date.now();
   log(`${mode} starting (${trigger})`);
 
-  if (mode === "marketing") {
-    lastMarketingAt = Date.now();
-    const results = await runMarketingSync(trigger);
+  if (mode === "marketing" || mode.startsWith("marketing:")) {
+    const group = mode.startsWith("marketing:") ? (mode.slice("marketing:".length) as MarketingGroup) : undefined;
+    // Refreshing one source leaves the six-hour clock of the others alone.
+    if (!group) lastMarketingAt = Date.now();
+    const results = await runMarketingSync(trigger, group);
     const summary = results.map((r) => `${r.source} ${r.error ? `ERROR ${r.error}` : `+${r.rows}${r.note ? ` (${r.note})` : ""}`}`);
     log(`marketing finished in ${Math.round((Date.now() - started) / 1000)}s: ${summary.join("; ") || "nothing configured"}`);
     await safely("webhook failures", () => enqueueSyncFailures(results));
@@ -108,7 +113,7 @@ async function run(mode: JobMode, trigger: string): Promise<void> {
       if (removed) log(`log retention: removed ${removed} entries older than ${LOG_RETENTION_MONTHS} months`);
     });
   }
-  const summary = await runSync(mode, trigger);
+  const summary = await runSync(mode as SyncMode, trigger);
   if (summary.locked) {
     log(`${mode} skipped: another sync holds the lock`);
     return;
@@ -138,7 +143,7 @@ async function tick(): Promise<void> {
 
     if (request) {
       await db.update(syncRequests).set({ pickedAt: new Date() }).where(eq(syncRequests.id, request.id));
-      const mode = MODES.has(request.mode as JobMode) ? (request.mode as JobMode) : "incremental";
+      const mode: JobMode = isJobMode(request.mode) ? request.mode : "incremental";
       await run(mode, `manual:${request.requestedBy}`);
       await db.update(syncRequests).set({ doneAt: new Date() }).where(eq(syncRequests.id, request.id));
     } else {
@@ -150,7 +155,7 @@ async function tick(): Promise<void> {
       if (!mondayConfigured()) return;
       const state = await staffSourceStatus();
       if (Date.now() - (state?.lastStartedAt?.getTime() ?? 0) < STAFF_INTERVAL_MIN * 60_000) return;
-      const r = await syncMonday();
+      const r = await syncMonday("schedule");
       log(r.error ? `staff hours (monday) failed: ${r.error}` : `staff hours (monday): ${r.rows} rows`);
     });
 

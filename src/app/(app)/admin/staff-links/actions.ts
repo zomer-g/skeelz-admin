@@ -73,7 +73,7 @@ export async function linkMondayUser(form: FormData): Promise<void> {
   await writeAudit(admin.email, mondayUserId ? "staff.monday_linked" : "staff.monday_unlinked", target.email);
   // Pull the board now, so the new employee's tasks show (or an unlinked one's go) without waiting for the hourly
   // sync. A failure is recorded in staff_source_state and shown on /staff and /admin/sync; the link itself stands.
-  await syncMonday();
+  await syncMonday(`manual:${admin.email}`);
   revalidatePath(PATH);
   revalidatePath("/staff", "layout");
   revalidatePath("/admin/sync");

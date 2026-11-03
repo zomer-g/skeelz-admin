@@ -1,6 +1,6 @@
 import { eq, isNotNull } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { staffSourceState, staffWorkItems, users } from "@/lib/db/schema";
+import { staffSourceState, staffWorkItems, syncRuns, users } from "@/lib/db/schema";
 import { safeErrorMessage } from "@/lib/log";
 import { boardColumns, HOURS_COLUMN, parseMondayItem, rowsForLinked, type MondayBoard, type MondayColumn, type MondayItem, type WorkItem } from "./hours";
 
@@ -126,11 +126,15 @@ export interface StaffSyncResult {
   skipped?: string;
 }
 
-/** Pulls every hours board and replaces the stored rows of the linked employees in one transaction. */
-export async function syncMonday(): Promise<StaffSyncResult> {
+/**
+ * Pulls every hours board and replaces the stored rows of the linked employees in one transaction.
+ * Each run is listed in the update log at /admin/sync (`sync_runs`, object "monday") with its count only.
+ */
+export async function syncMonday(trigger = "schedule"): Promise<StaffSyncResult> {
   if (!mondayConfigured()) return { rows: 0, error: null, skipped: "MONDAY_TOKEN is not set" };
   const db = getDb();
   const started = new Date();
+  const [run] = await db.insert(syncRuns).values({ object: MONDAY_SOURCE, mode: "staff", trigger }).returning({ id: syncRuns.id });
   await db
     .insert(staffSourceState)
     .values({ source: MONDAY_SOURCE, lastStartedAt: started })
@@ -153,10 +157,12 @@ export async function syncMonday(): Promise<StaffSyncResult> {
       .update(staffSourceState)
       .set({ lastSuccessAt: new Date(), lastError: null, items: rows.length })
       .where(eq(staffSourceState.source, MONDAY_SOURCE));
+    await db.update(syncRuns).set({ finishedAt: new Date(), upserted: rows.length, deleted: 0 }).where(eq(syncRuns.id, run!.id));
     return { rows: rows.length, error: null };
   } catch (err) {
     const error = safeErrorMessage(err);
     await db.update(staffSourceState).set({ lastError: error }).where(eq(staffSourceState.source, MONDAY_SOURCE));
+    await db.update(syncRuns).set({ finishedAt: new Date(), upserted: 0, deleted: 0, error }).where(eq(syncRuns.id, run!.id));
     return { rows: 0, error };
   }
 }

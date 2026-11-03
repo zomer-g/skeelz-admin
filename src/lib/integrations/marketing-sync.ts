@@ -272,14 +272,33 @@ const SOURCES: {
   { source: "SMOOV_PUSH", configured: smoovPushConfigured, due: smoovPushDue, run: runSmoovPush },
 ];
 
+/** What a source's refresh button on /admin/sync runs: SMOOV is its lists and campaigns plus the push. */
+export const MARKETING_GROUPS = {
+  GA4: ["GA4"],
+  GTM: ["GTM"],
+  SMOOV: ["SMOOV", "SMOOV_PUSH"],
+} as const satisfies Record<string, readonly MarketingSource[]>;
+export type MarketingGroup = keyof typeof MARKETING_GROUPS;
+
+export function isMarketingGroup(value: string): value is MarketingGroup {
+  return Object.hasOwn(MARKETING_GROUPS, value);
+}
+
+export function marketingGroupConfigured(group: MarketingGroup): boolean {
+  return SOURCES.some((s) => (MARKETING_GROUPS[group] as readonly string[]).includes(s.source) && s.configured());
+}
+
 export function marketingConfigured(): boolean {
   return SOURCES.some((s) => s.configured());
 }
 
-export async function runMarketingSync(trigger: string): Promise<MarketingResult[]> {
+/** Every source, or only one group's when an admin refreshes that source at /admin/sync. */
+export async function runMarketingSync(trigger: string, group?: MarketingGroup): Promise<MarketingResult[]> {
   const db = getDb();
   const results: MarketingResult[] = [];
+  const only: readonly string[] | null = group ? MARKETING_GROUPS[group] : null;
   for (const { source, configured, due, run } of SOURCES) {
+    if (only && !only.includes(source)) continue;
     // An admin's request from /admin/sync runs every source now, due or not.
     if (!configured() || (due && !trigger.startsWith("manual:") && !(await due()))) continue;
     const started = Date.now();
@@ -288,7 +307,7 @@ export async function runMarketingSync(trigger: string): Promise<MarketingResult
     try {
       const { rows, note } = await run(trigger);
       await saveState(source, { lastSuccessAt: new Date(), lastError: null });
-      await db.update(syncRuns).set({ finishedAt: new Date(), upserted: rows, deleted: 0, error: note || null }).where(eq(syncRuns.id, row!.id));
+      await db.update(syncRuns).set({ finishedAt: new Date(), upserted: rows, deleted: 0, note: note || null }).where(eq(syncRuns.id, row!.id));
       results.push({ source, rows, note, ms: Date.now() - started });
     } catch (err) {
       const error = safeErrorMessage(err);
