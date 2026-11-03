@@ -127,8 +127,10 @@ async function push(
 
   const sent = new Map<string, string>();
   for (const r of await db.select({ email: smoovPushed.email, hash: smoovPushed.hash }).from(smoovPushed)) sent.set(r.email, r.hash);
-  // SMOOV can report a contact as imported and still leave it out of the list, so the hash alone is not
-  // proof: anyone missing from the list who has not unsubscribed is sent again.
+  // The hash alone is not proof that a contact is in the list: when the address matches one SMOOV contact
+  // and the phone another, SMOOV skips it as "matched to more than one contact" (counted as invalid).
+  // Anyone missing from the list who has not unsubscribed is sent again, without the phone, which matches
+  // on the address alone.
   const inList = new Set(await smoov.listEmails(list));
   const blacklisted = new Set(await smoov.blacklistedEmails());
   const changed: { contact: SmoovBulkContact; hash: string }[] = [];
@@ -137,7 +139,8 @@ async function push(
     const hash = contactHash(contact);
     if (sent.get(contact.email) !== hash) changed.push({ contact, hash });
     else if (!inList.has(contact.email) && !blacklisted.has(contact.email)) {
-      changed.push({ contact, hash });
+      const { cellPhone: _, ...byAddress } = contact;
+      changed.push({ contact: byAddress, hash });
       missing++;
     }
   }
