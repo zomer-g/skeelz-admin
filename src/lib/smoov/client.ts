@@ -134,6 +134,17 @@ export const smoov = {
   campaignStatistics: (campaignId: number) =>
     get<SmoovStatistics>(`/Campaigns/${encodeURIComponent(String(campaignId))}/Statistics`, { by: "CampaignId" }),
   contactFields: () => get<SmoovContactField[]>("/Account/ContactFields"),
+  /** The addresses subscribed to a list, lowercased. */
+  listEmails: async (listId: number) =>
+    (await allPages<{ email?: string }>(`/Lists/${encodeURIComponent(String(listId))}/Contacts`, { fields: "id,email" }))
+      .map((c) => c.email?.trim().toLowerCase())
+      .filter((e): e is string => Boolean(e)),
+  /** Every unsubscribed or blacklisted address in the account, lowercased (one response, not paged). */
+  blacklistedEmails: async () => {
+    const body = await get<{ email?: string }[] | { blacklistContacts?: { email?: string }[] } | null>("/Contacts_Blacklisted", { fields: "id,email" });
+    const rows = Array.isArray(body) ? body : (body?.blacklistContacts ?? []);
+    return rows.map((c) => c.email?.trim().toLowerCase()).filter((e): e is string => Boolean(e));
+  },
   /**
    * Adds or updates contacts and subscribes them to one list. Unsubscribed and
    * blacklisted addresses stay that way (SMOOV reports them as `blacklisted`).

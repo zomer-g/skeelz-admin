@@ -127,10 +127,19 @@ async function push(
 
   const sent = new Map<string, string>();
   for (const r of await db.select({ email: smoovPushed.email, hash: smoovPushed.hash }).from(smoovPushed)) sent.set(r.email, r.hash);
+  // SMOOV can report a contact as imported and still leave it out of the list, so the hash alone is not
+  // proof: anyone missing from the list who has not unsubscribed is sent again.
+  const inList = new Set(await smoov.listEmails(list));
+  const blacklisted = new Set(await smoov.blacklistedEmails());
   const changed: { contact: SmoovBulkContact; hash: string }[] = [];
+  let missing = 0;
   for (const contact of contacts) {
     const hash = contactHash(contact);
     if (sent.get(contact.email) !== hash) changed.push({ contact, hash });
+    else if (!inList.has(contact.email) && !blacklisted.has(contact.email)) {
+      changed.push({ contact, hash });
+      missing++;
+    }
   }
 
   // Until one run has succeeded, a run sends that single contact and stops; the batches start with the next run.
@@ -212,8 +221,9 @@ async function push(
     .onConflictDoUpdate({ target: syncState.object, set: { rowCount: contacts.length } });
   return {
     rows: changed.length,
-    details: { sent: changed.length, candidates: contacts.length, ...totals },
-    note: `${changed.length}/${contacts.length} sent to list ${list} in ${Math.round((Date.now() - started) / 1000)}s: ` +
+    details: { sent: changed.length, candidates: contacts.length, missing, ...totals },
+    note: `${changed.length}/${contacts.length} sent to list ${list} in ${Math.round((Date.now() - started) / 1000)}s ` +
+      `(${missing} of them sent before but missing from the list): ` +
       `${totals.inserted} new, ${totals.updated} updated, ` +
       `${totals.blacklisted} unsubscribed/blacklisted, ${totals.invalids} invalid, ${totals.rejected} refused (see server log)` +
       (candidates.length > contacts.length ? `; ${candidates.length - contacts.length} malformed addresses skipped` : ""),
