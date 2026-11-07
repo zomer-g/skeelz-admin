@@ -19,6 +19,8 @@ export const MCP_LIMITS = {
   accessTtlMin: 60,
   /** Sliding: every refresh starts a new 30 days. */
   refreshTtlDays: 30,
+  /** A connection ends this long after it was approved, however often it refreshes; then it is approved again. */
+  grantMaxDays: 90,
   /** Tool calls per connection per minute. */
   callsPerMinute: 60,
   /** The heavy dashboard tools, per person per minute. */

@@ -11,10 +11,20 @@ import { loginUrl, XHOST_COOKIE } from "@/lib/auth/urls";
  * relative Location throws "Invalid URL"). Pages render the sign-in screen
  * themselves instead — see lib/auth/guard.tsx.
  *
+ * Requests another site makes the browser send are refused here too (Sec-Fetch-Site).
+ *
  * /api/v1 is for other systems and authenticates with the shared API token
  * (lib/api/inbound.ts), so it is left out here.
  */
 export function proxy(req: NextRequest) {
+  // These routes act on the signed-in person's cookie: a candidate file, contact details copied,
+  // a list downloaded — each one logged under that person and counted against their day. Another
+  // site must not make the browser do that for them (an <img>, a link, a form): a browser says where
+  // a request came from, and only our own pages or a typed address/bookmark ("none") get through.
+  const site = req.headers.get("sec-fetch-site");
+  if (site === "cross-site" || site === "same-site") {
+    return NextResponse.json({ error: "cross_site_request" }, { status: 403 });
+  }
   if (process.env.NODE_ENV === "development" && process.env.DEV_AUTH_EMAIL) return NextResponse.next();
   if (req.cookies.has(XHOST_COOKIE)) return NextResponse.next();
   return NextResponse.json({ error: "unauthorized", login_url: loginUrl("/") }, { status: 401 });

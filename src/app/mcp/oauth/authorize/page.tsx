@@ -59,12 +59,21 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
   }
   const req = check.request;
   const roles = ROLES.filter((r) => hasRole(user.role, r));
+  const redirect = new URL(req.redirectUri);
+  const knownHost = isKnownRedirectHost(redirect.hostname);
 
   return (
     <Frame title="אישור חיבור ל-MCP">
       <p>
-        האפליקציה <strong dir="auto">{req.clientName}</strong> מבקשת לקרוא נתונים ממערכת הניהול של SKEELZ בשמך, ובהרשאות שלך.
+        אפליקציה שקוראת לעצמה <strong dir="auto">{req.clientName}</strong> מבקשת לקרוא נתונים ממערכת הניהול של SKEELZ בשמך. את השם
+        הזה האפליקציה בחרה בעצמה: מה שקובע לאן יגיעו הנתונים הוא כתובת החזרה שלמטה.
       </p>
+      {knownHost ? null : (
+        <p role="alert" className="rounded-[12px] border border-danger p-3 text-sm font-medium text-danger">
+          שים/י לב: כתובת החזרה אינה של לקוח MCP מוכר (Claude, ChatGPT או מחשב מקומי). אשר/י רק אם את/ה יודע/ת בדיוק מה זו האפליקציה —
+          ומי ששלח לך את הקישור הזה, ולא בזכות השם שהיא נתנה לעצמה.
+        </p>
+      )}
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-sm">
         <dt className="text-muted">מחובר/ת בתור</dt>
         <dd dir="ltr" className="text-start font-medium">
@@ -74,14 +83,24 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
         <dd className="font-medium">{ROLE_LABELS[user.role]}</dd>
         <dt className="text-muted">חזרה לכתובת</dt>
         <dd dir="ltr" className="text-start font-medium break-all">
-          {new URL(req.redirectUri).host}
+          {redirect.origin}
+          {redirect.pathname}
         </dd>
       </dl>
       <p className="text-sm text-muted">
         החיבור יפעל לכל היותר בהרשאה שתבחר/י כאן, ותמיד לא מעבר להרשאה שלך במערכת: אם ההרשאה שלך תשתנה או תבוטל, החיבור ישתנה איתה מיד. כל
         פעולה של החיבור נרשמת ביומן הפעילות. אפשר לנתק אותו בכל עת בעמוד &quot;חיבור ל-Claude&quot;.
       </p>
-      <ConsentForm params={params} roles={roles} defaultRole={user.role} />
+      {/* The least access is the default: a wider role is a choice, not a click-through. */}
+      <ConsentForm params={params} roles={roles} defaultRole="viewer" />
     </Frame>
   );
+}
+
+/** Where the MCP clients the staff actually use send people back to; anything else gets a warning on the consent screen. */
+const KNOWN_REDIRECT_HOSTS = ["claude.ai", "claude.com", "chatgpt.com", "chat.openai.com", "localhost", "127.0.0.1", "[::1]"];
+
+function isKnownRedirectHost(host: string): boolean {
+  const h = host.toLowerCase();
+  return KNOWN_REDIRECT_HOSTS.some((k) => h === k || (!k.includes(".") || k.startsWith("[") ? false : h.endsWith(`.${k}`)));
 }

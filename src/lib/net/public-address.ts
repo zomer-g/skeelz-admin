@@ -17,7 +17,7 @@ export function isInternalHostname(hostname: string): boolean {
 }
 
 function ipv4Blocked(ip: string): boolean {
-  const [a = 0, b = 0] = ip.split(".").map(Number);
+  const [a = 0, b = 0, c = 0] = ip.split(".").map(Number);
   return (
     a === 0 || // unspecified, "this network"
     a === 10 ||
@@ -26,7 +26,11 @@ function ipv4Blocked(ip: string): boolean {
     (a === 100 && b >= 64 && b <= 127) || // CGNAT
     (a === 169 && b === 254) ||
     (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168)
+    (a === 192 && b === 168) ||
+    (a === 192 && b === 0 && (c === 0 || c === 2)) || // IETF protocol assignments, TEST-NET-1
+    (a === 198 && (b === 18 || b === 19)) || // benchmarking
+    (a === 198 && b === 51 && c === 100) || // TEST-NET-2
+    (a === 203 && b === 0 && c === 113) // TEST-NET-3
   );
 }
 
@@ -59,6 +63,12 @@ export function isBlockedAddress(ip: string): boolean {
   if ((g0 & 0xfe00) === 0xfc00) return true; // fc00::/7 ULA
   if ((g0 & 0xffc0) === 0xfe80) return true; // fe80::/10 link-local
   if ((g0 & 0xff00) === 0xff00) return true; // ff00::/8 multicast
+  const v4 = (hi: number, lo: number) => `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+  // Addresses that carry an IPv4 address and reach it: NAT64 (64:ff9b::/96) and 6to4 (2002::/16).
+  if (g0 === 0x64 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return ipv4Blocked(v4(g6, g7));
+  if (g0 === 0x2002) return ipv4Blocked(v4(g[1]!, g[2]!));
+  if (g0 === 0x2001 && (g[1] === 0 || g[1] === 0xdb8)) return true; // Teredo, documentation
+  if (g0 === 0x100 && g.slice(1, 4).every((x) => x === 0)) return true; // 100::/64 discard
   return false;
 }
 

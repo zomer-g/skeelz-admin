@@ -221,7 +221,14 @@ export interface SearchActor {
 /** How many of the results a log entry lists by name. */
 const LOGGED_RESULTS = 200;
 
-async function logTextSearch(f: CvFilters, found: Set<string> | null, where: SQL, total: number, who: SearchActor): Promise<void> {
+/** The page of results that was actually handed over: its files, and the page and sort that chose them. */
+interface ShownPage {
+  page: number;
+  sort: string;
+  files: { documentId: string; contactId: string | null; email: string | null }[];
+}
+
+async function logTextSearch(f: CvFilters, found: Set<string> | null, where: SQL, total: number, who: SearchActor, shown?: ShownPage): Promise<void> {
   // A word search Salesforce did not answer returned nothing; a topic search reads the mirror.
   const rows =
     !f.text || found
@@ -235,6 +242,9 @@ async function logTextSearch(f: CvFilters, found: Set<string> | null, where: SQL
     // How many files Salesforce's index matched, and how many of them passed the other filters.
     matched: found?.size ?? null,
     results: total,
+    // What was handed over: the page on screen (or the MCP answer), whatever its page and sort.
+    ...(shown ? { shown: { page: shown.page, sort: shown.sort, files: shown.files } } : {}),
+    // The newest matches by name, for context: a search's whole result, not only its page.
     files: rows.map((r) => ({ documentId: String(r.document_id), title: str(r.title), name: str(r.name), email: str(r.email) })),
   });
 }
@@ -297,9 +307,17 @@ export async function searchCvs(
     run(sql`${CVS} SELECT count(*) AS n, count(*) FILTER (WHERE v.unhandled) AS unhandled FROM cv v WHERE ${where}`),
     topics ? topicCounts(f, found) : null,
   ]);
-  if (searchesInside(f) && who) await logTextSearch(f, found, where, num(count[0]?.n), who);
+  const mapped = rows.map(toRow);
+  if (searchesInside(f) && who) {
+    const order = sort ?? { key: "received", dir: "desc" };
+    await logTextSearch(f, found, where, num(count[0]?.n), who, {
+      page,
+      sort: `${order.key}:${order.dir}`,
+      files: mapped.map((r) => ({ documentId: r.documentId, contactId: r.contactId ?? null, email: r.email ?? null })),
+    });
+  }
   return {
-    rows: rows.map(toRow),
+    rows: mapped,
     total: num(count[0]?.n),
     unhandled: num(count[0]?.unhandled),
     textSearch: f.text ? (found ? "ok" : "unavailable") : null,
@@ -407,9 +425,15 @@ const OWN_EMAIL_DOMAIN = "skeelz.co.il";
 export async function loadCvContacts(
   f: CvFilters,
   field: CvContactField,
+  who?: SearchActor,
 ): Promise<{ values: string[]; files: number; truncated: boolean; textSearch: "ok" | "unavailable" | null }> {
   const found = f.text ? await findInFiles(f.text) : null;
   const where = whereOf(f, found);
+  // A copy behind a search inside the files is that search too, logged in full like on screen.
+  if (searchesInside(f) && who) {
+    const [c] = await run(sql`${CVS} SELECT count(*) AS n FROM cv v WHERE ${where}`);
+    await logTextSearch(f, found, where, num(c?.n), who);
+  }
   const column = field === "email" ? sql`v.email` : sql`v.phone`;
   // A CV a staff member forwarded or tried can carry their own address; it is no candidate's.
   const own = field === "email" ? sql`AND v.email NOT ILIKE ${`%@${OWN_EMAIL_DOMAIN}`}` : sql``;

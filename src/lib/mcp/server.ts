@@ -1,14 +1,16 @@
 import { firstInWindow, hit } from "@/lib/api/rate-limit";
-import { writeAudit } from "@/lib/audit";
+import { recordIds } from "@/lib/audit-ids";
+import { AuditWriteError, writeAudit, writeAuditStrict } from "@/lib/audit";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { appVersion } from "@/lib/connect/version";
 import { logError } from "@/lib/log";
 import { afterExport, atExportLimit, dailyExportUsage, EXPORT_LIMITS, MCP_PEOPLE_LISTED } from "@/lib/security/exports";
+import { LockTimeoutError, withUserLock } from "@/lib/security/lock";
 import { ArgError, parseArgs } from "./args";
 import { MCP_LIMITS, PROTOCOL_VERSIONS, SERVER_NAME, SERVER_TITLE } from "./config";
 import { mcpJson } from "./http";
 import { touchGrant } from "./oauth";
-import { describeTool, findTool, toolsFor, type ToolContext } from "./tools";
+import { describeTool, findTool, toolsFor, type Tool, type ToolContext } from "./tools";
 
 /**
  * The MCP protocol over Streamable HTTP, stateless: every POST carries one JSON-RPC message
@@ -118,6 +120,11 @@ async function callTool(params: Record<string, unknown>, ctx: ToolContext, ip: s
       void writeAudit(actor, "mcp.denied", name, { grantId: principal.grantId, role: principal.role, required: found.required });
       return toolText(`Not allowed: ${name} needs the ${found.required} role; this connection works as ${principal.role}.`, true);
     }
+    // Unknown — or a staff tool on a connection without staff data, which must look the same.
+    // Probing leaves a trace (once per connection, name and ten minutes).
+    if (firstInWindow(`mcp-unknown:${principal.grantId}:${name.slice(0, 80)}`, 10 * MIN)) {
+      void writeAudit(actor, "mcp.denied", name.slice(0, 100), { grantId: principal.grantId, role: principal.role, reason: "unknown_tool" });
+    }
     return toolText(`Unknown tool: ${name}`, true);
   }
   const { tool } = found;
@@ -131,36 +138,59 @@ async function callTool(params: Record<string, unknown>, ctx: ToolContext, ip: s
   try {
     args = parseArgs(tool.fields, tool.required ?? [], params.arguments);
   } catch (err) {
+    if (firstInWindow(`mcp-badargs:${principal.grantId}:${tool.name}`, MIN)) {
+      void writeAudit(actor, "mcp.denied", tool.name, { grantId: principal.grantId, role: principal.role, reason: "invalid_arguments" });
+    }
     return toolText(`Invalid arguments: ${(err as Error).message}`, true);
   }
 
-  // Every call is in the activity log, as every screen view is.
-  void writeAudit(actor, "mcp.call", tool.name, { grantId: principal.grantId, client: principal.clientName, role: principal.role, args });
+  // Every call is in the activity log, as every screen view is. A tool that returns people does
+  // not run unless this entry was written.
+  const callEntry = { grantId: principal.grantId, client: principal.clientName, role: principal.role, args };
+  if (tool.people) {
+    try {
+      await writeAuditStrict(actor, "mcp.call", tool.name, callEntry);
+    } catch {
+      return toolText("The activity log is unavailable right now, so this tool did not run. Try again in a moment.", true);
+    }
+  } else {
+    void writeAudit(actor, "mcp.call", tool.name, callEntry);
+  }
   void touchGrant(principal.grantId, ip).catch((err: unknown) => logError("mcp touch", err));
 
   try {
-    // A tool that returns people counts against the person's daily export budget, like the copy buttons.
-    const usage = tool.people ? await dailyExportUsage(actor) : null;
-    if (usage && usage.exported >= usage.allowed) {
-      await atExportLimit(actor, usage, `mcp:${tool.name}`);
-      return toolText(
-        `Daily export limit reached: ${usage.allowed.toLocaleString("en-US")} people's details a day per person, across the site's copy buttons and these tools. The admins were notified and can allow another ${EXPORT_LIMITS.grant.toLocaleString("en-US")} today at /admin/security.`,
-        true,
-      );
-    }
-    const data = await tool.run(args, ctx);
-    if (usage && tool.people) {
-      const count = tool.people(data);
-      if (count > 0) {
-        await writeAudit(actor, MCP_PEOPLE_LISTED, tool.name, { grantId: principal.grantId, count });
-        await afterExport(actor, usage, count);
-      }
-    }
+    const data = tool.people ? await withUserLock("exports", actor, () => runCountingPeople(tool, args, ctx, actor)) : await tool.run(args, ctx);
+    if (typeof data === "string") return toolText(data, true);
     return toolText(JSON.stringify(data, null, 1));
   } catch (err) {
     if (err instanceof ArgError) return toolText(err.message, true);
+    if (err instanceof AuditWriteError) return toolText("The activity log is unavailable right now, so no personal details were sent. Try again in a moment.", true);
+    if (err instanceof LockTimeoutError) return toolText("A previous request of yours is still running; try again in a moment.", true);
     // Never the message: a database error's message holds the SQL and its values.
     logError(`mcp ${tool.name}`, err);
     return toolText("Something went wrong on the server.", true);
   }
+}
+
+/**
+ * A tool that returns people, under the person's export lock: the budget check, the run and the
+ * counted entry cannot interleave with another hand-over of theirs. The entry names the records
+ * the answer carried (lib/audit-ids.ts) and is written strictly: when it fails, nothing is sent.
+ * A string is the refusal to show.
+ */
+async function runCountingPeople(tool: Tool, args: Parameters<Tool["run"]>[0], ctx: ToolContext, actor: string): Promise<unknown> {
+  // A tool that returns people counts against the person's daily export budget, like the copy buttons.
+  const usage = await dailyExportUsage(actor);
+  if (usage.exported >= usage.allowed) {
+    await atExportLimit(actor, usage, `mcp:${tool.name}`);
+    return `Daily export limit reached: ${usage.allowed.toLocaleString("en-US")} people's details a day per person, across the site's copy buttons and these tools. The admins were notified and can allow another ${EXPORT_LIMITS.grant.toLocaleString("en-US")} today at /admin/security.`;
+  }
+  const data = await tool.run(args, ctx);
+  const count = tool.people ? tool.people(data) : 0;
+  if (count > 0) {
+    const { ids, more } = recordIds(data);
+    await writeAuditStrict(actor, MCP_PEOPLE_LISTED, tool.name, { grantId: ctx.principal.grantId, count, ids, ...(more ? { more_ids: true } : {}) });
+    await afterExport(actor, usage, count);
+  }
+  return data;
 }

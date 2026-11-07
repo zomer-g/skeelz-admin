@@ -966,18 +966,20 @@ const TOOLS: Tool[] = [
       since: dayField("From"),
       limit: { type: "integer", description: "Rows (default 50).", minimum: 1, maximum: 200, default: 50 },
     },
-    run: async (a) => {
+    run: async (a, ctx) => {
       const parts: SQL[] = [];
       if (s(a.actor)) parts.push(eq(auditLog.actor, s(a.actor).toLowerCase()));
       if (s(a.action)) parts.push(sql`starts_with(${auditLog.action}, ${s(a.action)})`);
       if (s(a.since)) parts.push(gt(auditLog.at, new Date(`${s(a.since)}T00:00:00+03:00`)));
+      // Who manages staff data and whom they looked at is staff data itself (docs/staff.md).
+      if (!ctx.principal.staffData) parts.push(sql`NOT (${staffAuditSql})`);
       const rows = await getDb()
         .select()
         .from(auditLog)
         .where(parts.length ? and(...parts) : undefined)
         .orderBy(desc(auditLog.at))
         .limit(n(a.limit, 50));
-      return { entries: rows };
+      return { entries: rows.map(redactAuditEntry), note: "Personal details (names, emails, search words, result lists) are left out; open /admin/audit for the full entry." };
     },
   },
   {
@@ -1033,3 +1035,38 @@ export function findTool(name: string, role: Role, staffData = false): ToolLooku
 
 export { NotFound };
 export type { Tool };
+
+/* ------------------------------------------------ the activity log over MCP */
+
+/** Entries about staff data: what staff managers did, and who is one. Hidden from a connection without staff data. */
+const staffAuditSql = sql`(${auditLog.action} LIKE 'staff.%' OR ${auditLog.action} LIKE 'user.staff\\_%' OR ${auditLog.action} LIKE 'mcp.staff\\_data\\_%'
+  OR ${auditLog.action} IN ('user.sf_linked', 'user.sf_unlinked')
+  OR (${auditLog.action} IN ('mcp.call', 'mcp.denied') AND ${auditLog.target} LIKE 'staff\\_%')
+  OR (${auditLog.action} IN ('page.view', 'page.denied') AND ${auditLog.target} LIKE '/staff%')
+  OR (${auditLog.action} IN ('api.used', 'api.denied') AND ${auditLog.target} LIKE '/api/v1/staff%'))`;
+
+/** Detail keys that never carry a person: counts, reasons, roles, ids of our own records. */
+const SAFE_DETAIL_KEYS = new Set([
+  "count", "reason", "role", "required", "grantId", "via", "results", "matched", "keyId", "key", "list", "format",
+  "rows", "limited", "truncated", "day", "extra", "opened", "allowed", "exported", "status", "from", "to", "on",
+]);
+
+/**
+ * One activity-log entry as the MCP tool hands it out. The log holds people (a CV search lists the
+ * files it found by name and email; screen paths and tool arguments carry search words and
+ * addresses), and an AI client must not be able to page through it as a bulk source of them, out of
+ * the daily export budget: only the safe detail keys stay, and the target loses its query and any address.
+ */
+export function redactAuditEntry(e: typeof auditLog.$inferSelect) {
+  const details =
+    e.details && typeof e.details === "object"
+      ? Object.fromEntries(Object.entries(e.details as Record<string, unknown>).filter(([k, v]) => SAFE_DETAIL_KEYS.has(k) && (typeof v !== "string" || !v.includes("@"))))
+      : null;
+  return { id: e.id, at: e.at, actor: e.actor, action: e.action, target: redactTarget(e.target), details };
+}
+
+export function redactTarget(target: string | null): string | null {
+  if (!target) return target;
+  const path = target.split("?")[0]!;
+  return path.replace(/[^\s/]*(@|%40)[^\s/]*/gi, "[email]").replace(/^[^/\s]*@[^\s]*$/, "[email]");
+}

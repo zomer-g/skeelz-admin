@@ -1,9 +1,11 @@
 import { and, eq, gte, sql } from "drizzle-orm";
-import { writeAudit } from "@/lib/audit";
+import { auditUnavailable, AuditWriteError, writeAudit, writeAuditStrict } from "@/lib/audit";
+import { firstInWindow } from "@/lib/api/rate-limit";
 import { israelMidnight } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { auditLog } from "@/lib/db/schema";
 import { afterOpen, atLimit, dailyQuota, FILE_LIMITS, FILE_OPENED, FILE_REFUSED } from "@/lib/security/files";
+import { lockBusy, LockTimeoutError, withUserLock } from "@/lib/security/lock";
 import { sf } from "@/lib/sf/client";
 
 /**
@@ -43,12 +45,33 @@ export interface ServableFile {
   extension: string | null;
 }
 
+/** Who the file belongs to, as the audit entry records it: so "who opened X's files" has an answer by either key. */
+export interface FileSubject {
+  /** The candidate's id, or the email address the file was found through (the entry's target). */
+  subject: string;
+  contactId?: string | null;
+  email?: string | null;
+}
+
 /**
  * Streams the file and writes the audit entry — or refuses once the day's limit is reached and
- * asks the admins for more. `subject` is what the audit entry records it under — the candidate's
- * id, or the email address the file was found through.
+ * asks the admins for more. The count, the download and the entry happen under the person's lock
+ * (lib/security/lock.ts), so parallel requests cannot share one remaining slot; and the entry is
+ * written strictly: a file whose opening could not be logged is not served.
  */
-export async function serveFile(userEmail: string, file: ServableFile, subject: string): Promise<Response> {
+export async function serveFile(userEmail: string, file: ServableFile, who: FileSubject | string): Promise<Response> {
+  const subjectInfo: FileSubject = typeof who === "string" ? { subject: who } : who;
+  try {
+    return await withUserLock("files", userEmail, () => serveLocked(userEmail, file, subjectInfo));
+  } catch (err) {
+    if (err instanceof AuditWriteError) return auditUnavailable();
+    if (err instanceof LockTimeoutError) return lockBusy();
+    throw err;
+  }
+}
+
+async function serveLocked(userEmail: string, file: ServableFile, who: FileSubject): Promise<Response> {
+  const { subject } = who;
   const quota = await dailyQuota(userEmail);
   if (quota.opened >= quota.allowed) {
     // One refusal entry per file a day: a script retrying in a loop must not flood the log.
@@ -72,16 +95,30 @@ export async function serveFile(userEmail: string, file: ServableFile, subject: 
   }
 
   const upstream = await sf.downloadVersion(file.versionId);
-  if (!upstream.ok || !upstream.body) return new Response("הקובץ לא זמין כרגע", { status: 502 });
+  if (!upstream.ok || !upstream.body) {
+    await logFileDenied(userEmail, subject, file.documentId, "unavailable");
+    return new Response("הקובץ לא זמין כרגע", { status: 502 });
+  }
 
-  await writeAudit(userEmail, FILE_OPENED, subject, { documentId: file.documentId });
+  try {
+    await writeAuditStrict(userEmail, FILE_OPENED, subject, {
+      documentId: file.documentId,
+      title: file.title.slice(0, 200),
+      contactId: who.contactId ?? null,
+      email: who.email ?? null,
+    });
+  } catch (err) {
+    await upstream.body.cancel().catch(() => {});
+    throw err;
+  }
   await afterOpen(userEmail, quota);
 
   const ext = file.extension ?? "";
-  const inline = INLINE[ext];
+  const inline = Object.hasOwn(INLINE, ext) ? INLINE[ext] : undefined;
+  const download = Object.hasOwn(DOWNLOAD, ext) ? DOWNLOAD[ext] : undefined;
   return new Response(upstream.body, {
     headers: {
-      "Content-Type": inline ?? DOWNLOAD[ext] ?? "application/octet-stream",
+      "Content-Type": inline ?? download ?? "application/octet-stream",
       "Content-Disposition": contentDisposition(inline ? "inline" : "attachment", fileName(file)),
       "Content-Security-Policy": inline === "application/pdf" ? PDF_CSP : FILE_CSP,
       "X-Content-Type-Options": "nosniff",
@@ -89,6 +126,18 @@ export async function serveFile(userEmail: string, file: ServableFile, subject: 
       "Cache-Control": "private, no-store",
     },
   });
+}
+
+export const FILE_DENIED = "candidate.file_denied";
+
+/**
+ * A file request that served nothing: not this person's file, a malformed id, or Salesforce did not
+ * hand it over. Probing for document ids leaves a trace, at most one entry per person, subject and
+ * reason in ten minutes, so a script in a loop cannot flood the log.
+ */
+export async function logFileDenied(userEmail: string, subject: string, documentId: string, reason: "not_theirs" | "invalid" | "unavailable"): Promise<void> {
+  if (!firstInWindow(`file-denied:${userEmail}:${subject}:${reason}`, 10 * 60_000)) return;
+  await writeAudit(userEmail, FILE_DENIED, subject.slice(0, 254), { documentId: documentId.slice(0, 40), reason });
 }
 
 /** RFC 6266: a plain-ASCII fallback name for old clients, then the real name encoded per RFC 5987. */

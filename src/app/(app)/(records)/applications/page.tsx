@@ -3,6 +3,7 @@ import Link from "next/link";
 import { ApplicationsTable } from "@/components/entities/EntityParts";
 import { Pager, SearchForm } from "@/components/entities/Search";
 import { Card, PageHeader } from "@/components/ui";
+import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
 import { APPLICATION_SORTS, loadApplicationFilterOptions, searchApplications, type ApplicationFilters } from "@/lib/entities/applications";
@@ -20,7 +21,8 @@ const KEYS = ["q", "status", "paid", "fast", "cv", "owner", "from", "to", "job",
 
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath(ACTION, search, KEYS));
+  const path = viewPath(ACTION, search, KEYS);
+  const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
 
   const jobId = isSfId(param(search, "job")) ? param(search, "job") : "";
@@ -48,6 +50,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     jobId ? loadPosition(jobId) : Promise.resolve(null),
     contactId ? loadCandidate(contactId) : Promise.resolve(null),
   ]);
+  logRecordsShown(auth.user.email, path, rows);
 
   // Scope parameters (a job, a candidate, an employer) are kept across searches but are not form fields.
   const scope = { job: jobId, candidate: contactId, company: companyKey };

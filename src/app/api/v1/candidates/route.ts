@@ -1,5 +1,5 @@
 import { apiError, apiJson, choiceParam, intParam, isDay, withApiKey } from "@/lib/api/inbound";
-import { countPeople, peopleAccess } from "@/lib/api/people";
+import { countPeople, withPeople } from "@/lib/api/people";
 import { candidateJson } from "@/lib/api/records";
 import { API_LIMITS } from "@/lib/api/spec";
 import { searchCandidates } from "@/lib/entities/candidates";
@@ -14,7 +14,7 @@ const PATH = "/api/v1/candidates";
 export const GET = withApiKey(PATH, "records:read", async (req: Request, _ctx: unknown, key) => {
   const url = new URL(req.url);
   const params = url.searchParams;
-  let limit = intParam(params, "limit", API_LIMITS.defaultPageSize, 1, API_LIMITS.maxPageSize);
+  const limit = intParam(params, "limit", API_LIMITS.defaultPageSize, 1, API_LIMITS.maxPageSize);
   const page = intParam(params, "page", 1, 1, API_LIMITS.maxPage);
   const area = choiceParam(params, "area", ["", ...AREA_VALUES] as const);
   const napa = choiceParam(params, "napa", ["", ...NAPA_VALUES] as const);
@@ -32,14 +32,15 @@ export const GET = withApiKey(PATH, "records:read", async (req: Request, _ctx: u
   if ((fromDay && !isDay(fromDay)) || (toDay && !isDay(toDay))) return apiError(400, "invalid_parameter", "from and to must be dates: YYYY-MM-DD.");
   if (fromDay && toDay && fromDay > toDay) return apiError(400, "invalid_parameter", "from must not be after to.");
 
-  const access = await peopleAccess(key, params, PATH, limit);
-  if (access instanceof Response) return access;
-  if (access.people) limit = access.take;
-
-  const { rows, total } = await searchCandidates(
-    { q: "", district: "", area, napa, skill, city: "", account: "", cv, fast, applied, fromDay, toDay },
-    { page, pageSize: limit },
-  );
-  await countPeople(access, key, PATH, rows.length, url.search);
-  return apiJson({ data: rows.map((r) => candidateJson(r, access.people)), page, limit, total, has_more: page * limit < total });
+  const asked = limit;
+  return withPeople(key, params, PATH, asked, async (access) => {
+    const pageSize = access.people ? access.take : asked;
+    const { rows, total } = await searchCandidates(
+      { q: "", district: "", area, napa, skill, city: "", account: "", cv, fast, applied, fromDay, toDay },
+      { page, pageSize },
+    );
+    const data = rows.map((r) => candidateJson(r, access.people));
+    await countPeople(access, key, PATH, rows.length, url.search, data);
+    return apiJson({ data, page, limit: pageSize, total, has_more: page * pageSize < total });
+  });
 });

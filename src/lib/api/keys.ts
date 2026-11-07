@@ -1,7 +1,8 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { apiKeys } from "@/lib/db/schema";
+import { envAdmins } from "@/lib/auth/session";
+import { apiKeys, users } from "@/lib/db/schema";
 import { firstInWindow } from "./rate-limit";
 import { CONNECT_LIMITS, KEY_PREFIX, KEY_RANDOM_BYTES, KEY_SHOWN_CHARS, LEGACY_KEYS, type ApiScope } from "./spec";
 import { matchesToken, sharedToken } from "./tokens";
@@ -21,6 +22,8 @@ export interface ApiKeyIdentity {
   legacy: boolean;
   /** Who issued it (an email); null for a legacy env key. */
   createdBy: string | null;
+  /** The issuer is no longer an active admin: the key is known but carries nothing (verifyKey). */
+  issuerInactive?: boolean;
 }
 
 export const hashKey = (key: string) => createHash("sha256").update(key).digest("hex");
@@ -56,7 +59,21 @@ export async function verifyKey(presented: string): Promise<ApiKeyIdentity | nul
   if (!row || !timingSafeEqual(Buffer.from(row.hash, "hex"), Buffer.from(hash, "hex"))) return null;
   if (row.revokedAt) return null;
   if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
-  return { id: row.id, name: row.name, scopes: row.scopes, legacy: false, createdBy: row.createdBy };
+  // A key lives no longer than its issuer's access: once they are no longer an active admin (left,
+  // deactivated, demoted) it stops working, whatever its scopes. Checked on every call.
+  const identity = { id: row.id, name: row.name, scopes: row.scopes, legacy: false, createdBy: row.createdBy };
+  // Known, but refused (inbound.ts answers 403 for it): not a wrong key, so no lockout of the address.
+  if (!(await issuerStillAdmin(row.createdBy))) return { ...identity, issuerInactive: true };
+  return identity;
+}
+
+/** The issuer of a key is an active admin now (or one of ADMIN_EMAILS). */
+async function issuerStillAdmin(createdBy: string | null): Promise<boolean> {
+  if (!createdBy) return false;
+  const email = createdBy.toLowerCase();
+  if (envAdmins().includes(email)) return true;
+  const [u] = await getDb().select({ active: users.active, role: users.role }).from(users).where(eq(users.email, email)).limit(1);
+  return Boolean(u?.active && u.role === "admin");
 }
 
 /** Records when and from where a key was last used, at most once a minute per key. */

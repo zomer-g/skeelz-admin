@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ne, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, notInArray, sql, type SQL } from "drizzle-orm";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Badge, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
@@ -6,6 +6,7 @@ import { pageAuth } from "@/lib/auth/guard";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import { getDb } from "@/lib/db/client";
 import { auditLog, users } from "@/lib/db/schema";
+import { parseSubject, subjectCondition } from "@/lib/security/audit-search";
 import { AdminTabs } from "../AdminTabs";
 
 export const metadata: Metadata = { title: "יומן פעילות" };
@@ -72,9 +73,30 @@ const ACTION_LABELS: Record<string, string> = {
   "mcp.initialize": "MCP · לקוח התחבר",
   "mcp.denied": "MCP · כלי נחסם (אין הרשאה)",
   "mcp.revoked": "MCP · חיבור נותק",
+  "mcp.token_failed": "MCP · ניסיון כושל לקבל אסימון",
+  "mcp.people_listed": "MCP · נמסרו פרטי מועמדים",
+  "records.shown": "רשומות שהוצגו במסך",
+  "page.denied": "כניסה למסך נדחתה",
+  "candidate.file_denied": "בקשה לקובץ נדחתה",
 };
 
 const isMcp = (action: string) => action.startsWith("mcp.");
+/** Entries about what a person saw, for the "views" filter. */
+const VIEW_ACTIONS = ["page.view", "records.shown", "page.denied"];
+const PAGE = 200;
+
+/** An entry's details as text; a long list of ids is shown as how many there are (the full list is in the database). */
+function detailsText(action: string, details: unknown): string {
+  const d = { ...(details as Record<string, unknown>) };
+  for (const k of ["ids", "files"]) {
+    if (Array.isArray(d[k]) && (d[k] as unknown[]).length > 5) d[k] = `${(d[k] as unknown[]).length} רשומות`;
+  }
+  if (d.shown && typeof d.shown === "object") {
+    const sh = d.shown as { files?: unknown[] };
+    if (Array.isArray(sh.files) && sh.files.length > 5) d.shown = { ...sh, files: `${sh.files.length} קבצים` };
+  }
+  return JSON.stringify(d);
+}
 const MCP_ACTION = sql`starts_with(${auditLog.action}, 'mcp.')`;
 
 /** An MCP entry's details in words: the tool's arguments, the app and the role it ran with. */
@@ -168,8 +190,18 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
   const userFilter = first(search.user)?.toLowerCase() || "";
   const rawType = first(search.type);
   const typeFilter = rawType === "views" || rawType === "actions" || rawType === "mcp" ? rawType : "all";
+  const subjectRaw = (first(search.subject) ?? "").slice(0, 254);
+  const subject = parseSubject(subjectRaw);
+  const beforeRaw = Number(first(search.before));
+  const before = Number.isSafeInteger(beforeRaw) && beforeRaw > 0 ? beforeRaw : null;
 
-  const auth = await pageAuth("admin", "/admin/audit");
+  // Reading the log is itself logged, with what was looked for.
+  const logged = new URLSearchParams();
+  if (userFilter) logged.set("user", userFilter);
+  if (typeFilter !== "all") logged.set("type", typeFilter);
+  if (subjectRaw) logged.set("subject", subjectRaw);
+  if (before) logged.set("before", String(before));
+  const auth = await pageAuth("admin", `/admin/audit${logged.size ? `?${logged.toString()}` : ""}`);
   if (!auth.ok) return auth.render;
 
   const db = getDb();
@@ -177,17 +209,19 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
 
   const conditions: SQL[] = [];
   if (userFilter) conditions.push(eq(auditLog.actor, userFilter));
-  if (typeFilter === "views") conditions.push(eq(auditLog.action, "page.view"));
-  if (typeFilter === "actions") conditions.push(and(ne(auditLog.action, "page.view"), sql`NOT ${MCP_ACTION}`)!);
+  if (typeFilter === "views") conditions.push(inArray(auditLog.action, VIEW_ACTIONS));
+  if (typeFilter === "actions") conditions.push(and(notInArray(auditLog.action, VIEW_ACTIONS), sql`NOT ${MCP_ACTION}`)!);
   if (typeFilter === "mcp") conditions.push(MCP_ACTION);
+  if (subject) conditions.push(subjectCondition(subject));
+  if (before) conditions.push(lt(auditLog.id, before));
 
   const [events, perUser, people] = await Promise.all([
     db
       .select()
       .from(auditLog)
       .where(conditions.length ? and(...conditions) : undefined)
-      .orderBy(desc(auditLog.at))
-      .limit(500),
+      .orderBy(desc(auditLog.id))
+      .limit(PAGE + 1),
     db
       .select({
         actor: auditLog.actor,
@@ -203,13 +237,18 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
     db.select({ email: users.email, name: users.name, role: users.role }).from(users),
   ]);
   const personByEmail = new Map(people.map((p) => [p.email, p]));
+  const more = events.length > PAGE;
+  const shownEvents = events.slice(0, PAGE);
 
-  const filterHref = (next: { user?: string; type?: string }) => {
+  const filterHref = (next: { user?: string; type?: string; subject?: string; before?: number }) => {
     const q = new URLSearchParams();
     const u = next.user ?? userFilter;
     const t = next.type ?? typeFilter;
+    const subj = next.subject ?? subjectRaw;
     if (u) q.set("user", u);
     if (t !== "all") q.set("type", t);
+    if (subj) q.set("subject", subj);
+    if (next.before) q.set("before", String(next.before));
     const s = q.toString();
     return `/admin/audit${s ? `?${s}` : ""}`;
   };
@@ -261,6 +300,35 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
         </Card>
 
         <Card title={userFilter ? `יומן · ${personByEmail.get(userFilter)?.name ?? userFilter}` : "יומן · כל המשתמשים"} tone="accent-light">
+          <form action="/admin/audit" method="get" className="mb-4 flex flex-wrap items-end gap-2" role="search">
+            {userFilter ? <input type="hidden" name="user" value={userFilter} /> : null}
+            {typeFilter !== "all" ? <input type="hidden" name="type" value={typeFilter} /> : null}
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-sm">
+              <span className="font-medium">מי ראה את…</span>
+              <input
+                name="subject"
+                defaultValue={subjectRaw}
+                dir="ltr"
+                placeholder="מזהה Salesforce (מועמד, הגשה, קובץ) או כתובת מייל"
+                className="min-w-0 rounded-full border border-field bg-white px-4 py-2 text-start"
+              />
+            </label>
+            <button type="submit" className="rounded-full bg-brand px-5 py-2 text-sm font-medium text-white">
+              חיפוש ביומן
+            </button>
+            {subjectRaw ? (
+              <Link href={filterHref({ subject: "" })} className="text-sm font-medium text-accent-dark underline underline-offset-4">
+                ניקוי
+              </Link>
+            ) : null}
+          </form>
+          <p role="status" className="mb-3 text-sm">
+            {subjectRaw && !subject
+              ? "אפשר לחפש מזהה Salesforce (15 או 18 תווים) או כתובת מייל."
+              : subject
+                ? "מוצגים האירועים שמזכירים את הרשומה: צפייה במסך שלה, הופעה ברשימה שהוצגה, פתיחת קובץ, מסירה ב-MCP או ב-API, וחיפוש בקורות חיים."
+                : ""}
+          </p>
           <div className="mb-4 flex flex-wrap items-center gap-2">
             <Link href={filterHref({ type: "all" })} aria-current={typeFilter === "all" ? "true" : undefined} className={pill(typeFilter === "all")}>
               הכל
@@ -279,11 +347,11 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                 הצגת כל המשתמשים
               </Link>
             ) : null}
-            <span className="ms-auto text-xs text-muted">500 האירועים האחרונים</span>
+            <span className="ms-auto text-xs text-muted">{before ? `${PAGE} אירועים, מוקדמים יותר` : `${PAGE} האירועים האחרונים`}</span>
           </div>
 
-          <Table head={["מתי", "משתמש", "סוג", "מסך / פעולה", "פרטים"]} empty={events.length === 0 ? "אין אירועים" : undefined}>
-            {events.map((e) => {
+          <Table head={["מתי", "משתמש", "סוג", "מסך / פעולה", "פרטים"]} empty={shownEvents.length === 0 ? "אין אירועים" : undefined}>
+            {shownEvents.map((e) => {
               const isView = e.action === "page.view";
               const view = isView ? describeScreen(e.target) : null;
               const mcp = isMcp(e.action) ? describeMcp(e.action, e.target, e.details) : null;
@@ -307,7 +375,7 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
                     ) : (
                       <span dir="ltr">
                         {e.target ?? ""}
-                        {e.details ? ` ${JSON.stringify(e.details)}` : ""}
+                        {e.details ? ` ${detailsText(e.action, e.details)}` : ""}
                       </span>
                     )}
                   </td>
@@ -315,6 +383,13 @@ export default async function ActivityPage({ searchParams }: { searchParams: Pro
               );
             })}
           </Table>
+          {more ? (
+            <p className="mt-3 text-end">
+              <Link href={filterHref({ before: shownEvents.at(-1)!.id })} className="text-sm font-medium text-accent-dark underline underline-offset-4">
+                אירועים מוקדמים יותר
+              </Link>
+            </p>
+          ) : null}
         </Card>
       </div>
     </>

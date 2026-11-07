@@ -6,7 +6,8 @@ import { isAllowedRedirect, registerClient, registrationsToday } from "@/lib/mcp
 
 export const dynamic = "force-dynamic";
 
-const CONTROL_CHARS = /[\u0000-\u001f\u007f]/g;
+/** Control characters, and format characters (bidi overrides, zero-width): a name must not be made to read as another. */
+const CONTROL_CHARS = /[\u0000-\u001f\u007f-\u009f\p{Cf}]/gu;
 
 /**
  * Dynamic Client Registration (RFC 7591), open as MCP clients expect. Registering grants

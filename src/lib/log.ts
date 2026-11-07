@@ -41,3 +41,19 @@ export function safeErrorMessage(err: unknown): string {
   if (isDbError(err)) return `database error (${errorCode(err)})`;
   return err instanceof Error ? err.message : String(err);
 }
+
+/**
+ * What an uncaught error may print. Next prints server errors itself, whole: a database error's
+ * message holds the SQL and its values (a searched name, an email), a Salesforce error can echo the
+ * query. Those become their code; anything else is left as it is.
+ */
+export function redactForConsole(arg: unknown): unknown {
+  for (let e = asCoded(arg), depth = 0; e && depth < 4; e = asCoded(e.cause), depth++) {
+    const sf = e.name === "SalesforceError";
+    if (isDbError(e) || sf || (typeof e.message === "string" && /\bparams:/.test(e.message))) {
+      const digest = (arg as { digest?: unknown }).digest;
+      return `[error redacted: ${errorCode(arg)}${sf ? " (Salesforce)" : ""}${typeof digest === "string" ? ` digest ${digest}` : ""}]`;
+    }
+  }
+  return arg;
+}

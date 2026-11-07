@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
-import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, lt, sql, type SQL } from "drizzle-orm";
+import { writeAudit } from "@/lib/audit";
 import { effectiveStaffManager } from "@/lib/auth/permissions";
 import { hasRole, isRole, type Role } from "@/lib/auth/roles";
 import { envAdmins } from "@/lib/auth/session";
@@ -175,28 +176,54 @@ const response = (access: string, refresh: string, role: Role): TokenResponse =>
   scope: `mcp role:${role}`,
 });
 
-export type TokenResult = { ok: true; body: TokenResponse; grantId: string; person: McpPerson; created: boolean } | { ok: false; error: string; description: string };
+export type TokenResult =
+  | { ok: true; body: TokenResponse; grantId: string; person: McpPerson; created: boolean }
+  /** `reason` is for the activity log, never sent to the client. */
+  | { ok: false; error: string; description: string; reason: string };
+
+/** How long a previous refresh token or a redeemed code may come back without ending the connection. */
+const REUSE_GRACE_MS = 60_000;
+const graceStart = () => new Date(Date.now() - REUSE_GRACE_MS);
+
+/** Ends the live grants matching `where` (a replayed code or refresh token); true when one was ended. Logged. */
+async function revokeWhere(where: SQL, why: "replayed_code" | "refresh_reused"): Promise<boolean> {
+  const ended = await getDb()
+    .update(mcpGrants)
+    .set({ revokedAt: new Date(), revokedBy: `system:${why}` })
+    .where(and(where, isNull(mcpGrants.revokedAt)))
+    .returning({ id: mcpGrants.id, userId: mcpGrants.userId });
+  for (const g of ended) await writeAudit("mcp:oauth", "mcp.revoked", g.id, { reason: why, userId: g.userId });
+  return ended.length > 0;
+}
 
 const PKCE_VERIFIER = /^[A-Za-z0-9._~-]{43,128}$/;
 
 /** authorization_code: single use (deleted whatever happens next), PKCE, same client and redirect. */
 export async function redeemCode(p: { code: string; clientId: string; redirectUri: string; verifier: string }): Promise<TokenResult> {
   const db = getDb();
-  const [row] = await db.delete(mcpCodes).where(eq(mcpCodes.hash, sha256(p.code))).returning();
-  const bad = (description: string): TokenResult => ({ ok: false, error: "invalid_grant", description });
-  if (!row || row.expiresAt.getTime() <= Date.now()) return bad("authorization code not found or expired");
-  if (row.clientId !== p.clientId) return bad("code was issued to another client");
-  if (row.redirectUri !== p.redirectUri) return bad("redirect_uri does not match");
+  const codeHash = sha256(p.code);
+  const [row] = await db.delete(mcpCodes).where(eq(mcpCodes.hash, codeHash)).returning();
+  const bad = (description: string, reason = description): TokenResult => ({ ok: false, error: "invalid_grant", description, reason });
+  if (!row) {
+    // A code redeemed once and presented again: whoever holds it is not who redeemed it first, so the
+    // connection made from it ends (RFC 6749 §4.1.2).
+    // Within a minute of the first redemption it is the client's own retry (a lost answer), not a replay.
+    const revoked = await revokeWhere(and(eq(mcpGrants.codeHash, codeHash), lt(mcpGrants.createdAt, graceStart()))!, "replayed_code");
+    return bad("authorization code not found or expired", revoked ? "code_replayed" : "code_unknown");
+  }
+  if (row.expiresAt.getTime() <= Date.now()) return bad("authorization code not found or expired", "code_expired");
+  if (row.clientId !== p.clientId) return bad("code was issued to another client", "code_other_client");
+  if (row.redirectUri !== p.redirectUri) return bad("redirect_uri does not match", "redirect_mismatch");
   if (!PKCE_VERIFIER.test(p.verifier) || createHash("sha256").update(p.verifier).digest("base64url") !== row.codeChallenge) {
-    return bad("PKCE verification failed");
+    return bad("PKCE verification failed", "pkce_failed");
   }
   const person = await currentPerson(row.userId);
-  if (!person) return bad("this account no longer has access");
+  if (!person) return bad("this account no longer has access", "no_access");
 
   const pair = newPair();
   const [grant] = await db
     .insert(mcpGrants)
-    .values({ userId: row.userId, clientId: row.clientId, maxRole: row.maxRole, ...pair.columns })
+    .values({ userId: row.userId, clientId: row.clientId, maxRole: row.maxRole, codeHash, ...pair.columns })
     .returning({ id: mcpGrants.id });
   return { ok: true, body: response(pair.access, pair.refresh, lowerRole(person.siteRole, row.maxRole)), grantId: grant!.id, person, created: true };
 }
@@ -204,25 +231,37 @@ export async function redeemCode(p: { code: string; clientId: string; redirectUr
 /** refresh_token: rotates both tokens; the old refresh token stops working at once. */
 export async function refreshGrant(p: { refreshToken: string; clientId: string }): Promise<TokenResult> {
   const db = getDb();
-  const bad = (description: string): TokenResult => ({ ok: false, error: "invalid_grant", description });
+  const bad = (description: string, reason = description): TokenResult => ({ ok: false, error: "invalid_grant", description, reason });
+  const hash = sha256(p.refreshToken);
   const [grant] = await db
     .select()
     .from(mcpGrants)
-    .where(and(eq(mcpGrants.refreshHash, sha256(p.refreshToken)), isNull(mcpGrants.revokedAt)))
+    .where(and(eq(mcpGrants.refreshHash, hash), isNull(mcpGrants.revokedAt)))
     .limit(1);
-  if (!grant || grant.refreshExpiresAt.getTime() <= Date.now()) return bad("refresh token not found, revoked or expired");
-  if (grant.clientId !== p.clientId) return bad("refresh token was issued to another client");
+  if (!grant) {
+    // A refresh token that was already rotated away: two parties hold this connection's tokens.
+    // Ending the connection stops whichever of them is not its owner (OAuth 2.1 §4.3.1).
+    // Within a minute of the rotation it is the client's own retry or a parallel refresh, not theft.
+    const revoked = await revokeWhere(and(eq(mcpGrants.prevRefreshHash, hash), lt(mcpGrants.rotatedAt, graceStart()))!, "refresh_reused");
+    return bad("refresh token not found, revoked or expired", revoked ? "refresh_reused" : "refresh_unknown");
+  }
+  if (grant.refreshExpiresAt.getTime() <= Date.now()) return bad("refresh token not found, revoked or expired", "refresh_expired");
+  const endsAt = grant.createdAt.getTime() + MCP_LIMITS.grantMaxDays * 86_400_000;
+  if (endsAt <= Date.now()) return bad("this connection reached its maximum lifetime; connect again", "grant_lifetime");
+  if (grant.clientId !== p.clientId) return bad("refresh token was issued to another client", "refresh_other_client");
   const person = await currentPerson(grant.userId);
-  if (!person) return bad("this account no longer has access");
+  if (!person) return bad("this account no longer has access", "no_access");
 
   const pair = newPair();
+  // Never past the connection's lifetime.
+  if (pair.columns.refreshExpiresAt.getTime() > endsAt) pair.columns.refreshExpiresAt = new Date(endsAt);
   // Conditional on the hash just read, so two racing refreshes cannot both win.
   const [updated] = await db
     .update(mcpGrants)
-    .set(pair.columns)
+    .set({ ...pair.columns, prevRefreshHash: grant.refreshHash, rotatedAt: new Date() })
     .where(and(eq(mcpGrants.id, grant.id), eq(mcpGrants.refreshHash, grant.refreshHash), isNull(mcpGrants.revokedAt)))
     .returning({ id: mcpGrants.id });
-  if (!updated) return bad("refresh token was already used");
+  if (!updated) return bad("refresh token was already used", "refresh_race");
   return { ok: true, body: response(pair.access, pair.refresh, lowerRole(person.siteRole, grant.maxRole)), grantId: grant.id, person, created: false };
 }
 

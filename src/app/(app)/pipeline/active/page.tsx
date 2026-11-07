@@ -3,6 +3,7 @@ import Link from "next/link";
 import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { Badge, Card, smallFieldClass, Table } from "@/components/ui";
+import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
 import { formatDay, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtInt, fmtRelative } from "@/lib/format";
@@ -49,7 +50,8 @@ const one = (v: string | string[] | undefined) => (typeof v === "string" ? v : "
  */
 export default async function ActivePage({ searchParams }: { searchParams: Promise<Search> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath(PATH, search, PARAM_KEYS));
+  const path = viewPath(PATH, search, PARAM_KEYS);
+  const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
 
   const [p, histories] = await Promise.all([loadPipeline(search, "all"), loadStatusHistories()]);
@@ -104,6 +106,7 @@ export default async function ActivePage({ searchParams }: { searchParams: Promi
         ? (y.shown?.at.getTime() ?? 0) - (x.shown?.at.getTime() ?? 0)
         : y.a.level - x.a.level || y.moved.getTime() - x.moved.getTime(),
     );
+  logRecordsShown(auth.user.email, path, rows.slice(0, MAX_ROWS).map(({ a }) => ({ contactId: a.fact.contactId, id: a.fact.id })));
 
   const statusSelect = (name: string, label: string, value: string) => (
     <Field label={label}>

@@ -1,5 +1,5 @@
 import { clientIp } from "@/lib/api/inbound";
-import { hit } from "@/lib/api/rate-limit";
+import { firstInWindow, hit } from "@/lib/api/rate-limit";
 import { writeAudit } from "@/lib/audit";
 import { mcpJson, oauthError, preflight, readParams } from "@/lib/mcp/http";
 import { redeemCode, refreshGrant, type TokenResult } from "@/lib/mcp/oauth";
@@ -33,7 +33,14 @@ export async function POST(req: Request): Promise<Response> {
       return oauthError(400, "unsupported_grant_type", "Supported: authorization_code, refresh_token.");
   }
 
-  if (!result.ok) return oauthError(400, result.error, result.description);
+  if (!result.ok) {
+    // A failed redemption may be a stolen code or token being tried: it leaves a trace (the reason
+    // stays here, the client gets the standard error), once per address, client and reason in ten minutes.
+    if (firstInWindow(`mcp-token-failed:${ip}:${clientId.slice(0, 80)}:${result.reason}`, 10 * 60_000)) {
+      await writeAudit("mcp:oauth", "mcp.token_failed", clientId.slice(0, 100), { grant_type: str(p.grant_type), reason: result.reason, ip });
+    }
+    return oauthError(400, result.error, result.description);
+  }
   if (result.created) await writeAudit(result.person.email, "mcp.connected", result.grantId, { ip });
   return mcpJson(result.body, 200, { Pragma: "no-cache" });
 }

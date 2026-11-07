@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { CONNECT_LIMITS, type Peer } from "@/lib/api/spec";
 import { getDb } from "@/lib/db/client";
 import { connections } from "@/lib/db/schema";
+import { pinnedFetch } from "@/lib/net/pinned-fetch";
 import { assertPublicHost, isInternalHostname } from "@/lib/net/public-address";
 import { decryptSecret } from "./crypto";
 
@@ -156,11 +157,19 @@ export async function peerFetch<T = unknown>(
   let res: Response;
   let text: string;
   try {
-    // No redirects: a redirect could carry the key's header to another origin.
-    res = await fetch(target, { ...rest, headers: merged, redirect: "error", cache: "no-store", signal });
+    // No redirects: a redirect could carry the key's header to another origin. Outside local dev the
+    // connection is pinned to the public address its own lookup checked (no DNS rebinding).
+    res = isLocalDevUrl(target)
+      ? await fetch(target, { ...rest, headers: merged, redirect: "error", cache: "no-store", signal })
+      : await pinnedFetch(target, { method: rest.method, headers: merged, body: typeof rest.body === "string" ? rest.body : undefined, signal });
+    if (res.status >= 300 && res.status < 400) {
+      await res.body?.cancel();
+      throw new PeerError(peer, "http", `${peer} answered ${res.status} (a redirect, not followed).`, res.status);
+    }
     text = await readCapped(peer, res, maxBytes);
   } catch (err) {
     if (err instanceof PeerError) throw err;
+    if ((err as Error).message === "blocked_address") throw new PeerError(peer, "blocked_address", `${peer}'s address resolves to a non-public address.`);
     const name = (err as Error).name;
     if (name === "TimeoutError" || name === "AbortError") throw new PeerError(peer, "timeout", `${peer} did not answer within ${timeoutMs / 1000}s.`);
     throw new PeerError(peer, "network", `${peer} could not be reached.`);

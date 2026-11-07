@@ -22,8 +22,14 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   GA/SMOOV/SF server-side only) — keep it that way or extend the CSP. The candidate file route sends its own sandboxing
   CSP and is limited per Israel day (`src/lib/security/files.ts`): 20 files a user, an admin alert at the 10th, and an admin
   grants 30 more at a time at `/admin/security`; counted from the audit log.
-- **Security & privacy duties** (`docs/cv-security.md`): every candidate-file open and every search inside CVs (with its
-  results, `cvs.text_search`) is logged; logs are kept 24 months and purged nightly (`purgeOldLogs`, `LOG_RETENTION_MONTHS`).
+- **Security & privacy duties** (`docs/cv-security.md`, `docs/security-review-2026-11-07.md`): every candidate-file open and every search inside CVs (with its
+  results and the page shown, `cvs.text_search`) is logged; a screen that lists people also writes `records.shown` (the ids/emails of the rendered
+  rows, `logRecordsShown`, `src/lib/audit-ids.ts`) — a new list of people must too. Every hand-over of personal data (file, contact copy, payments
+  download, MCP/API people) writes its entry with `writeAuditStrict` *before* the data leaves and runs under `withUserLock`
+  (`src/lib/security/lock.ts`, `handover.test.ts`); plain `writeAudit` is for informational entries only (failures are counted for `AdminAlerts`).
+  `audit_log` is append-only in the database (trigger, migration 0027: no UPDATE/TRUNCATE, no DELETE under 24 months); "who saw X" is
+  the subject search on `/admin/audit` (`src/lib/security/audit-search.ts`). The cookie-authenticated `/api` routes refuse cross-site
+  requests (`Sec-Fetch-Site`, `src/proxy.ts`). Uncaught DB/Salesforce errors print as their code only (`src/instrumentation.ts`). logs are kept 24 months and purged nightly (`purgeOldLogs`, `LOG_RETENTION_MONTHS`).
   Admins confirm every active user's access at `/admin/users` (`src/lib/security/reviews.ts`): a confirmation holds 60 days
   (`access_reviews.valid_until`), in its last 10 it shows on every page for admins and can be renewed for 60 more counted from
   the end of the period; a role/staff change makes it due at once; nothing is revoked on its own. Open alerts and due / soon
@@ -36,8 +42,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `metrics:read` (aggregates, incl. applications per job per day) `site-feed:read` `records:read` (one application / candidate per
   row, ids only, `src/lib/api/records.ts`) `people:read` (+ `staff:read`, see Staff data), 403 `insufficient_scope`. Every call made with a key is a row
   in `api_calls` (key, time, path+query, status, address, ms), shown per key at `/admin/api/[id]`, purged with the logs. Env tokens stay as legacy keys: `API_TOKEN` (+ `_PREVIOUS`) =
-  jobs+metrics, `SITE_FEED_TOKEN` = site feed only. In-memory rate limits per key, lockout per address. Outbound to the
-  other apps only via `peerFetch` (`src/lib/connect/client.ts`); connections set at `/admin/connections`, peer keys
+  jobs+metrics, `SITE_FEED_TOKEN` = site feed only. In-memory rate limits per key, lockout per address. A key stops working once its issuer is no longer an active admin (`verifyKey`). Outbound to the
+  other apps only via `peerFetch` (`src/lib/connect/client.ts`), connected through `pinnedFetch` (`src/lib/net/pinned-fetch.ts`: the address is
+  checked inside the connection's own DNS lookup — no rebinding); connections set at `/admin/connections`, peer keys
   AES-256-GCM encrypted under `CONNECT_SECRET_KEY` and never sent to the browser. Outbound webhooks
   (`src/lib/api/outbound.ts`) are detected and delivered by the sync worker: `webhook_case_state` remembers what was
   reported, `webhook_deliveries` queues events with retries, each POST is HMAC-signed with `WEBHOOK_TOKEN`. All
@@ -52,7 +59,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   sign-in on the consent page `/mcp/oauth/authorize` (`pageAuth`), where the person picks a role ceiling ≤ their role.
   `/mcp` routes use `verifyAccessToken` instead of `requireUser`: effective role = min(site role read from `users` on every
   call, ceiling). Every tool in `src/lib/mcp/tools.ts` declares the `minRole` its screen/action uses; `tools/list` and
-  `tools/call` both filter by it. Tokens are opaque, sha256-stored in `mcp_grants`; users disconnect at `/connectors`,
+  `tools/call` both filter by it. Tokens are opaque, sha256-stored in `mcp_grants`; a reused refresh token or code revokes the grant, a grant lives ≤ 90 days, consent defaults to viewer; users disconnect at `/connectors`,
   admins at `/admin/mcp`. Every call is audited (`mcp.call`). Never expose Salesforce writes, candidate files or admin
   write operations over MCP. CVs are searchable over MCP (`search_cvs`, `cv_summary`, by words or `topic`; `cv_topics` lists the
   topics) as metadata and matches only — never the file or its text.
