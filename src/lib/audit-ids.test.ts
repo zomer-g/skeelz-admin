@@ -15,6 +15,11 @@ test("collects Salesforce ids and emails at id/email keys, once each", () => {
   assert.equal(r.more, false);
 });
 
+test("reads camelCase keys of the screens' rows, not words ending in id", () => {
+  const r = recordIds([{ contactId: "0031x00000AbCdE", candidateEmail: "a@b.co", paid: "0031x00000ZzZzZ", documentId: "0691x00000DoCuM" }]);
+  assert.deepEqual(r.ids.sort(), ["0031x00000AbCdE", "0691x00000DoCuM", "a@b.co"].sort());
+});
+
 test("caps the list and says so", () => {
   const rows = Array.from({ length: 10 }, (_, i) => ({ id: `0031x00000AbC${String(i).padStart(2, "0")}` }));
   const r = recordIds({ rows }, 4);

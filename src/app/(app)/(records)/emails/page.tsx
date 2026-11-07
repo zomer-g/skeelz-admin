@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CopyContacts } from "@/components/entities/CopyContacts";
 import { Pager, SearchForm } from "@/components/entities/Search";
 import { Badge, Card, PageHeader, Table } from "@/components/ui";
+import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
 import { EMAIL_SORTS, emailFilters, emailPath, loadCaseTypes, searchEmails } from "@/lib/entities/emails";
@@ -19,7 +20,8 @@ const KEYS = ["q", "multi", "type", "applied", "files", "area", "napa", "sort", 
 
 export default async function EmailsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath(ACTION, search, KEYS));
+  const path = viewPath(ACTION, search, KEYS);
+  const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
 
   const types = await loadCaseTypes();
@@ -28,6 +30,7 @@ export default async function EmailsPage({ searchParams }: { searchParams: Promi
   const page = pageParam(search);
   const sort = sortParam(search, EMAIL_SORTS, "last");
   const { rows, total } = await searchEmails(filters, { page, sort });
+  logRecordsShown(auth.user.email, path, rows);
 
   const values: Record<string, string> = {
     q: filters.q,

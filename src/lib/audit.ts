@@ -2,6 +2,19 @@ import { sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
 import { auditLog } from "@/lib/db/schema";
 import { errorCode } from "@/lib/log";
+import { recordIds } from "./audit-ids";
+
+/**
+ * Which people a screen showed: the record ids and emails in the rows it rendered (lib/audit-ids.ts),
+ * next to the page.view entry of the same path. A list's URL alone cannot be replayed later — the
+ * mirror changes — so this is what answers "who saw person X". Fire-and-forget, like page.view.
+ */
+export function logRecordsShown(actor: string, path: string, rows: unknown): void {
+  const { ids, more } = recordIds(rows);
+  if (!ids.length) return;
+  void writeAudit(actor, RECORDS_SHOWN, path, { ids, ...(more ? { more_ids: true } : {}) });
+}
+export const RECORDS_SHOWN = "records.shown";
 
 /** A signed-in user opened a screen. Fire-and-forget: logging never slows a render. */
 export function logPageView(actor: string, path: string): void {

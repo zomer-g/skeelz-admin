@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SearchForm } from "@/components/entities/Search";
 import { Badge, Card, NewTabNote, PageHeader, StatCard, Table } from "@/components/ui";
+import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
 import { israelDay, viewPath } from "@/lib/dashboard/params";
 import { AUTO_SUBJECT, loadPaymentStatuses, loadPayments, PAYMENT_SORT_FIELDS, PAYMENT_SORTS, paymentFilters, PAYMENTS_SINCE } from "@/lib/entities/payments";
@@ -34,7 +35,8 @@ function daysBetween(a: string, b: string): number {
  */
 export default async function PaymentsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath(ACTION, search, KEYS));
+  const path = viewPath(ACTION, search, KEYS);
+  const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
 
   const filters = paymentFilters(search);
@@ -42,6 +44,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const values: Record<string, string> = { q: filters.q, paid: filters.paid, cstatus: filters.candidateStatus };
   const [loaded, statuses] = await Promise.all([loadPayments(filters), loadPaymentStatuses()]);
   const rows = sortRows(loaded, PAYMENT_SORT_FIELDS, sort);
+  // Every row is on screen (no paging): the candidates are what is worth recording.
+  logRecordsShown(auth.user.email, path, rows.map((r) => ({ contactId: r.contactId, id: r.id })));
 
   const today = israelDay();
   const sfBase = process.env.SF_LOGIN_URL?.replace(/\/+$/, "");

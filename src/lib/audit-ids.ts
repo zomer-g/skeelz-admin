@@ -6,11 +6,13 @@
  */
 export const MAX_LOGGED_IDS = 200;
 
-const ID_KEY = /(^|_)(id|ids|contact|email)$|Id$/i;
+/** snake_case (`contact_id`, `email`) or camelCase (`contactId`, `candidateEmail`) — "paid" or "valid" are not ids. */
+const ID_KEY = /(^|_)(id|ids|contact|email)$/i;
+const CAMEL_ID_KEY = /[a-z](Id|Ids|Email)$/;
 const SF_ID = /^[a-zA-Z0-9]{15}([a-zA-Z0-9]{3})?$/;
 const EMAIL = /^[^\s@]{1,64}@[^\s@]{1,190}$/;
-/** Salesforce key prefixes that are not people or their records: users (005), files (068/069), record types (012). */
-const NOT_A_RECORD = /^(005|012|068|069)/;
+/** Salesforce key prefixes that are not people or their records: users (005, the staff), record types (012), file versions (068). */
+const NOT_A_RECORD = /^(005|012|068)/;
 
 export interface LoggedIds {
   ids: string[];
@@ -31,7 +33,7 @@ export function recordIds(result: unknown, max = MAX_LOGGED_IDS): LoggedIds {
   const walk = (v: unknown, key: string, depth: number) => {
     if (depth > 8 || v == null) return;
     if (typeof v === "string") {
-      if (ID_KEY.test(key)) add(v);
+      if (ID_KEY.test(key) || CAMEL_ID_KEY.test(key)) add(v);
     } else if (Array.isArray(v)) {
       for (const x of v) walk(x, key, depth + 1);
     } else if (typeof v === "object") {

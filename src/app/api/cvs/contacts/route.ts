@@ -34,7 +34,7 @@ export async function GET(request: Request) {
       return new Response(exportLimitMessage(usage), { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
     }
 
-    const found = await loadCvContacts(filters, field);
+    const found = await loadCvContacts(filters, field, { actor: user.email, via: "screen" });
     const { take, limited } = exportAllowance(usage, found.values.length);
     const values = found.values.slice(0, take);
     const used = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));

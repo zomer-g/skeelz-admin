@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CopyContacts } from "@/components/entities/CopyContacts";
 import { Pager, SearchForm } from "@/components/entities/Search";
 import { Badge, Card, PageHeader, Table } from "@/components/ui";
+import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
 import { viewPath } from "@/lib/dashboard/params";
 import { emailPath } from "@/lib/entities/emails";
@@ -21,13 +22,15 @@ const KEYS = ["q", "district", "area", "napa", "skill", "city", "account", "cv",
 
 export default async function CandidatesPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath(ACTION, search, KEYS));
+  const path = viewPath(ACTION, search, KEYS);
+  const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
 
   const filters = candidateFilters(search);
   const page = pageParam(search);
   const sort = sortParam(search, CANDIDATE_SORTS, "created");
   const [{ rows, total }, options] = await Promise.all([searchCandidates(filters, { page, sort }), loadCandidateFilterOptions()]);
+  logRecordsShown(auth.user.email, path, rows);
 
   const values: Record<string, string> = {
     q: filters.q,

@@ -118,8 +118,14 @@ export function rangeQuery(p: Pick<DashboardParams, "preset" | "fromDay" | "toDa
 
 /** The path written to the activity log: the page plus the filters that shaped it. */
 export function viewPath(base: string, search: SearchParams, keys = ["range", "basis", "scope", "from", "to", "q"]): string {
+  // A repeated key keeps every value: a page reads the first (`?q=name&q=x` searches "name") or all
+  // of them (topics), and the log must never be emptier than what was shown.
   const q = new URLSearchParams(
-    Object.entries(search).flatMap(([k, v]) => (typeof v === "string" && v && keys.includes(k) ? [[k, v]] : [])),
+    Object.entries(search).flatMap(([k, v]) => {
+      if (!keys.includes(k)) return [];
+      const values = Array.isArray(v) ? v : [v];
+      return values.flatMap((x) => (typeof x === "string" && x ? [[k, x]] : []));
+    }),
   ).toString();
   return q ? `${base}?${q}` : base;
 }

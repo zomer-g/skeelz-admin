@@ -3,6 +3,7 @@ import Link from "next/link";
 import { CopyContacts } from "@/components/entities/CopyContacts";
 import { Pager, SearchForm } from "@/components/entities/Search";
 import { Badge, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
+import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
 import { TOPIC_GROUPS, topicLabel, TOPICS } from "@/lib/cv-topics";
 import { viewPath } from "@/lib/dashboard/params";
@@ -24,7 +25,8 @@ const KEYS = ["q", "text", "topic", "source", "kind", "area", "napa", "from", "t
 /** Every CV in one list: on Contacts, on CV and application Cases, and on their emails (lib/entities/cvs.ts). */
 export default async function CvsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
-  const auth = await pageAuth("viewer", viewPath(ACTION, search, KEYS));
+  const path = viewPath(ACTION, search, KEYS);
+  const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
 
   const filters = cvFilters(search);
@@ -34,6 +36,7 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
     searchCvs(filters, { page, sort, who: { actor: auth.user.email, via: "screen" }, topics: true }),
     topicsRefreshedAt(),
   ]);
+  logRecordsShown(auth.user.email, path, rows);
   const access = await loadFileAccess(rows.map((r) => r.documentId));
   const values: Record<string, string> = {
     q: filters.q,

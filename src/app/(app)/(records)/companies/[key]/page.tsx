@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { ApplicationsTable, EntityHeader, FieldList } from "@/components/entities/EntityParts";
 import { MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card, Table } from "@/components/ui";
+import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
 import { searchApplications } from "@/lib/entities/applications";
 import { jobStatusLabel, loadCompany } from "@/lib/entities/companies";
@@ -35,6 +36,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
     loadJobActivity(jobs.map((j) => j.id)),
     searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", companyKey: key }, { pageSize: RECENT_APPLICATIONS }),
   ]);
+  logRecordsShown(auth.user.email, `/companies/${encodeURIComponent(key)}`, applications.rows);
   const now = new Date();
 
   return (
