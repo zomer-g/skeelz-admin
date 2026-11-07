@@ -181,6 +181,10 @@ export type TokenResult =
   /** `reason` is for the activity log, never sent to the client. */
   | { ok: false; error: string; description: string; reason: string };
 
+/** How long a previous refresh token or a redeemed code may come back without ending the connection. */
+const REUSE_GRACE_MS = 60_000;
+const graceStart = () => new Date(Date.now() - REUSE_GRACE_MS);
+
 /** Ends the live grants matching `where` (a replayed code or refresh token); true when one was ended. Logged. */
 async function revokeWhere(where: SQL, why: "replayed_code" | "refresh_reused"): Promise<boolean> {
   const ended = await getDb()
@@ -203,7 +207,8 @@ export async function redeemCode(p: { code: string; clientId: string; redirectUr
   if (!row) {
     // A code redeemed once and presented again: whoever holds it is not who redeemed it first, so the
     // connection made from it ends (RFC 6749 §4.1.2).
-    const revoked = await revokeWhere(eq(mcpGrants.codeHash, codeHash), "replayed_code");
+    // Within a minute of the first redemption it is the client's own retry (a lost answer), not a replay.
+    const revoked = await revokeWhere(and(eq(mcpGrants.codeHash, codeHash), lt(mcpGrants.createdAt, graceStart()))!, "replayed_code");
     return bad("authorization code not found or expired", revoked ? "code_replayed" : "code_unknown");
   }
   if (row.expiresAt.getTime() <= Date.now()) return bad("authorization code not found or expired", "code_expired");
@@ -236,7 +241,8 @@ export async function refreshGrant(p: { refreshToken: string; clientId: string }
   if (!grant) {
     // A refresh token that was already rotated away: two parties hold this connection's tokens.
     // Ending the connection stops whichever of them is not its owner (OAuth 2.1 §4.3.1).
-    const revoked = await revokeWhere(eq(mcpGrants.prevRefreshHash, hash), "refresh_reused");
+    // Within a minute of the rotation it is the client's own retry or a parallel refresh, not theft.
+    const revoked = await revokeWhere(and(eq(mcpGrants.prevRefreshHash, hash), lt(mcpGrants.rotatedAt, graceStart()))!, "refresh_reused");
     return bad("refresh token not found, revoked or expired", revoked ? "refresh_reused" : "refresh_unknown");
   }
   if (grant.refreshExpiresAt.getTime() <= Date.now()) return bad("refresh token not found, revoked or expired", "refresh_expired");
@@ -252,7 +258,7 @@ export async function refreshGrant(p: { refreshToken: string; clientId: string }
   // Conditional on the hash just read, so two racing refreshes cannot both win.
   const [updated] = await db
     .update(mcpGrants)
-    .set({ ...pair.columns, prevRefreshHash: grant.refreshHash })
+    .set({ ...pair.columns, prevRefreshHash: grant.refreshHash, rotatedAt: new Date() })
     .where(and(eq(mcpGrants.id, grant.id), eq(mcpGrants.refreshHash, grant.refreshHash), isNull(mcpGrants.revokedAt)))
     .returning({ id: mcpGrants.id });
   if (!updated) return bad("refresh token was already used", "refresh_race");

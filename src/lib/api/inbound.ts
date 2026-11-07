@@ -109,6 +109,15 @@ export function withApiKey<C>(path: string, auth: Exclude<EndpointAuth, "public"
       return res;
     };
 
+    // A key lives no longer than its issuer's access (lib/api/keys.ts). Refused as such — not as a
+    // wrong key, so an integration still polling with it does not lock out its address for other keys.
+    if (key.issuerInactive) {
+      if (firstInWindow(`issuer-lost:${key.id}`, 10 * MIN)) {
+        await writeAudit(ACTOR, "api.denied", route, { ip, reason: "issuer_not_admin", key: key.name, keyId: key.id });
+      }
+      return answer(apiError(403, "issuer_inactive", "The person who issued this key is no longer an active admin; ask an admin for a new key."));
+    }
+
     if (auth !== "any" && !key.scopes.includes(auth)) {
       if (firstInWindow(`scope:${key.id}:${route}`, 10 * MIN)) {
         await writeAudit(ACTOR, "api.denied", route, { ip, reason: "insufficient_scope", key: key.name, keyId: key.id, required: auth });

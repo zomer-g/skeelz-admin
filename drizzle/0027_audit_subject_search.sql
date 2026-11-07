@@ -1,5 +1,6 @@
+ALTER TABLE "mcp_grants" ADD COLUMN "rotated_at" timestamp with time zone;--> statement-breakpoint
 CREATE INDEX "audit_log_details_idx" ON "audit_log" USING gin ("details" jsonb_path_ops);--> statement-breakpoint
-CREATE INDEX "audit_log_target_idx" ON "audit_log" USING btree ("target" text_pattern_ops);--> statement-breakpoint
+CREATE INDEX "audit_log_target_idx" ON "audit_log" USING btree (left("target", 1000) text_pattern_ops);--> statement-breakpoint
 -- The activity log is append-only (docs/cv-security.md): no entry is changed, and none is deleted
 -- before the 24-month retention (LOG_RETENTION_MONTHS in src/lib/audit.ts; purgeOldLogs deletes past it).
 CREATE OR REPLACE FUNCTION audit_log_append_only() RETURNS trigger LANGUAGE plpgsql AS $$

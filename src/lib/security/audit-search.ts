@@ -41,9 +41,11 @@ export function subjectCondition(s: Subject): SQL {
           json({ shown: { files: [{ documentId: s.value }] } }),
         ];
   const paths = s.kind === "email" ? [emailPath(s.value)] : RECORD_SCREENS.map((p) => p + s.value);
+  // The target index covers its first 1,000 characters (schema.ts); a subject's path is far shorter.
+  const t = sql`left(${auditLog.target}, 1000)`;
   const inTarget = [
-    sql`${auditLog.target} = ${s.value}`,
-    ...paths.flatMap((p) => [sql`${auditLog.target} = ${p}`, sql`${auditLog.target} LIKE ${`${likeEscape(p)}?%`}`]),
+    sql`${t} = ${s.value}`,
+    ...paths.flatMap((p) => [sql`${t} = ${p}`, sql`${t} LIKE ${`${likeEscape(p)}?%`}`]),
   ];
   return sql`(${sql.join([...inTarget, ...inDetails], sql` OR `)})`;
 }

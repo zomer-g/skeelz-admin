@@ -1,5 +1,5 @@
 {
-  "id": "f0f3a55f-076b-42e2-b681-c72c3b75c0a4",
+  "id": "ad32fe96-6f4d-4f06-8bb4-3abc6030b4ab",
   "prevId": "3c2cc6e1-3179-4db2-9ae5-c8ebf8b91b6b",
   "version": "7",
   "dialect": "postgresql",
@@ -436,7 +436,7 @@
           "name": "audit_log_target_idx",
           "columns": [
             {
-              "expression": "\"target\" text_pattern_ops",
+              "expression": "left(\"target\", 1000) text_pattern_ops",
               "asc": true,
               "isExpression": true,
               "nulls": "last"
@@ -1684,6 +1684,12 @@
         "prev_refresh_hash": {
           "name": "prev_refresh_hash",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rotated_at": {
+          "name": "rotated_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },

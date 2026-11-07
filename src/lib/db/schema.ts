@@ -235,7 +235,9 @@ export const auditLog = pgTable(
     // "Who saw person X": a record id or address inside the details (records.shown ids, file
     // opens, people handed over), and a screen path that starts with it (/admin/audit?subject=).
     index("audit_log_details_idx").using("gin", sql`${t.details} jsonb_path_ops`),
-    index("audit_log_target_idx").on(sql`${t.target} text_pattern_ops`),
+    // On the first 1,000 characters: a btree entry has a size limit, and a target (a path with its
+    // filters) is unbounded. audit-search.ts queries the same expression.
+    index("audit_log_target_idx").on(sql`left(${t.target}, 1000) text_pattern_ops`),
   ],
 );
 
@@ -863,6 +865,8 @@ export const mcpGrants = pgTable(
     refreshExpiresAt: ts("refresh_expires_at").notNull(),
     /** The refresh token this one replaced: presented again, it means a copy is in other hands, and the grant is revoked. */
     prevRefreshHash: text("prev_refresh_hash"),
+    /** When the refresh token was last rotated: the previous one presented again within a minute is a client's own retry, not theft. */
+    rotatedAt: ts("rotated_at"),
     /** The authorization code the grant was redeemed from: a replay of it revokes the grant (RFC 6749 §4.1.2). */
     codeHash: text("code_hash"),
     createdAt: ts("created_at").notNull().defaultNow(),

@@ -1,7 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { writeAudit } from "@/lib/audit";
 import { envAdmins } from "@/lib/auth/session";
 import { apiKeys, users } from "@/lib/db/schema";
 import { firstInWindow } from "./rate-limit";
@@ -23,6 +22,8 @@ export interface ApiKeyIdentity {
   legacy: boolean;
   /** Who issued it (an email); null for a legacy env key. */
   createdBy: string | null;
+  /** The issuer is no longer an active admin: the key is known but carries nothing (verifyKey). */
+  issuerInactive?: boolean;
 }
 
 export const hashKey = (key: string) => createHash("sha256").update(key).digest("hex");
@@ -60,13 +61,10 @@ export async function verifyKey(presented: string): Promise<ApiKeyIdentity | nul
   if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
   // A key lives no longer than its issuer's access: once they are no longer an active admin (left,
   // deactivated, demoted) it stops working, whatever its scopes. Checked on every call.
-  if (!(await issuerStillAdmin(row.createdBy))) {
-    if (firstInWindow(`issuer-lost:${row.id}`, 10 * 60_000)) {
-      await writeAudit("api:inbound", "api.denied", row.name, { reason: "issuer_not_admin", keyId: row.id });
-    }
-    return null;
-  }
-  return { id: row.id, name: row.name, scopes: row.scopes, legacy: false, createdBy: row.createdBy };
+  const identity = { id: row.id, name: row.name, scopes: row.scopes, legacy: false, createdBy: row.createdBy };
+  // Known, but refused (inbound.ts answers 403 for it): not a wrong key, so no lockout of the address.
+  if (!(await issuerStillAdmin(row.createdBy))) return { ...identity, issuerInactive: true };
+  return identity;
 }
 
 /** The issuer of a key is an active admin now (or one of ADMIN_EMAILS). */
