@@ -1,8 +1,8 @@
-import { writeAudit } from "@/lib/audit";
+import { writeAuditStrict } from "@/lib/audit";
 import { AuthError, requireUser } from "@/lib/auth/session";
 import { emailFilters, loadEmailListContacts, MAX_EMAIL_CONTACTS, type EmailContactField } from "@/lib/entities/emails";
 import type { SearchParams } from "@/lib/entities/search";
-import { afterExport, atExportLimit, dailyExportUsage, exportAllowance, exportLimitMessage } from "@/lib/security/exports";
+import { afterExport, guardedExport, atExportLimit, dailyExportUsage, exportAllowance, exportLimitMessage } from "@/lib/security/exports";
 
 export const dynamic = "force-dynamic";
 
@@ -27,32 +27,34 @@ export async function GET(request: Request) {
   const field: EmailContactField = url.searchParams.get("field") === "phone" ? "phone" : "email";
   const filters = emailFilters(Object.fromEntries(url.searchParams.entries()) as SearchParams);
 
-  const usage = await dailyExportUsage(user.email);
-  if (usage.exported >= usage.allowed) {
-    await atExportLimit(user.email, usage, "/api/emails/contacts");
-    return new Response(exportLimitMessage(usage), { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
-  }
+  return guardedExport(user.email, async () => {
+    const usage = await dailyExportUsage(user.email);
+    if (usage.exported >= usage.allowed) {
+      await atExportLimit(user.email, usage, "/api/emails/contacts");
+      return new Response(exportLimitMessage(usage), { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+    }
 
-  const found = await loadEmailListContacts(filters, field);
-  const { take, limited } = exportAllowance(usage, found.values.length);
-  const values = found.values.slice(0, take);
-  const used = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
-  await writeAudit(user.email, "emails.contacts_copied", field, { count: values.length, truncated: found.truncated, limited, filters: used });
-  await afterExport(user.email, usage, values.length);
-  if (limited) await atExportLimit(user.email, usage, "/api/emails/contacts");
+    const found = await loadEmailListContacts(filters, field);
+    const { take, limited } = exportAllowance(usage, found.values.length);
+    const values = found.values.slice(0, take);
+    const used = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
+    await writeAuditStrict(user.email, "emails.contacts_copied", field, { count: values.length, truncated: found.truncated, limited, filters: used });
+    await afterExport(user.email, usage, values.length);
+    if (limited) await atExportLimit(user.email, usage, "/api/emails/contacts");
 
-  return Response.json(
-    {
-      field,
-      label: LABELS[field],
-      count: values.length,
-      truncated: found.truncated,
-      limit: MAX_EMAIL_CONTACTS,
-      limited,
-      left_out: found.values.length - values.length,
-      daily: { used: usage.exported + values.length, allowed: usage.allowed },
-      values,
-    },
-    { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } },
-  );
+    return Response.json(
+      {
+        field,
+        label: LABELS[field],
+        count: values.length,
+        truncated: found.truncated,
+        limit: MAX_EMAIL_CONTACTS,
+        limited,
+        left_out: found.values.length - values.length,
+        daily: { used: usage.exported + values.length, allowed: usage.allowed },
+        values,
+      },
+      { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } },
+    );
+  });
 }

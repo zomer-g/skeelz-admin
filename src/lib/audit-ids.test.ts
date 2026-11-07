@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { recordIds } from "./audit-ids";
+
+test("collects Salesforce ids and emails at id/email keys, once each", () => {
+  const r = recordIds({
+    people: [
+      { contact_id: "0031x00000AbCdE", name: "דנה", email: "Dana@Example.com", phone: "0501234567" },
+      { id: "5001x00000XyZwQAAA", candidate: { contact_id: "0031x00000AbCdE", email: "dana@example.com" } },
+    ],
+    owner_id: "0051x00000OwNeR",
+    title: "0031x00000AbCdE",
+  });
+  assert.deepEqual(r.ids.sort(), ["0031x00000AbCdE", "5001x00000XyZwQAAA", "dana@example.com"].sort());
+  assert.equal(r.more, false);
+});
+
+test("caps the list and says so", () => {
+  const rows = Array.from({ length: 10 }, (_, i) => ({ id: `0031x00000AbC${String(i).padStart(2, "0")}` }));
+  const r = recordIds({ rows }, 4);
+  assert.equal(r.ids.length, 4);
+  assert.equal(r.more, true);
+});
+
+test("ignores names, phones and words that only look like ids", () => {
+  assert.deepEqual(recordIds({ id: "abcdefghijklmno", name: "x@y", phone: "0501234567" }).ids, []);
+});

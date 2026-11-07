@@ -1,6 +1,6 @@
 import { loadCandidateFiles } from "@/lib/entities/candidates";
 import { isSfId } from "@/lib/entities/search";
-import { isDocumentId, serveFile } from "@/lib/entities/serve-file";
+import { isDocumentId, logFileDenied, serveFile } from "@/lib/entities/serve-file";
 import { AuthError, requireUser } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -20,11 +20,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   }
 
   const { id, documentId } = await params;
-  if (!isSfId(id) || !isDocumentId(documentId)) return new Response("Not found", { status: 404 });
+  if (!isSfId(id) || !isDocumentId(documentId)) {
+    await logFileDenied(user.email, isSfId(id) ? id : "invalid", documentId, "invalid");
+    return new Response("Not found", { status: 404 });
+  }
 
   const { files } = await loadCandidateFiles(id);
   const file = files.find((f) => f.documentId === documentId);
-  if (!file) return new Response("Not found", { status: 404 });
+  if (!file) {
+    await logFileDenied(user.email, id, documentId, "not_theirs");
+    return new Response("Not found", { status: 404 });
+  }
 
-  return serveFile(user.email, file, id);
+  return serveFile(user.email, file, { subject: id, contactId: id });
 }

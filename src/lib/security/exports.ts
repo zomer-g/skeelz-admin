@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, sql } from "drizzle-orm";
-import { writeAudit } from "@/lib/audit";
+import { auditUnavailable, AuditWriteError, writeAudit } from "@/lib/audit";
+import { lockBusy, LockTimeoutError, withUserLock } from "./lock";
 import { israelDay, israelMidnight } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { auditLog, exportQuotaGrants } from "@/lib/db/schema";
@@ -49,6 +50,21 @@ export async function dailyExportUsage(email: string, now = new Date()): Promise
   ]);
   const add = extra?.n ?? 0;
   return { day, exported: used?.n ?? 0, allowed: EXPORT_LIMITS.daily + add, extra: add };
+}
+
+/**
+ * One hand-over of people's details: the budget check, the work and the counted entry (written with
+ * writeAuditStrict) run under the person's export lock, so parallel requests cannot spend the same
+ * allowance twice, and nothing goes out when its entry could not be written.
+ */
+export async function guardedExport(email: string, fn: () => Promise<Response>): Promise<Response> {
+  try {
+    return await withUserLock("exports", email, fn);
+  } catch (err) {
+    if (err instanceof AuditWriteError) return auditUnavailable();
+    if (err instanceof LockTimeoutError) return lockBusy();
+    throw err;
+  }
 }
 
 /** How much of a request fits in what is left today: `take` people, `limited` when that is fewer than asked. */

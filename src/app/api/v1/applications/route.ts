@@ -1,5 +1,5 @@
 import { apiError, apiJson, choiceParam, intParam, isDay, withApiKey } from "@/lib/api/inbound";
-import { countPeople, peopleAccess } from "@/lib/api/people";
+import { countPeople, withPeople } from "@/lib/api/people";
 import { applicationJson } from "@/lib/api/records";
 import { API_LIMITS } from "@/lib/api/spec";
 import { searchApplications } from "@/lib/entities/applications";
@@ -15,7 +15,7 @@ export const GET = withApiKey(PATH, "records:read", async (req: Request, _ctx: u
   const params = url.searchParams;
   const scope = choiceParam(params, "scope", ["paid", "all"] as const);
   const fast = choiceParam(params, "fast", ["", "fast", "regular"] as const);
-  let limit = intParam(params, "limit", API_LIMITS.defaultPageSize, 1, API_LIMITS.maxPageSize);
+  const limit = intParam(params, "limit", API_LIMITS.defaultPageSize, 1, API_LIMITS.maxPageSize);
   const page = intParam(params, "page", 1, 1, API_LIMITS.maxPage);
   const fromDay = params.get("from") ?? "";
   const toDay = params.get("to") ?? "";
@@ -30,24 +30,25 @@ export const GET = withApiKey(PATH, "records:read", async (req: Request, _ctx: u
   if (fromDay && toDay && fromDay > toDay) return apiError(400, "invalid_parameter", "from must not be after to.");
   if ((jobId && !isSfId(jobId)) || (candidateId && !isSfId(candidateId))) return apiError(400, "invalid_id", "job_id and candidate_id must be Salesforce ids.");
 
-  const access = await peopleAccess(key, params, PATH, limit);
-  if (access instanceof Response) return access;
-  if (access.people) limit = access.take;
-
-  const { rows, total } = await searchApplications(
-    {
-      q: "",
-      status,
-      paid: scope === "paid" ? "paid" : "",
-      fast,
-      owner: "",
-      fromDay,
-      toDay,
-      ...(jobId ? { jobId } : {}),
-      ...(candidateId ? { contactId: candidateId } : {}),
-    },
-    { page, pageSize: limit },
-  );
-  await countPeople(access, key, PATH, rows.length, url.search);
-  return apiJson({ data: rows.map((r) => applicationJson(r, access.people)), page, limit, total, has_more: page * limit < total });
+  const asked = limit;
+  return withPeople(key, params, PATH, asked, async (access) => {
+    const pageSize = access.people ? access.take : asked;
+    const { rows, total } = await searchApplications(
+      {
+        q: "",
+        status,
+        paid: scope === "paid" ? "paid" : "",
+        fast,
+        owner: "",
+        fromDay,
+        toDay,
+        ...(jobId ? { jobId } : {}),
+        ...(candidateId ? { contactId: candidateId } : {}),
+      },
+      { page, pageSize },
+    );
+    const data = rows.map((r) => applicationJson(r, access.people));
+    await countPeople(access, key, PATH, rows.length, url.search, data);
+    return apiJson({ data, page, limit: pageSize, total, has_more: page * pageSize < total });
+  });
 });

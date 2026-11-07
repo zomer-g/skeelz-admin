@@ -22,7 +22,9 @@ describe("people's details leave the API only behind people:read", () => {
     const gate = readFileSync(join(root, "lib", "api", "people.ts"), "utf8");
     assert.match(gate, /if \(key\.legacy \|\| !key\.createdBy \|\| !key\.scopes\.some/);
     assert.match(gate, /row\?\.active && row\.role === "admin"/);
-    assert.match(gate, /writeAudit\(access\.actor, API_PEOPLE_LISTED/);
+    assert.match(gate, /writeAuditStrict\(access\.actor, API_PEOPLE_LISTED/);
+    // The budget check and the counted entry run under the issuer's export lock.
+    assert.match(gate, /withUserLock\("exports", actor,/);
   });
 
   it("every route that shapes records passes the gate's answer, and counts it", () => {
@@ -30,7 +32,7 @@ describe("people's details leave the API only behind people:read", () => {
     assert.ok(routes.length >= 3);
     for (const f of routes) {
       const code = readFileSync(f, "utf8");
-      assert.match(code, /await peopleAccess\(key,/, f);
+      assert.match(code, /withPeople\(key,/, f);
       assert.match(code, /await countPeople\(access,/, f);
       for (const call of code.matchAll(/(?:applicationJson|candidateJson)\([^)]*\)/g)) assert.match(call[0], /, access\.people\)$/, `${f}: ${call[0]}`);
     }

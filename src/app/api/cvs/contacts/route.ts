@@ -1,8 +1,8 @@
-import { writeAudit } from "@/lib/audit";
+import { writeAuditStrict } from "@/lib/audit";
 import { AuthError, requireUser } from "@/lib/auth/session";
 import { cvFilters, loadCvContacts, MAX_CV_CONTACTS, type CvContactField } from "@/lib/entities/cvs";
 import type { SearchParams } from "@/lib/entities/search";
-import { afterExport, atExportLimit, dailyExportUsage, exportAllowance, exportLimitMessage } from "@/lib/security/exports";
+import { afterExport, guardedExport, atExportLimit, dailyExportUsage, exportAllowance, exportLimitMessage } from "@/lib/security/exports";
 
 export const dynamic = "force-dynamic";
 
@@ -27,39 +27,41 @@ export async function GET(request: Request) {
   const field: CvContactField = url.searchParams.get("field") === "phone" ? "phone" : "email";
   const filters = cvFilters(Object.fromEntries(url.searchParams.entries()) as SearchParams);
 
-  const usage = await dailyExportUsage(user.email);
-  if (usage.exported >= usage.allowed) {
-    await atExportLimit(user.email, usage, "/api/cvs/contacts");
-    return new Response(exportLimitMessage(usage), { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
-  }
+  return guardedExport(user.email, async () => {
+    const usage = await dailyExportUsage(user.email);
+    if (usage.exported >= usage.allowed) {
+      await atExportLimit(user.email, usage, "/api/cvs/contacts");
+      return new Response(exportLimitMessage(usage), { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" } });
+    }
 
-  const found = await loadCvContacts(filters, field);
-  const { take, limited } = exportAllowance(usage, found.values.length);
-  const values = found.values.slice(0, take);
-  const used = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
-  await writeAudit(user.email, "cvs.contacts_copied", field, {
-    count: values.length,
-    files: found.files,
-    truncated: found.truncated,
-    limited,
-    text_search: found.textSearch,
-    filters: used,
-  });
-  await afterExport(user.email, usage, values.length);
-  if (limited) await atExportLimit(user.email, usage, "/api/cvs/contacts");
-
-  return Response.json(
-    {
-      field,
-      label: LABELS[field],
+    const found = await loadCvContacts(filters, field);
+    const { take, limited } = exportAllowance(usage, found.values.length);
+    const values = found.values.slice(0, take);
+    const used = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
+    await writeAuditStrict(user.email, "cvs.contacts_copied", field, {
       count: values.length,
+      files: found.files,
       truncated: found.truncated,
-      limit: MAX_CV_CONTACTS,
       limited,
-      left_out: found.values.length - values.length,
-      daily: { used: usage.exported + values.length, allowed: usage.allowed },
-      values,
-    },
-    { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } },
-  );
+      text_search: found.textSearch,
+      filters: used,
+    });
+    await afterExport(user.email, usage, values.length);
+    if (limited) await atExportLimit(user.email, usage, "/api/cvs/contacts");
+
+    return Response.json(
+      {
+        field,
+        label: LABELS[field],
+        count: values.length,
+        truncated: found.truncated,
+        limit: MAX_CV_CONTACTS,
+        limited,
+        left_out: found.values.length - values.length,
+        daily: { used: usage.exported + values.length, allowed: usage.allowed },
+        values,
+      },
+      { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff" } },
+    );
+  });
 }

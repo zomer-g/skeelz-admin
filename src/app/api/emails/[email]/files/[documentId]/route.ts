@@ -1,7 +1,7 @@
 import { AuthError, requireUser } from "@/lib/auth/session";
 import { loadEmailCvs } from "@/lib/entities/cv";
 import { normEmail } from "@/lib/entities/emails";
-import { isDocumentId, serveFile } from "@/lib/entities/serve-file";
+import { isDocumentId, logFileDenied, serveFile } from "@/lib/entities/serve-file";
 
 export const dynamic = "force-dynamic";
 
@@ -27,11 +27,17 @@ export async function GET(_request: Request, { params }: { params: Promise<{ ema
   } catch {
     // A malformed percent-sequence is no address.
   }
-  if (!address || !isDocumentId(documentId)) return new Response("Not found", { status: 404 });
+  if (!address || !isDocumentId(documentId)) {
+    await logFileDenied(user.email, address ?? "invalid", documentId, "invalid");
+    return new Response("Not found", { status: 404 });
+  }
 
   const { files } = await loadEmailCvs(address);
   const file = files.find((f) => f.documentId === documentId);
-  if (!file) return new Response("Not found", { status: 404 });
+  if (!file) {
+    await logFileDenied(user.email, address, documentId, "not_theirs");
+    return new Response("Not found", { status: 404 });
+  }
 
-  return serveFile(user.email, file, address);
+  return serveFile(user.email, file, { subject: address, email: address, contactId: file.contactId });
 }
