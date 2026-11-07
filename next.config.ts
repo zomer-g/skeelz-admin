@@ -29,6 +29,9 @@ const contentSecurityPolicy = [
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   reactStrictMode: true,
+  // next/image is not used. Turning the optimizer off makes /_next/image answer 404, so its
+  // unauthenticated surface (SVG processing, remote fetches) is not reachable at all.
+  images: { unoptimized: true },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
