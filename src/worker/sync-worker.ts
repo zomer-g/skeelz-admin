@@ -61,8 +61,21 @@ async function lastRunAt(mode: string): Promise<number> {
   return row?.at.getTime() ?? 0;
 }
 
+/** In-process: when the logs were last purged. Without Salesforce there is no reconcile to do it. */
+let lastPurgeAt = 0;
+
+async function purgeIfDue(sf: boolean): Promise<void> {
+  if (sf || new Date().getUTCHours() !== RECONCILE_HOUR_UTC || Date.now() - lastPurgeAt < 20 * 3600_000) return;
+  lastPurgeAt = Date.now();
+  await safely("log retention", async () => {
+    const removed = await purgeOldLogs();
+    log(`log retention (no Salesforce): removed ${removed} entries older than ${LOG_RETENTION_MONTHS} months`);
+  });
+}
+
 async function chooseScheduled(): Promise<JobMode | null> {
   const sf = salesforceConfigured();
+  await purgeIfDue(sf);
   if (sf && new Date().getUTCHours() === RECONCILE_HOUR_UTC && Date.now() - (await lastRunAt("reconcile")) > 20 * 3600_000) {
     return "reconcile";
   }
@@ -101,18 +114,19 @@ async function run(mode: JobMode, trigger: string): Promise<void> {
     return;
   }
 
-  if (!salesforceConfigured()) {
-    log(`${mode} skipped: Salesforce is not configured`);
-    return;
-  }
-  if (mode !== "reconcile") lastIncrementalAt = Date.now();
   if (mode === "reconcile") {
-    // Nightly: the logs are kept for LOG_RETENTION_MONTHS (stated in the privacy policy), then deleted.
+    // Nightly: the logs are kept for LOG_RETENTION_MONTHS (stated in the privacy policy), then deleted —
+    // whether or not Salesforce is configured: the retention promise does not depend on it.
     await safely("log retention", async () => {
       const removed = await purgeOldLogs();
       if (removed) log(`log retention: removed ${removed} entries older than ${LOG_RETENTION_MONTHS} months`);
     });
   }
+  if (!salesforceConfigured()) {
+    log(`${mode} skipped: Salesforce is not configured`);
+    return;
+  }
+  if (mode !== "reconcile") lastIncrementalAt = Date.now();
   const summary = await runSync(mode as SyncMode, trigger);
   if (summary.locked) {
     log(`${mode} skipped: another sync holds the lock`);

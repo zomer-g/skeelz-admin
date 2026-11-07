@@ -857,6 +857,10 @@ export const mcpGrants = pgTable(
     accessExpiresAt: ts("access_expires_at").notNull(),
     refreshHash: text("refresh_hash").notNull(),
     refreshExpiresAt: ts("refresh_expires_at").notNull(),
+    /** The refresh token this one replaced: presented again, it means a copy is in other hands, and the grant is revoked. */
+    prevRefreshHash: text("prev_refresh_hash"),
+    /** The authorization code the grant was redeemed from: a replay of it revokes the grant (RFC 6749 §4.1.2). */
+    codeHash: text("code_hash"),
     createdAt: ts("created_at").notNull().defaultNow(),
     lastUsedAt: ts("last_used_at"),
     lastUsedIp: text("last_used_ip"),
@@ -869,5 +873,7 @@ export const mcpGrants = pgTable(
     uniqueIndex("mcp_grants_access_idx").on(t.accessHash),
     uniqueIndex("mcp_grants_refresh_idx").on(t.refreshHash),
     index("mcp_grants_user_idx").on(t.userId),
+    index("mcp_grants_prev_refresh_idx").on(t.prevRefreshHash),
+    index("mcp_grants_code_idx").on(t.codeHash),
   ],
 );
