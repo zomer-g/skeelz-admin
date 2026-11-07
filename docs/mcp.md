@@ -11,9 +11,11 @@ site**. Users find the address and their own connections at `/connectors`; admin
   Google OAuth client: the authorize page is an ordinary page of the site, so it sees the
   `__Host-xhost_id` cookie, and `pageAuth("viewer")` applies the usual access rules (ADMIN_EMAILS,
   active `users` row, open invite). An anonymous visitor gets the sign-in screen and comes back.
-- **Consent.** The person sees which application asks, where it will be sent back, and picks the
-  connection's **role ceiling** (`max_role`): any role up to their own. An admin can give Claude a
-  viewer-only connection.
+- **Consent.** The person sees the name the application gave itself (labelled as such; control,
+  bidi and zero-width characters are stripped at registration), the full address it will be sent
+  back to — with a warning when that is not a known MCP client (claude.ai, claude.com, chatgpt.com,
+  loopback) — and picks the connection's **role ceiling** (`max_role`): any role up to their own.
+  The default is **viewer**; a wider role is a deliberate choice.
 - **Effective role = min(site role now, ceiling)**, computed on **every** request from the `users`
   table (`verifyAccessToken`, `src/lib/mcp/oauth.ts`). Changing someone's role or deactivating them at
   `/admin/users` takes effect on their connections at the next call; a deactivated user's tokens stop
@@ -79,7 +81,7 @@ MCP file reads staff data or the gate changes.
 | `/.well-known/oauth-authorization-server` | RFC 8414. Issuer = the origin |
 | `POST /mcp/oauth/register` | Dynamic client registration (RFC 7591). Public clients only (PKCE, no secret); redirect URIs https or http-loopback; 10/hour per address, 200/day overall |
 | `/mcp/oauth/authorize` | The consent page. PKCE S256 required; `redirect_uri` must match the registration exactly, and nothing redirects until it does; RFC 8707 `resource`, if sent, must be this server; the answer carries `iss` (RFC 9207) |
-| `POST /mcp/oauth/token` | `authorization_code` (single-use, 10 min, PKCE) and `refresh_token` (rotating: the old one dies at once). Form-encoded or JSON |
+| `POST /mcp/oauth/token` | `authorization_code` (single-use, 10 min, PKCE) and `refresh_token` (rotating: the old one dies at once). A rotated refresh token or a redeemed code presented again **revokes the connection** (`mcp_grants.prev_refresh_hash`, `code_hash`); a connection lives at most 90 days (`grantMaxDays`). Every failure is logged as `mcp.token_failed` with its reason. Form-encoded or JSON |
 | `POST /mcp` | Streamable HTTP, stateless JSON responses (no sessions, no SSE; GET/DELETE → 405). Without a valid token: 401 + `WWW-Authenticate: Bearer … resource_metadata=…` |
 
 Tokens are opaque (`skm_at_…` 1 hour, `skm_rt_…` 30 days sliding), and only their sha256 is stored, in
@@ -116,3 +118,14 @@ Add an entry to `TOOLS` in `src/lib/mcp/tools.ts` with the `minRole` the matchin
 uses (`pageAuth` / `requireUser`), set `writes: true` if it changes anything, reuse the function the
 page uses, and validate ids with `isSfId` before they reach a query. The connect page's tool table
 follows automatically; update the table above.
+
+## Audit and the activity log (07.11.2026)
+
+- A tool that returns people writes `mcp.call` and then `mcp.people_listed` (with the returned record
+  ids, `ids`, up to 200) **strictly**: when either cannot be written the tool does not run / its
+  answer is not sent. Budget check, run and entry happen under the person's export lock.
+- Unknown tools (including staff tools on a connection without staff data) and invalid arguments are
+  logged as `mcp.denied` with a `reason`.
+- `query_audit_log` returns entries without personal data: only safe detail keys, the target without
+  its query string or any address; staff-data entries are left out unless the connection has staff data.
+

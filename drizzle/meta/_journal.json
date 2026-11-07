@@ -190,6 +190,13 @@
       "when": 1794071092360,
       "tag": "0026_mcp_token_reuse",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1794071520127,
+      "tag": "0027_audit_subject_search",
+      "breakpoints": true
     }
   ]
 }

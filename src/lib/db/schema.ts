@@ -232,6 +232,10 @@ export const auditLog = pgTable(
     index("audit_log_file_idx")
       .on(sql`(${t.details}->>'documentId')`, t.at)
       .where(sql`${t.action} IN ('candidate.file_opened', 'candidate.file_rate_limited')`),
+    // "Who saw person X": a record id or address inside the details (records.shown ids, file
+    // opens, people handed over), and a screen path that starts with it (/admin/audit?subject=).
+    index("audit_log_details_idx").using("gin", sql`${t.details} jsonb_path_ops`),
+    index("audit_log_target_idx").on(sql`${t.target} text_pattern_ops`),
   ],
 );
 

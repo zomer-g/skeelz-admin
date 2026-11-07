@@ -48,7 +48,7 @@ Every app implements the same five parts. Copy this file into each repo as `docs
   - last_check_at, last_check_ok, last_check_detail
 - **Key storage:** encrypted with AES-256-GCM.
   - The encryption key is env `CONNECT_SECRET_KEY` (secret, 64 hex = 32 bytes, already set on all three apps).
-  - Format `v1:<iv b64url>:<tag b64url>:<ct b64url>`.
+  - Format `v2:<iv b64url>:<tag b64url>:<ct b64url>`, with the peer name as authenticated data.
   - Never sent back to the browser. The form shows only `••••last4`; an empty field means "keep".
 - **base_url:** must be `https://` (or `http://localhost` in dev) with no path, query or credentials, to avoid SSRF.
 - **"בדיקת חיבור" button:** calls the peer's `GET /api/v1/ping` with a 5s timeout. Shows the peer app, its version and the scopes our key has there, and stores last_check_*.
