@@ -7,7 +7,7 @@ import { Badge, Card, PageHeader, StatCard, Table } from "@/components/ui";
 import { pageAuthStaff } from "@/lib/auth/guard";
 import { parseDashboardParams, viewPath } from "@/lib/dashboard/params";
 import { loadWindowsDashboard, type EmployeeWindows } from "@/lib/staff/timesheet";
-import { ATTRIBUTION_CAP_MIN, CATEGORY_LABELS, DEMO_PAD_MIN, DEMO_SPLIT_GAP_MIN, type ActionCategory } from "@/lib/staff/windows";
+import { ATTRIBUTION_CAP_MIN, CATEGORY_LABELS, DEMO_PAD_MIN, DEMO_SPLIT_GAP_MIN, ON_ACCOUNT, ON_NOTHING, type ActionCategory, type TargetTime } from "@/lib/staff/windows";
 import { dayLabel, fmtCount, fmtHours } from "../format";
 import { StaffNav } from "../StaffNav";
 import { ExpectedRates } from "./ExpectedRates";
@@ -27,6 +27,7 @@ const CATEGORIES = Object.keys(CATEGORY_LABELS) as ActionCategory[];
 const MODEL = `מודל השיוך: דוח השעות נותן חלונות עבודה (מתאריך-שעה עד שעה). פעולה (משימת Salesforce שהעובד יצר) נספרת בחלון כשזמן היצירה שלה בתוכו. בתוך כל חלון הפעולות ממוינות לפי הזמן, וכל פעולה מקבלת את הדקות שעברו מהפעולה שלפניה (הראשונה: מתחילת החלון), עד ${ATTRIBUTION_CAP_MIN} דקות לכל היותר. מה שנשאר מהחלון הוא "לא משויך". פעולה מחוץ לכל חלון לא מקבלת זמן ונספרת בנפרד.`;
 const PURPOSE = `לאן הלך הזמן: פעולה על מקרה "קורות חיים" (cv_message), או על הגשה (הגשות קמביום, RecordType2) שהנושא שלה הוא תבנית "קיבלנו את מועמדותך" או שמופיע בו "קורות חיים", היא בקשת קורות חיים. על הגשה, נושא "SKEELZ | מועמד/ת למשרת", "הגשה למשרה" או "עדכון סטטוס: מועמדים" הוא מול המעסיק, וכל השאר (שיחות, עדכונים, תשובות) מול המועמד. פעולות על מקרים אחרים הן "אחרות". תיקון וראיון = מול המועמד + מול המעסיק.`;
 const SUBMISSION = "זמן ממוצע להגשה: כל הדקות ששויכו לפעולות על מקרי הגשה (הגשות קמביום), חלקי מספר ההגשות השונות שנגעו בהן בתוך חלונות העבודה.";
+const BY_TYPE = `זמן לפי סוג מקרה: כל פעולה נספרת לפי סוג הרשומה (Record Type) של המקרה שהיא רשומה עליו — הגשות, קול יכול, פניות WEHAVE, קורות חיים, משרות, השמות וכל סוג אחר — או "חשבון (מעסיק)" כשהיא על חשבון, או "בלי מקרה". זמן ממוצע למקרה = הדקות ששויכו לפעולות על מקרים מהסוג, חלקי מספר המקרים השונים מהסוג שנגעו בהם בתוך חלונות העבודה (כמו הזמן להגשה). מקרה שטופל בידי שני עובדים נספר אצל כל אחד מהם.`;
 const DEMO_TEXT = `דוח שעות דמו, לא אמיתי: לכל יום שבו לעובדת יש משימות ב-Salesforce, חלון מ-${DEMO_PAD_MIN} דקות לפני המשימה הראשונה (מעוגל לרבע שעה למטה) עד ${DEMO_PAD_MIN} דקות אחרי האחרונה (מעוגל למעלה), ושני חלונות כשיש הפסקה של יותר מ-${DEMO_SPLIT_GAP_MIN / 60} שעות בין משימות.`;
 
 /**
@@ -95,6 +96,7 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
                 <li>{MODEL}</li>
                 <li>{PURPOSE}</li>
                 <li>{SUBMISSION}</li>
+                <li>{BY_TYPE}</li>
                 <li>מיילים = משימות מסוג Email (Salesforce רושם משימה על כל מייל שנשלח ממנו), שיחות = Call, וכל השאר משימות אחרות, כמו במסך החודשי.</li>
               </ul>
             </Card>
@@ -202,6 +204,8 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
             )}
           </Card>
 
+          <CaseTypes employees={withHours} recordTypes={data.recordTypes} />
+
           <Positions employees={withHours} positions={data.positions} />
 
           <Card title="ציר זמן יומי">
@@ -288,6 +292,73 @@ function Bars({ title, items }: { title: string; items: BarItem[] }) {
       <h3 className="mb-3 font-medium">{title}</h3>
       {items.length ? <BarList items={items} caption={title} /> : <p className="text-sm text-muted">אין נתונים בטווח</p>}
     </div>
+  );
+}
+
+type RecordTypeRow = { key: string; label: string; active: boolean };
+
+/** Time per record type of what the actions sit on: every Case RecordType in the mirror (even with no time), Accounts, nothing. */
+function CaseTypes({ employees, recordTypes }: { employees: EmployeeWindows[]; recordTypes: RecordTypeRow[] }) {
+  const labels = new Map(recordTypes.map((r) => [r.key, r.active ? r.label : `${r.label} (לא פעיל)`]));
+  const label = (key: string) => (key === ON_ACCOUNT ? "חשבון (מעסיק)" : key === ON_NOTHING ? "בלי מקרה" : (labels.get(key) ?? key));
+  const sum = new Map<string, Omit<TargetTime, "avgPerRecord">>();
+  for (const e of employees) {
+    for (const t of e.summary.targets) {
+      const row = sum.get(t.key) ?? { key: t.key, minutes: 0, actions: 0, records: 0 };
+      row.minutes += t.minutes;
+      row.actions += t.actions;
+      row.records += t.records;
+      sum.set(t.key, row);
+    }
+  }
+  const keys = [...new Set([...recordTypes.map((r) => r.key), ...sum.keys()])];
+  const rows = keys
+    .map((key) => sum.get(key) ?? { key, minutes: 0, actions: 0, records: 0 })
+    .sort((a, b) => b.minutes - a.minutes || b.actions - a.actions || label(a.key).localeCompare(label(b.key), "he"));
+  const used = rows.filter((r) => r.actions > 0);
+  const perRecord = (r: { key: string; minutes: number; records: number }) => (r.key === ON_NOTHING || !r.records ? null : r.minutes / r.records);
+  const head = ["סוג", "שעות", "פעולות", "מקרים", "דק׳ למקרה", "דק׳ לפעולה"];
+  const line = (r: { key: string; minutes: number; actions: number; records: number }) => (
+    <tr key={r.key} className={r.actions ? "" : "text-muted"}>
+      <td className="px-3 py-2">{label(r.key)}</td>
+      <td className="px-3 py-2 tabular-nums">{r.actions ? fmtHours(r.minutes / 60) : "—"}</td>
+      <td className="px-3 py-2 tabular-nums">{fmtCount(r.actions)}</td>
+      <td className="px-3 py-2 tabular-nums">{r.key === ON_NOTHING ? "—" : fmtCount(r.records)}</td>
+      <td className="px-3 py-2 font-medium tabular-nums">{fmtMin(perRecord(r))}</td>
+      <td className="px-3 py-2 tabular-nums">{fmtMin(r.actions ? r.minutes / r.actions : null)}</td>
+    </tr>
+  );
+  return (
+    <Card title="זמן לפי סוג מקרה">
+      <p className="mb-6 text-sm text-muted">{BY_TYPE} סוג בלי פעולות בטווח מוצג באפור.</p>
+      {!used.length ? (
+        <p className="text-sm text-muted">אין פעולות בתוך שעות העבודה בטווח.</p>
+      ) : (
+        <BarList
+          caption="שעות לפי סוג מקרה"
+          items={used.map((r) => ({ label: label(r.key), value: r.minutes / 60, display: fmtHours(r.minutes / 60), note: r.key === ON_NOTHING ? undefined : `${fmtMin(perRecord(r))} למקרה` }))}
+        />
+      )}
+      <div className="mt-8">
+        <Table caption="זמן ממוצע למקרה לפי סוג, כל העובדים" head={head}>
+          {rows.map(line)}
+        </Table>
+      </div>
+      {employees.length > 1 ? (
+        <div className="mt-8 flex flex-col gap-4">
+          {employees.map((e) => (
+            <details key={e.id} className="text-sm">
+              <summary className="cursor-pointer font-medium text-accent-dark underline-offset-4 hover:underline">{e.name} · לפי סוג מקרה</summary>
+              <div className="mt-3">
+                <Table caption={`זמן לפי סוג מקרה של ${e.name}`} head={head} empty={e.summary.targets.length ? undefined : "אין פעולות בתוך שעות העבודה"}>
+                  {e.summary.targets.map(line)}
+                </Table>
+              </div>
+            </details>
+          ))}
+        </div>
+      ) : null}
+    </Card>
   );
 }
 

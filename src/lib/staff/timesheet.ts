@@ -25,6 +25,9 @@ import {
 /** שרית שביט's Salesforce user: the demo timesheet is made from her own tasks. */
 export const DEMO_SF_USER_ID = "0058d0000085h1lAAA";
 
+/** Salesforce Account ids start with this: a task on an employer rather than a Case. */
+const ACCOUNT_ID_PREFIX = "001";
+
 /**
  * A timesheet rebuilt after the fact (e.g. from Salesforce activity when no report was handed in):
  * stored as source 'manual' with this note, and flagged on screen as a reconstruction, never as a
@@ -162,6 +165,8 @@ export interface WindowsDashboard {
   employees: EmployeeWindows[];
   /** Job titles for the submissions' positions, by Case id. */
   positions: Map<string, { title: string | null; caseNumber: string | null }>;
+  /** Every Case RecordType in the mirror (DeveloperName, label), for the time per record type. */
+  recordTypes: { key: string; label: string; active: boolean }[];
   /** Anybody in the range is on the demo timesheet. */
   demo: boolean;
   /** Anybody in the range has a reconstructed timesheet. */
@@ -214,8 +219,9 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
         case_id: string | null;
         developer_name: string | null;
         parent_id: string | null;
+        what_id: string | null;
       }>(sql`
-        SELECT t.id, t.owner_id, t.created_date, t.task_subtype, t.type, t.subject, c.id AS case_id, rt.developer_name, c.parent_id
+        SELECT t.id, t.owner_id, t.created_date, t.task_subtype, t.type, t.subject, c.id AS case_id, rt.developer_name, c.parent_id, t.what_id
           FROM sf_task t
           LEFT JOIN sf_case c ON c.id = t.what_id
           LEFT JOIN sf_record_type rt ON rt.id = c.record_type_id
@@ -233,6 +239,7 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
       caseId: t.case_id,
       caseType: t.developer_name,
       positionId: t.parent_id,
+      accountId: !t.case_id && t.what_id?.startsWith(ACCOUNT_ID_PREFIX) ? t.what_id : null,
     });
     actionsBySf.set(t.owner_id, list);
   }
@@ -262,9 +269,13 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
                p.data->>'CaseNumber' AS case_number
           FROM sf_case p WHERE p.id IN ${positionIds}`)
     : [];
+  // Every Case record type, so one with no time in the range still shows (with none).
+  const recordTypes = await run<{ developer_name: string; name: string; is_active: boolean }>(sql`
+    SELECT developer_name, name, is_active FROM sf_record_type WHERE sobject_type = 'Case' ORDER BY name`);
   return {
     employees,
     positions: new Map(positionRows.map((r) => [r.id, { title: r.title, caseNumber: r.case_number }])),
+    recordTypes: recordTypes.map((r) => ({ key: r.developer_name, label: r.name, active: r.is_active })),
     demo: employees.some((e) => e.demo),
     reconstructed: employees.some((e) => e.reconstructed),
   };

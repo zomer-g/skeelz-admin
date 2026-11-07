@@ -161,6 +161,19 @@ export interface Action {
   caseType: string | null;
   /** The job a submission belongs to (its ParentId). */
   positionId: string | null;
+  /** The Account (an employer) the task sits on, when it is on an Account rather than a Case. */
+  accountId?: string | null;
+}
+
+/** Where an action sits, for the time per record type: a Case's RecordType DeveloperName, or one of these. */
+export const ON_ACCOUNT = "@account";
+export const ON_NOTHING = "@none";
+
+/** The record-type key of an action: its Case's type, an Account, or nothing (no Case or Account, or a Case with no type). */
+export function actionTarget(a: Pick<Action, "caseId" | "caseType" | "accountId">): { key: string; recordId: string | null } {
+  if (a.caseId) return { key: a.caseType ?? ON_NOTHING, recordId: a.caseType ? a.caseId : null };
+  if (a.accountId) return { key: ON_ACCOUNT, recordId: a.accountId };
+  return { key: ON_NOTHING, recordId: null };
 }
 
 export interface AttributedAction extends Action {
@@ -225,6 +238,18 @@ export interface PositionTime {
   submissions: number;
 }
 
+/** Time on one record type (a Case RecordType, an Account, or nothing), inside the windows. */
+export interface TargetTime {
+  /** A Case RecordType DeveloperName, ON_ACCOUNT or ON_NOTHING. */
+  key: string;
+  minutes: number;
+  actions: number;
+  /** Distinct Cases (or Accounts) touched; 0 for ON_NOTHING. */
+  records: number;
+  /** Minutes per distinct record; null for ON_NOTHING or without records. */
+  avgPerRecord: number | null;
+}
+
 export interface WindowsSummary {
   hours: number;
   attributedHours: number;
@@ -246,6 +271,8 @@ export interface WindowsSummary {
   categories: Record<ActionCategory, { actions: number; minutes: number }>;
   /** Submission time by the job it belongs to, most minutes first. */
   positions: PositionTime[];
+  /** Time by record type of what the action sits on (every Case RecordType, Accounts, nothing), most minutes first. */
+  targets: TargetTime[];
   windows: WindowResult[];
 }
 
@@ -259,6 +286,7 @@ export function summarizeWindows(windows: readonly WorkWindow[], actions: readon
   const submissions = new Set<string>();
   let submissionMinutes = 0;
   const positions = new Map<string, { positionId: string | null; minutes: number; actions: number; subs: Set<string> }>();
+  const targets = new Map<string, { minutes: number; actions: number; records: Set<string> }>();
 
   for (const a of r.actions) {
     const bucket = a.window == null ? outside : inWindow;
@@ -269,6 +297,12 @@ export function summarizeWindows(windows: readonly WorkWindow[], actions: readon
     minutesByKind[a.kind] += a.minutes;
     categories[a.category].actions += 1;
     categories[a.category].minutes += a.minutes;
+    const target = actionTarget(a);
+    const tt = targets.get(target.key) ?? { minutes: 0, actions: 0, records: new Set<string>() };
+    tt.minutes += a.minutes;
+    tt.actions += 1;
+    if (target.recordId) tt.records.add(target.recordId);
+    targets.set(target.key, tt);
     if (a.caseType === SUBMISSION_TYPE && a.caseId) {
       submissions.add(a.caseId);
       submissionMinutes += a.minutes;
@@ -305,6 +339,9 @@ export function summarizeWindows(windows: readonly WorkWindow[], actions: readon
     positions: [...positions.values()]
       .map((p) => ({ positionId: p.positionId, minutes: p.minutes, actions: p.actions, submissions: p.subs.size }))
       .sort((a, b) => b.minutes - a.minutes || b.submissions - a.submissions),
+    targets: [...targets.entries()]
+      .map(([key, t]) => ({ key, minutes: t.minutes, actions: t.actions, records: t.records.size, avgPerRecord: avg(t.minutes, t.records.size) }))
+      .sort((a, b) => b.minutes - a.minutes || b.actions - a.actions),
     windows: r.windows,
   };
 }

@@ -208,6 +208,32 @@ describe("summarizeWindows", () => {
     ]);
   });
 
+  it("time per record type: every Case type, Accounts and nothing, minutes per distinct record", () => {
+    const day = "2026-10-29";
+    const s = summarizeWindows(
+      [win(day, "10:00", "12:00")],
+      [
+        act("1", day, "10:10", { caseId: "S1", caseType: "RecordType2" }),
+        act("2", day, "10:30", { caseId: "C1", caseType: "call" }),
+        act("3", day, "10:40", { caseId: "C1", caseType: "call" }),
+        act("4", day, "11:00", { caseId: "C2", caseType: "call" }),
+        act("5", day, "11:05", { caseId: "W1", caseType: "WEHAVE" }),
+        act("6", day, "11:15", { accountId: "001A" }),
+        act("7", day, "11:20", {}),
+        act("8", day, "11:30", { caseId: "N1", caseType: null }),
+        act("9", day, "15:00", { caseId: "W2", caseType: "WEHAVE" }),
+      ],
+    );
+    assert.deepEqual(s.targets, [
+      { key: "call", minutes: 50, actions: 3, records: 2, avgPerRecord: 25 },
+      { key: "@none", minutes: 15, actions: 2, records: 0, avgPerRecord: null },
+      { key: "RecordType2", minutes: 10, actions: 1, records: 1, avgPerRecord: 10 },
+      { key: "@account", minutes: 10, actions: 1, records: 1, avgPerRecord: 10 },
+      { key: "WEHAVE", minutes: 5, actions: 1, records: 1, avgPerRecord: 5 },
+    ]);
+    assert.equal(s.submissions, 1);
+  });
+
   it("no windows: every action is outside and there are no rates", () => {
     const s = summarizeWindows([], [act("1", "2026-10-29", "10:10")]);
     assert.equal(s.hours, 0);
