@@ -1,7 +1,9 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { apiKeys } from "@/lib/db/schema";
+import { writeAudit } from "@/lib/audit";
+import { envAdmins } from "@/lib/auth/session";
+import { apiKeys, users } from "@/lib/db/schema";
 import { firstInWindow } from "./rate-limit";
 import { CONNECT_LIMITS, KEY_PREFIX, KEY_RANDOM_BYTES, KEY_SHOWN_CHARS, LEGACY_KEYS, type ApiScope } from "./spec";
 import { matchesToken, sharedToken } from "./tokens";
@@ -56,7 +58,24 @@ export async function verifyKey(presented: string): Promise<ApiKeyIdentity | nul
   if (!row || !timingSafeEqual(Buffer.from(row.hash, "hex"), Buffer.from(hash, "hex"))) return null;
   if (row.revokedAt) return null;
   if (row.expiresAt && row.expiresAt.getTime() <= Date.now()) return null;
+  // A key lives no longer than its issuer's access: once they are no longer an active admin (left,
+  // deactivated, demoted) it stops working, whatever its scopes. Checked on every call.
+  if (!(await issuerStillAdmin(row.createdBy))) {
+    if (firstInWindow(`issuer-lost:${row.id}`, 10 * 60_000)) {
+      await writeAudit("api:inbound", "api.denied", row.name, { reason: "issuer_not_admin", keyId: row.id });
+    }
+    return null;
+  }
   return { id: row.id, name: row.name, scopes: row.scopes, legacy: false, createdBy: row.createdBy };
+}
+
+/** The issuer of a key is an active admin now (or one of ADMIN_EMAILS). */
+async function issuerStillAdmin(createdBy: string | null): Promise<boolean> {
+  if (!createdBy) return false;
+  const email = createdBy.toLowerCase();
+  if (envAdmins().includes(email)) return true;
+  const [u] = await getDb().select({ active: users.active, role: users.role }).from(users).where(eq(users.email, email)).limit(1);
+  return Boolean(u?.active && u.role === "admin");
 }
 
 /** Records when and from where a key was last used, at most once a minute per key. */

@@ -1,3 +1,4 @@
+import { pinnedFetch } from "@/lib/net/pinned-fetch";
 import { randomUUID } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
@@ -217,10 +218,11 @@ async function deliverOne(config: { url: URL; token: string }, delivery: typeof 
   let error: string | null = null;
   try {
     await assertPublicHost(config.url);
-    const res = await fetch(config.url, {
+    // A redirect could lead the signed event somewhere else; treat it as a failure. Outside development
+    // the connection is pinned to the public address its own lookup checked (no DNS rebinding).
+    const send = process.env.NODE_ENV === "development" ? (u: URL, i: RequestInit) => fetch(u, { ...i, redirect: "manual" }) : sendPinned;
+    const res = await send(config.url, {
       method: "POST",
-      // A redirect could lead the signed event somewhere else; treat it as a failure.
-      redirect: "manual",
       signal: AbortSignal.timeout(WEBHOOK_LIMITS.timeoutSec * 1000),
       headers: {
         "Content-Type": "application/json; charset=utf-8",
@@ -255,6 +257,9 @@ async function deliverOne(config: { url: URL; token: string }, delivery: typeof 
     .set({ attempts, nextAttemptAt: new Date(Date.now() + delayMin * MIN), lastStatus: status, lastError: error })
     .where(eq(webhookDeliveries.id, delivery.id));
 }
+
+const sendPinned = (u: URL, i: RequestInit) =>
+  pinnedFetch(u, { method: i.method, headers: i.headers as Record<string, string>, body: typeof i.body === "string" ? i.body : undefined, signal: i.signal ?? undefined });
 
 /** Refuses a target that resolves to a private, loopback or link-local address. */
 async function assertPublicHost(url: URL): Promise<void> {

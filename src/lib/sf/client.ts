@@ -29,6 +29,8 @@ export class SalesforceError extends Error {
     public readonly errorCode?: string,
   ) {
     super(message);
+    // Named, so the console filter (lib/log.ts redactForConsole) knows its message may echo a query.
+    this.name = "SalesforceError";
   }
 }
 
