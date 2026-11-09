@@ -20,8 +20,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   The only pages without it hold no data: `/accessibility` and `/privacy` (public by law, framed by `PublicDoc`) and `not-found.tsx`.
 - **Security headers:** CSP and friends in `next.config.ts`. The browser loads nothing cross-origin (fonts self-hosted,
   GA/SMOOV/SF server-side only) — keep it that way or extend the CSP. The candidate file route sends its own sandboxing
-  CSP and is limited per Israel day (`src/lib/security/files.ts`): 20 files a user, an admin alert at the 10th, and an admin
-  grants 30 more at a time at `/admin/security`; counted from the audit log.
+  CSP and is limited per Israel day (`src/lib/security/files.ts`): 40 files a user, an admin alert at the 20th, and an admin
+  grants 40 more at a time at `/admin/security`; counted from the audit log.
 - **Security & privacy duties** (`docs/cv-security.md`, `docs/security-review-2026-11-07.md`): every candidate-file open and every search inside CVs (with its
   results and the page shown, `cvs.text_search`) is logged; a screen that lists people also writes `records.shown` (the ids/emails of the rendered
   rows, `logRecordsShown`, `src/lib/audit-ids.ts`) — a new list of people must too. Every hand-over of personal data (file, contact copy, payments

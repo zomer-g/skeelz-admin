@@ -11,6 +11,7 @@ import { emailPath } from "@/lib/entities/emails";
 import { loadFileAccessLog } from "@/lib/entities/file-access";
 import { sfRecordUrl } from "@/lib/entities/search";
 import { fmtDate, fmtInt } from "@/lib/format";
+import { FILE_LIMITS } from "@/lib/security/files";
 
 export const metadata: Metadata = { title: "קובץ קורות חיים" };
 export const dynamic = "force-dynamic";
@@ -121,7 +122,7 @@ export default async function CvPage({ params }: { params: Promise<{ documentId:
           ))}
         </Table>
         <p className="mt-3 text-xs text-muted">
-          כל פתיחה של קובץ מועמד דרך המערכת נרשמת ביומן הפעילות (מי, מתי, איזה קובץ ודרך איזה דף), וכך גם ניסיון שנחסם במגבלה היומית (20 קבצים ליום, ועוד 30 בכל אישור של מנהל). פתיחה ישירות
+          כל פתיחה של קובץ מועמד דרך המערכת נרשמת ביומן הפעילות (מי, מתי, איזה קובץ ודרך איזה דף), וכך גם ניסיון שנחסם במגבלה היומית ({FILE_LIMITS.daily} קבצים ליום, ועוד {FILE_LIMITS.grant} בכל אישור של מנהל). פתיחה ישירות
           ב-Salesforce לא עוברת דרך המערכת ולא מופיעה כאן.
         </p>
       </Card>

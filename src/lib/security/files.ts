@@ -6,10 +6,10 @@ import { auditLog, fileQuotaGrants, securityAlerts } from "@/lib/db/schema";
 
 /**
  * How many candidate files one person may open in a day (Israel time), counted from the audit log:
- * 20 a day; at the 10th the admins get an alert; past the limit the open is refused, the admins
- * are asked, and an admin may let the person open another 30 that day — as many times as needed.
+ * 40 a day; at the 20th the admins get an alert; past the limit the open is refused, the admins
+ * are asked, and an admin may let the person open another 40 that day — as many times as needed.
  */
-export const FILE_LIMITS = { daily: 20, alertAt: 10, grant: 30 } as const;
+export const FILE_LIMITS = { daily: 40, alertAt: 20, grant: 40 } as const;
 
 export const FILE_OPENED = "candidate.file_opened";
 export const FILE_REFUSED = "candidate.file_rate_limited";

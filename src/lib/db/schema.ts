@@ -722,7 +722,8 @@ export const smoovCampaignStats = pgTable("smoov_campaign_stats", {
 
 /**
  * What the job-seekers list in SMOOV last received for each address (`src/lib/smoov/push.ts`),
- * so each run sends only new and changed candidates. Hashes only, no contact details.
+ * so each run sends only new and changed candidates. The address itself (the key) and a hash of
+ * what was sent — not the name, phone or place.
  */
 export const smoovPushed = pgTable("smoov_pushed", {
   email: text("email").primaryKey(),
