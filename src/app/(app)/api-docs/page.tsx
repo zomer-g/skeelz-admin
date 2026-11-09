@@ -115,7 +115,8 @@ const JOB_EXAMPLE = [
   '    "id": "500000000000001AAA", "title": "…", "paid": true, "active": true, …',
   '    "applications": { "total": 14, "paid": 14, "by_status": { "New": 3, "נשלחו קו\\"ח": 6, … } },',
   '    "site_last_30_days": { "from": "2026-08-16", "to": "2026-09-14", "job_opens": 412,',
-  '                           "apply_clicks": 51, "apply_confirmations": 17, "page_views": 38 }',
+  '                           "apply_clicks": 51, "apply_confirmations": 17,',
+  '                           "applications_registered": 4, "applications_guest": 9, "page_views": 38 }',
   "  }",
   "}",
 ].join("\n");
@@ -131,7 +132,8 @@ const METRICS_EXAMPLE = [
   '                    "interviews": 25, "accepted": 6, "rejected_by_us": 70 },',
   '  "timing": { "first_touch_hours_median": 5.5, "days_to_transfer_median": 2 },',
   '  "reject_reasons": [ { "reason": "…", "count": 30 } ],',
-  '  "site": { "sessions": 15300, "job_opens": 8200, "apply_clicks": 950, "apply_confirmations": 410 },',
+  '  "site": { "sessions": 15300, "job_opens": 8200, "apply_clicks": 950, "apply_confirmations": 410,',
+  '            "applications_registered": 80, "applications_guest": 230 },',
   '  "data_freshness": { "salesforce_synced_at": "2026-09-14T15:40:00.000Z" }',
   "}",
 ].join("\n");

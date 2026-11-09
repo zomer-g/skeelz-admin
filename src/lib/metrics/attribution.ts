@@ -1,4 +1,5 @@
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
+import { addDays, israelMidnight } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { applicationSource } from "@/lib/db/schema";
 import { RECORD_TYPES, type ApplicationFacts } from "./candidates";
@@ -262,4 +263,64 @@ export function buildSourceFunnel(
     .map(([group, list]) => ({ group, funnel: applicationFunnel(list), ambiguous: list.filter((f) => sources.get(f.id)?.ambiguous).length }))
     .sort((a, b) => (a.group === null ? 1 : b.group === null ? -1 : b.funnel.applications - a.funnel.applications));
   return { rows, total: apps.length, matched: apps.filter((f) => sources.has(f.id)).length };
+}
+
+/** The sources of these applications only (the API and MCP read a page of applications at a time). */
+export async function loadSourcesFor(ids: string[]): Promise<Map<string, StoredSource>> {
+  if (!ids.length) return new Map();
+  const rows = await getDb().select().from(applicationSource).where(inArray(applicationSource.caseId, ids));
+  return new Map(
+    rows.map((r) => [
+      r.caseId,
+      {
+        applicantType: r.applicantType as ApplicantType,
+        ambiguous: r.ambiguous,
+        source: r.source,
+        medium: r.medium,
+        campaign: r.campaign,
+        channelGroup: r.channelGroup,
+        deviceCategory: r.deviceCategory,
+      },
+    ]),
+  );
+}
+
+/**
+ * An application's site source as the API and MCP give it: null when GA has no matching event
+ * (measurement blocked, created outside the site, or before 9.11.2026). No people, only GA's labels.
+ */
+export function siteSourceJson(s: StoredSource | undefined) {
+  if (!s) return null;
+  return {
+    channel: s.channelGroup,
+    source: s.source,
+    medium: s.medium,
+    campaign: s.campaign,
+    device: s.deviceCategory,
+    applicant_type: s.applicantType,
+    ambiguous: s.ambiguous,
+  };
+}
+
+/** The by-source funnel for a range of Israel days, in the shape the API and MCP return. */
+export async function sourceFunnelJson(fromDay: string, toDay: string, scope: "paid" | "all", by: SourceDimension, facts: ApplicationFacts[]) {
+  const from = israelMidnight(fromDay);
+  const to = israelMidnight(addDays(toDay, 1));
+  const { rows, total, matched } = buildSourceFunnel(facts, await loadApplicationSources(), by, from, to, scope === "paid");
+  return {
+    range: { from: fromDay, to: toDay, scope, by, measured_since: APPLIED_EVENTS_SINCE },
+    total,
+    matched,
+    rows: rows.map((r) => ({
+      group: r.group,
+      applications: r.funnel.applications,
+      requested_cv: r.funnel.requestedCv,
+      cv_received: r.funnel.cvReceived,
+      sent_to_employer: r.funnel.sent,
+      employer_responded: r.funnel.responded,
+      interviews: r.funnel.interview,
+      accepted: r.funnel.accepted,
+      ambiguous: r.ambiguous,
+    })),
+  };
 }

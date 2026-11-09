@@ -41,6 +41,7 @@ import {
   loadPositionsByJobKeys,
 } from "@/lib/metrics/jobs";
 import { CHANNEL_LABELS, loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
+import { loadSourcesFor, siteSourceJson, sourceFunnelJson, type SourceDimension } from "@/lib/metrics/attribution";
 import { registrationCohorts } from "@/lib/metrics/registrations";
 import { applyExclusions, countByStatus, DEDUPE_SECONDS, REGISTRATION_WINDOW_MINUTES, STATUS_GROUPS, TIME_BUCKETS, type ExclusionOptions, type StatusGroup } from "@/lib/metrics/segments";
 import { ArgError, inputSchema, type ArgValue, type Fields } from "./args";
@@ -211,7 +212,7 @@ const TOOLS: Tool[] = [
     name: "dashboard_summary",
     title: "Dashboard summary",
     description:
-      "The applications funnel and site totals for a date range (default: the last 30 days): new and active jobs, applications by stage (received, CV requested/received, sent to employer, employer responded, interviews, accepted, rejected), median handling times, reject reasons, site sessions and job events. " +
+      "The applications funnel and site totals for a date range (default: the last 30 days): new and active jobs, applications by stage (received, CV requested/received, sent to employer, employer responded, interviews, accepted, rejected), median handling times, reject reasons, site sessions and job events (site.applications_registered / applications_guest = applications the site accepted, from 9.11.2026; apply_clicks counts every press, failed guest attempts included). " +
       "`funnel` holds the stages as ever reached in the status history (not where applications stand now — application_status_counts gives that), the drop-outs (rejected by us; candidate dropped = לא שלח קו\"ח / נדחה על ידי מועמד; job closed = משרה נסגרה על ידי מעסיק / ליד סגור) and stage-to-stage rates. " +
       "`segment` narrows to הגשה מהירה (fast) or ordinary (regular) applications; compare returns the whole summary for each, same range and scope (site and job totals are not split by segment). Aggregates only.",
     minRole: "viewer",
@@ -246,6 +247,28 @@ const TOOLS: Tool[] = [
         return { range: { from: fromDay, to: toDay, scope, basis }, segment: "compare", fast, regular };
       }
       return metricsSummary(fromDay, toDay, scope, basis, { segment: segment as "all" | "fast" | "regular", exclusions });
+    },
+  },
+  {
+    name: "application_sources",
+    title: "Applications by where they came from",
+    description:
+      "Site applications created in a date range (from 9.11.2026 on), by where they came from — channel (GA's default channel group: Paid Social, Organic Search, Direct…), source / medium, UTM campaign, device (mobile / desktop / tablet) or applicant type (registered / guest) — with the stages each reached whenever it did: CV requested, CV received, sent to employer, employer responded, interviews, accepted. " +
+      "The source is Google Analytics', matched per application to the site's application event of the same job, applicant type and minute; group null = no matching event (measurement blocked in the browser, or a Case created outside the site); ambiguous = another event with other attributes was a candidate too. Aggregates only.",
+    minRole: "viewer",
+    heavy: true,
+    fields: {
+      from: dayField("First day"),
+      to: dayField("Last day (default: today)"),
+      scope: scopeField,
+      by: { type: "string", enum: ["channel", "source", "campaign", "device", "type"], description: "How to group (default channel)." },
+    },
+    run: async (a, ctx) => {
+      const { fromDay, toDay } = dayRange(a, 30, { anyLength: true });
+      const scope = s(a.scope) === "all" ? "all" : "paid";
+      const by = (s(a.by) || "channel") as SourceDimension;
+      const out = await sourceFunnelJson(fromDay, toDay, scope, by, await cachedApplicationFacts());
+      return { ...out, admin_url: link(ctx, `/analytics?range=custom&from=${fromDay}&to=${toDay}&scope=${scope}&by=${by}#by-source`) };
     },
   },
   {
@@ -308,7 +331,7 @@ const TOOLS: Tool[] = [
     name: "marketing_summary",
     title: "Marketing (site traffic)",
     description:
-      "The marketing tab for a date range (default: the last 30 days): sessions, new users, engaged sessions, page views, sessions per day, traffic by channel and by source / medium, every site event with its count (job opens, apply clicks and confirmations, sign-up steps, logins, searches and filters), top pages, job pages, applications per day next to GA apply confirmations, and candidate accounts. scope narrows the job-linked figures only; site-wide traffic has no job.",
+      "The marketing tab for a date range (default: the last 30 days): sessions, new users, engaged sessions, page views, sessions per day, traffic by channel and by source / medium, every site event with its count (job opens, job_application_registered / job_application_guest = applications the site accepted from 9.11.2026, the older apply clicks that also count failed attempts, sign-up steps, logins, searches and filters), top pages, job pages, Salesforce applications per day next to the site's accepted applications per day (dailySiteApplications), and candidate accounts. scope narrows the job-linked figures only; site-wide traffic has no job.",
     minRole: "viewer",
     heavy: true,
     fields: { from: dayField("First day"), to: dayField("Last day (default: today)"), scope: scopeField },
@@ -436,7 +459,7 @@ const TOOLS: Tool[] = [
     name: "search_applications",
     title: "Search applications",
     description:
-      "Applications to jobs, newest first, with the candidate, job, company, status, owner, whether it was a הגשה מהירה (quick apply) and whether the candidate's קו\"ח checkbox is set. Free text matches candidate name, email, phone or case number.",
+      "Applications to jobs, newest first, with the candidate, job, company, status, owner, whether it was a הגשה מהירה (quick apply), whether the candidate's קו\"ח checkbox is set, and site_source: where a site application came from by Google Analytics (channel, source, medium, campaign, device; null when unknown). Free text matches candidate name, email, phone or case number.",
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Free text.", maxLength: 100 },
@@ -476,7 +499,12 @@ const TOOLS: Tool[] = [
         },
         { page, pageSize, sort: mcpSort(a, APPLICATION_SORTS, "created") },
       );
-      return { total: result.total, page, applications: result.rows.map((r) => ({ ...r, admin_url: link(ctx, `/applications/${r.id}`) })) };
+      const sources = await loadSourcesFor(result.rows.map((r) => r.id));
+      return {
+        total: result.total,
+        page,
+        applications: result.rows.map((r) => ({ ...r, site_source: siteSourceJson(sources.get(r.id)), admin_url: link(ctx, `/applications/${r.id}`) })),
+      };
     },
     people: (r) => (r as { applications: unknown[] }).applications.length,
   },
@@ -541,7 +569,7 @@ const TOOLS: Tool[] = [
     name: "get_application",
     title: "Application details",
     description:
-      "One application with every field of its Salesforce card — candidate and contact details, job and parent case, owner, status, placement status (סטטוס השמה), mismatch reasons (חוסר התאמה), fast apply, paid-application flag, zohar (משרה של זהר), follow-up, record type, Account, type/origin/reason/priority, web email, created/modified by, case age in days, and the placement finance fields (start date, placement date, salary %, collection before VAT, commission, invoice and payment dates, project and candidate status) — with its timeline: status and owner changes, emails (metadata only) and logged calls and tasks.",
+      "One application with every field of its Salesforce card — candidate and contact details, job and parent case, owner, status, placement status (סטטוס השמה), mismatch reasons (חוסר התאמה), fast apply, paid-application flag, zohar (משרה של זהר), follow-up, record type, Account, type/origin/reason/priority, web email, created/modified by, case age in days, and the placement finance fields (start date, placement date, salary %, collection before VAT, commission, invoice and payment dates, project and candidate status), and site_source (where a site application came from, by Google Analytics; null when unknown) — with its timeline: status and owner changes, emails (metadata only) and logged calls and tasks.",
     minRole: "viewer",
     fields: { id: sfIdField("application") },
     required: ["id"],
@@ -549,7 +577,8 @@ const TOOLS: Tool[] = [
       const id = s(a.id);
       const application = await loadApplication(id);
       if (!application) throw new NotFound("no application with this id");
-      return { ...application, timeline: await loadCaseTimeline(id), admin_url: link(ctx, `/applications/${id}`) };
+      const [timeline, sources] = await Promise.all([loadCaseTimeline(id), loadSourcesFor([id])]);
+      return { ...application, site_source: siteSourceJson(sources.get(id)), timeline, admin_url: link(ctx, `/applications/${id}`) };
     },
     people: () => 1,
   },

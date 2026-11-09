@@ -25,7 +25,7 @@ site**. Users find the address and their own connections at `/connectors`; admin
 
 | Role | Tools |
 |---|---|
-| viewer | `whoami`, `dashboard_summary`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `application_status_counts`, `get_application`, `search_candidates`, `get_candidate`, `registration_cohorts`, `lookup_email`, `search_cvs`, `cv_summary`, `cv_topics`, `search_employer_leads`, `search_companies`, `get_company`, `search_payments` |
+| viewer | `whoami`, `dashboard_summary`, `application_sources`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `application_status_counts`, `get_application`, `search_candidates`, `get_candidate`, `registration_cohorts`, `lookup_email`, `search_cvs`, `cv_summary`, `cv_topics`, `search_employer_leads`, `search_companies`, `get_company`, `search_payments` |
 | editor | + `update_campaign`, `link_campaign_job`, `unlink_campaign_job` (same code as the campaign page, `src/lib/campaigns/edit.ts`) |
 | admin | + `list_users`, `query_audit_log`, `sync_status` (read only) |
 
@@ -57,11 +57,14 @@ emails or phones — and audited as `mcp.call` like every tool:
 - Every aggregate tool above takes `exclude_internal` and `dedupe` (both default true) and says in `excluded` how many records
   each left out.
 
-Google Analytics: every figure the sync keeps (six GA4 reports, daily, `src/lib/integrations/marketing-sync.ts`) is
+Google Analytics: every figure the sync keeps (GA4 reports, daily, `src/lib/integrations/marketing-sync.ts`) is
 reachable. `ga_report` groups and sums any of them (pages, events, channels, campaigns, campaign_events,
-campaign_landing_pages) by any of their dimensions and by date / week / month, with filters; its column names come only
+campaign_landing_pages, applications = the accepted applications by channel, source, medium, campaign and device) by any of their dimensions and by date / week / month, with filters; its column names come only
 from the whitelists in `src/lib/metrics/ga-report.ts` and every value is a query parameter. `marketing_summary` is the marketing
-tab, `get_campaign` the campaign page, and `get_job` carries the job's GA (totals, every event, opens per day). GA keeps
+tab, `get_campaign` the campaign page, and `get_job` carries the job's GA (totals, every event, opens per day).
+Applications on the site are `job_application_registered` + `job_application_guest` (from 9.11.2026, only when the site
+accepted them). `application_sources` is the funnel to hire by channel / source / campaign / device / applicant type, and
+`search_applications` / `get_application` carry each one's `site_source` (`src/lib/metrics/attribution.ts`). GA keeps
 users per day, so summed users are not unique users over a range. GTM container snapshots are not exposed.
 
 This mirrors the site: viewers read every dashboard and record screen, editors also edit campaign
@@ -97,7 +100,7 @@ a plain form post that redirects off-site would be blocked by the CSP's `form-ac
   (token issued), `mcp.initialize`, `mcp.call` (every tool call with its arguments, like `page.view`),
   `mcp.denied`, `mcp.revoked`.
 - `mcp_grants` keeps last use, address and a call count, shown on both screens.
-- 60 calls/min per connection; the heavy tools (`dashboard_summary`, `application_status_counts`, `registration_cohorts`, `marketing_summary`, `list_campaigns`, `get_campaign`) 10/min per person; 30 wrong
+- 60 calls/min per connection; the heavy tools (`dashboard_summary`, `application_sources`, `application_status_counts`, `registration_cohorts`, `marketing_summary`, `list_campaigns`, `get_campaign`) 10/min per person; 30 wrong
   tokens per address per 10 min → 10 min lockout. In memory, like the API limits.
 - A daily export budget per person (`src/lib/security/exports.ts`, shared with the site's copy buttons):
   every tool that returns people's details (`search_candidates`, `search_applications`, `search_cvs`,

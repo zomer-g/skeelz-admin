@@ -65,7 +65,7 @@ export const PEER_LABELS: Record<Peer, string> = { crm: "CRM (skeelz-crm)", site
 
 export const API_SCOPES = [
   { scope: "jobs:read", label: "משרות: רשימה ומשרה אחת, עם ספירת הגשות וחשיפה באתר" },
-  { scope: "metrics:read", label: "מדדים מצטברים: המשפך של לשונית המועמדים, הגשות לפי יום ולפי משרה, ותנועה באתר" },
+  { scope: "metrics:read", label: "מדדים מצטברים: המשפך של לשונית המועמדים, הגשות לפי יום ולפי משרה, הגשות מהאתר לפי מקור, ותנועה באתר" },
   {
     scope: "records:read",
     label: "נתונים מפורטים: הגשה אחת ומועמד אחד לכל שורה (מזהים, משרה, סטטוס, תאריכים, מקום וכישורים), בלי שמות ופרטי קשר",
@@ -194,6 +194,20 @@ const SCHEMAS: Record<string, Schema> = {
     closed_at: { type: ["string", "null"], format: "date-time" },
     accepted_at: { type: ["string", "null"], format: "date-time", description: "When the status became התקבל" },
     start_date: { type: ["string", "null"], format: "date" },
+    site_source: {
+      ...obj({
+        channel: { type: "string", description: "GA's default channel group, e.g. Paid Social, Organic Search, Direct" },
+        source: str,
+        medium: str,
+        campaign: { type: "string", description: "The session's UTM campaign, or GA's (direct) / (organic) / (referral)" },
+        device: { type: "string", description: "mobile, desktop or tablet" },
+        applicant_type: { type: "string", enum: ["registered", "guest"] },
+        ambiguous: { type: "boolean", description: "Another event of the same job and minute, with other attributes, was a candidate too" },
+      }),
+      type: ["object", "null"],
+      description:
+        "Where a site application came from, by Google Analytics: the application event of the same job, applicant type and minute (from 9.11.2026). null when no event matched — measurement blocked in the browser, a Case created outside the site, or an older one.",
+    },
     candidate: {
       ...obj({ name: strOrNull, email: strOrNull, phone: strOrNull }),
       description: "Only with include=people and a key holding people:read",
@@ -414,6 +428,46 @@ export const ENDPOINTS: EndpointSpec[] = [
       rows: {
         type: "array",
         items: obj({ day: { type: "string", format: "date" }, job_id: strOrNull, job_title: strOrNull, company: strOrNull, applications: int, paid: int }),
+      },
+    }),
+  },
+  {
+    method: "GET",
+    path: "/api/v1/metrics/application-sources",
+    auth: "metrics:read",
+    heavy: true,
+    summary: "הגשות מהאתר לפי מקור, עד ההשמה",
+    description:
+      "הגשות מהאתר שנוצרו בטווח ימים (שעון ישראל, החל מ-9.11.2026), לפי ערוץ, מקור/מדיום, קמפיין, מכשיר או סוג מועמד (רשום / מזדמן), עם השלבים שהגיעו אליהם: בקשת קו\"ח, שליחה למעסיק, תגובה, ראיון, השמה. המקור מ-Google Analytics, לכל הגשה לפי אותה משרה, סוג ודקה; group = null להגשות בלי אירוע מתאים. ספירות בלבד.",
+    params: [
+      dayParam("from", `YYYY-MM-DD, כולל. הטווח עד ${API_LIMITS.maxRangeDays} ימים`, "29 ימים לפני to"),
+      dayParam("to", "YYYY-MM-DD, כולל", "היום"),
+      scopeParam,
+      {
+        name: "by",
+        in: "query",
+        schema: { type: "string", enum: ["channel", "source", "campaign", "device", "type"], default: "channel" },
+        description: "channel (ערוץ), source (מקור / מדיום), campaign (קמפיין), device (מכשיר) או type (רשום / מזדמן)",
+        defaultLabel: "channel",
+      },
+    ],
+    response: obj({
+      range: obj({ from: str, to: str, scope: str, by: str, measured_since: { type: "string", format: "date" } }),
+      total: int,
+      matched: { type: "integer", description: "Applications that GA matched to a source" },
+      rows: {
+        type: "array",
+        items: obj({
+          group: strOrNull,
+          applications: int,
+          requested_cv: int,
+          cv_received: int,
+          sent_to_employer: int,
+          employer_responded: int,
+          interviews: int,
+          accepted: int,
+          ambiguous: int,
+        }),
       },
     }),
   },

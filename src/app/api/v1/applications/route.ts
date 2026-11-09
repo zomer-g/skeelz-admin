@@ -4,6 +4,7 @@ import { applicationJson } from "@/lib/api/records";
 import { API_LIMITS } from "@/lib/api/spec";
 import { searchApplications } from "@/lib/entities/applications";
 import { isSfId } from "@/lib/entities/search";
+import { loadSourcesFor, siteSourceJson } from "@/lib/metrics/attribution";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +48,9 @@ export const GET = withApiKey(PATH, "records:read", async (req: Request, _ctx: u
       },
       { page, pageSize },
     );
-    const data = rows.map((r) => applicationJson(r, access.people));
+    const sources = await loadSourcesFor(rows.map((r) => r.id));
+    // site_source: where a site application came from (lib/metrics/attribution.ts), null when unknown. No people.
+    const data = rows.map((r) => ({ ...applicationJson(r, access.people), site_source: siteSourceJson(sources.get(r.id)) }));
     await countPeople(access, key, PATH, rows.length, url.search, data);
     return apiJson({ data, page, limit: pageSize, total, has_more: page * pageSize < total });
   });

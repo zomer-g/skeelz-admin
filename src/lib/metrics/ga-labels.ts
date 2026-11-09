@@ -7,6 +7,7 @@ export const GA_REPORT_LABELS: Record<string, string> = {
   campaigns: "קמפיינים",
   campaign_events: "אירועים לפי קמפיין",
   campaign_landing_pages: "דפי נחיתה של קמפיינים",
+  applications: "הגשות שנקלטו באתר (לפי מקור ומכשיר)",
 };
 
 export const GA_DIM_LABELS: Record<string, string> = {
@@ -21,6 +22,7 @@ export const GA_DIM_LABELS: Record<string, string> = {
   medium: "מדיום",
   campaign: "קמפיין",
   landing_page: "דף נחיתה",
+  device_category: "מכשיר",
 };
 
 export const GA_METRIC_LABELS: Record<string, string> = {

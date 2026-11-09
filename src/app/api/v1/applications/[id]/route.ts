@@ -3,6 +3,7 @@ import { countPeople, withPeople } from "@/lib/api/people";
 import { applicationJson, statusHistory } from "@/lib/api/records";
 import { searchApplications } from "@/lib/entities/applications";
 import { isSfId } from "@/lib/entities/search";
+import { loadSourcesFor, siteSourceJson } from "@/lib/metrics/attribution";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +18,8 @@ export const GET = withApiKey(PATH, "records:read", async (req: Request, { param
     const { rows } = await searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", id }, { pageSize: 1 });
     const row = rows[0];
     if (!row) return apiError(404, "not_found", "No such application.");
-    const data = { ...applicationJson(row, access.people), status_history: await statusHistory(row.id) };
+    const sources = await loadSourcesFor([row.id]);
+    const data = { ...applicationJson(row, access.people), site_source: siteSourceJson(sources.get(row.id)), status_history: await statusHistory(row.id) };
     await countPeople(access, key, PATH, 1, url.pathname, data);
     return apiJson({ data });
   });

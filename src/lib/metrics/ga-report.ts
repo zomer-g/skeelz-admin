@@ -53,7 +53,24 @@ export const GA_REPORTS: Record<string, ReportDef> = {
     table: "ga_campaign_event_daily",
     dims: { campaign: "campaign", event_name: "event_name" },
     metrics: { event_count: "sum(event_count)" },
-    about: "key site events (job opens, apply clicks/confirmations, sign-ups) by the session's UTM campaign",
+    about: "key site events (job opens, accepted applications registered / guest, the older apply clicks/confirmations, sign-ups) by the session's UTM campaign",
+  },
+  applications: {
+    // Per minute in the mirror; summed here per Israel day like the other reports.
+    table:
+      "(SELECT (minute AT TIME ZONE 'Asia/Jerusalem')::date AS date, event_name, site_job_key, source, medium, campaign, channel_group, device_category, event_count FROM ga_application_minute) ga_applications",
+    dims: {
+      event_name: "event_name",
+      site_job_key: "site_job_key",
+      channel_group: "channel_group",
+      source: "source",
+      medium: "medium",
+      campaign: "campaign",
+      device_category: "device_category",
+    },
+    metrics: { event_count: "sum(event_count)" },
+    about:
+      "applications the site accepted (job_application_registered / job_application_guest, from 9.11.2026) by the session's channel, source, medium, campaign and the device",
   },
   campaign_landing_pages: {
     table: "ga_campaign_landing_daily",
