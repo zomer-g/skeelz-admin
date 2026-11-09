@@ -133,7 +133,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
           levelHref={(l) => withLevel("/jobs", search, l, "#map")}
           facts={liveJobs}
           extra={{ label: "נפתחו בטווח", facts: openedInRange }}
-          regionHref={(code, l) => regionListHref("/positions", code, l, { status: "Active", ...(params.scope === "paid" ? { paid: "paid" } : {}) })}
+          regionHref={(code, l) => regionListHref("/positions", code, l, { paid: params.scope === "paid" ? "paid" : "all" })}
           note="המיקום לפי סמל היישוב של הלמ״ס במשרה, ואם אין — לפי שם היישוב. משרות בפריסה ארצית ומהבית לא משויכות לאזור."
         />
         <p className="mt-3 text-sm">

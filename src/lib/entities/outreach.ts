@@ -17,7 +17,7 @@ import { CV_EXTENSIONS, CVS, type SearchActor } from "./cvs";
 import { asDate, htmlToText, isSfId, isTrue, num, PAGE_SIZE, run, str } from "./search";
 
 /**
- * Outreach (/outreach, "פעילות יזומה"): for a job, the candidates whose CVs fit it best, so the
+ * Outreach ("פעילות יזומה", /outreach/[id], reached from each row of the jobs list /positions): for a job, the candidates whose CVs fit it best, so the
  * staff can approach them before they apply. The job's field is read from its title, description and
  * skills (lib/job-topics.ts), in the topics CVs are tagged with (cv_topics); its place is the CBS
  * locality of the job (lib/geo). Each person is ranked by their best CV:

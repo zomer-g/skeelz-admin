@@ -68,7 +68,7 @@ export default async function MatchingPage({ searchParams }: { searchParams: Pro
   const overall = m.totals.placedJobs ? m.totals.placedCandidates / m.totals.placedJobs : null;
   const supplyLabel = supply === "recent" ? "מועמדים פעילים בטווח" : "מועמדים במאגר";
   const listExtra = (code: number, l: Level, skill?: string) => ({
-    jobs: regionListHref("/positions", code, l, { status: "Active", ...(params.scope === "paid" ? { paid: "paid" } : {}), ...(skill ? { skill } : {}) }),
+    jobs: regionListHref("/positions", code, l, { paid: params.scope === "paid" ? "paid" : "all", ...(skill ? { skill } : {}) }),
     candidates: regionListHref("/candidates", code, l, skill ? { skill } : {}),
   });
   const shortages = [...m.regions].filter((r) => r.balance != null).sort((a, b) => (a.balance ?? 0) - (b.balance ?? 0));

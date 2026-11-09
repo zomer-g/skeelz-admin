@@ -2,7 +2,7 @@ import { TOPIC_GROUPS, TOPICS, type Topic } from "@/lib/cv-topics";
 
 /**
  * The field of a job, in the terms CVs are tagged with (lib/cv-topics.ts), so the two can be matched
- * for outreach (/outreach). The same phrases that find a profession inside a CV are looked for in
+ * for outreach (/outreach/[id], and the field shown on each row of /positions). The same phrases that find a profession inside a CV are looked for in
  * the job's title and description, here in code (the job text is in the mirror); the title counts
  * most. The site's skills (lib/skills.ts) only hint at a field: they are broad, and a job lists many.
  */

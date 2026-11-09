@@ -64,7 +64,7 @@ export default async function OutreachJobPage({ params, searchParams }: { params
   return (
     <>
       <EntityHeader
-        back={{ href: "/outreach", label: "כל המשרות לפעילות יזומה" }}
+        back={{ href: "/positions", label: "כל המשרות" }}
         title={job.title ?? "(ללא שם)"}
         subtitle={job.company ?? undefined}
         badges={

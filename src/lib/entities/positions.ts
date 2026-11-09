@@ -14,7 +14,11 @@ import { orderBy, type Sort, type SortColumn } from "./sort";
 /**
  * Jobs as a record list (/positions): every job Case (RecordType `Position`), searchable by
  * title, company or Case number, and filterable by site status, paid, place (CBS district and
- * sub-district) and required skill. Each row opens the job card, /positions/[id].
+ * sub-district) and required skill. Each row opens the job card, /positions/[id], and its
+ * outreach page, /outreach/[id] (the field read from the job, lib/entities/outreach.ts).
+ *
+ * Without parameters the list holds only paid jobs live on the site (`status` = `Active`,
+ * `paid` = paid); an explicit `status=all` / `paid=all` lifts each default.
  */
 
 export const JOB_STATUS_VALUES = [...Object.keys(JOB_STATUS_LABELS), "none"] as const;
@@ -32,17 +36,42 @@ export interface PositionFilters {
   toDay: string;
 }
 
-/** The list's filters as the URL carries them, read here so the page and its download agree. */
+const STATUS_CHOICES = [...JOB_STATUS_VALUES, "all"] as const;
+const PAID_CHOICES = ["paid", "free", "all"] as const;
+
+/**
+ * The list's filters as the URL carries them, read here so the page and its download agree.
+ * A missing `status` means live on the site and a missing `paid` means paid; "all" lifts either.
+ */
 export function positionFilters(search: SearchParams): PositionFilters {
+  const status = choice(search, "status", STATUS_CHOICES);
+  const paid = choice(search, "paid", PAID_CHOICES);
   return {
     q: param(search, "q"),
-    status: choice(search, "status", JOB_STATUS_VALUES),
-    paid: choice(search, "paid", ["paid", "free"] as const),
+    status: status === "all" ? "" : status || "Active",
+    paid: paid === "all" ? "" : paid || "paid",
     area: choice(search, "area", AREA_VALUES),
     napa: choice(search, "napa", NAPA_VALUES),
     skill: choice(search, "skill", SKILLS.map((s) => s.label)),
     fromDay: dayParam(search, "from"),
     toDay: dayParam(search, "to"),
+  };
+}
+
+/**
+ * The filters back as URL values: the defaults are left out (the form's "any" option), and a
+ * lifted default is written as "all" so the next search and the download keep it lifted.
+ */
+export function positionFilterValues(f: PositionFilters): Record<string, string> {
+  return {
+    q: f.q,
+    status: f.status === "Active" ? "" : f.status || "all",
+    paid: f.paid === "paid" ? "" : f.paid || "all",
+    area: f.area,
+    napa: f.napa,
+    skill: f.skill,
+    from: f.fromDay,
+    to: f.toDay,
   };
 }
 

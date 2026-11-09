@@ -10,20 +10,18 @@ const TABS = [
   { key: "candidates", label: "מועמדים", href: "/candidates" },
   { key: "emails", label: "כתובות דוא״ל", href: "/emails" },
   { key: "cvs", label: "קורות חיים", href: "/cvs" },
-  { key: "outreach", label: "פעילות יזומה", href: "/outreach" },
   { key: "leads", label: "לידי מעסיקים", href: "/leads" },
   { key: "payments", label: "מעקב תשלומים", href: "/payments" },
 ] as const;
 
-/** Which tab a path belongs to: the jobs list and every job card (/positions) are under משרות. */
+/** Which tab a path belongs to: the jobs list, every job card (/positions) and its outreach (/outreach) are under משרות. */
 function activeTab(pathname: string): string {
-  if (pathname.startsWith("/positions")) return "positions";
+  if (pathname.startsWith("/positions") || pathname.startsWith("/outreach")) return "positions";
   if (pathname.startsWith("/companies")) return "companies";
   if (pathname.startsWith("/candidates")) return "candidates";
   if (pathname.startsWith("/emails")) return "emails";
   if (pathname.startsWith("/payments")) return "payments";
   if (pathname.startsWith("/cvs")) return "cvs";
-  if (pathname.startsWith("/outreach")) return "outreach";
   if (pathname.startsWith("/leads")) return "leads";
   return "applications";
 }
