@@ -165,26 +165,43 @@ export function Timeline({ items, empty = "לא נרשמה פעילות" }: { it
 }
 
 /** Applications, each linked to itself, its candidate and its job. */
-/** GA's placeholder campaigns: not worth repeating under the channel. */
-const UNTAGGED = new Set(["(direct)", "(organic)", "(referral)", "(not set)", "(none)"]);
+/** GA's placeholder campaigns and sources: not worth repeating under the channel. */
+const UNTAGGED = new Set(["(direct)", "(organic)", "(referral)", "(not set)", "(none)", "(data deleted)"]);
 
-/** Where a site application came from by Google Analytics (lib/metrics/attribution.ts), compact for a table cell. */
+/** The channel's colour: paid traffic, search, messages, the rest. */
+function channelTone(channel: string): "brand" | "accent" | "success" | "neutral" {
+  if (/^Paid|Display|Cross-network/.test(channel)) return "brand";
+  if (/Search/.test(channel)) return "accent";
+  if (/Email|SMS|Mobile Push/.test(channel)) return "success";
+  return "neutral";
+}
+
+/** UTM values often carry invisible direction marks from the ad platforms. */
+const clean = (v: string) => v.replace(/[\u200e\u200f\u202a-\u202e]/g, "").trim();
+
+/** Where a site application came from by Google Analytics (lib/metrics/attribution.ts), for a table cell. */
 export function SiteSourceCell({ source }: { source: ApplicationSiteSource | null }) {
-  if (!source) return <span className="text-xs text-muted">לא זוהה</span>;
-  const campaign = UNTAGGED.has(source.campaign) ? null : source.campaign;
+  if (!source) return <span className="text-sm text-muted">לא זוהה</span>;
+  const campaign = UNTAGGED.has(source.campaign) ? null : clean(source.campaign);
+  const origin = UNTAGGED.has(source.source) ? null : `${clean(source.source)}${UNTAGGED.has(source.medium) ? "" : ` · ${clean(source.medium)}`}`;
   return (
-    <>
-      <span className="font-medium">{CHANNEL_LABELS[source.channel] ?? source.channel}</span>
-      <p className="text-xs text-muted">
-        {DEVICE_LABELS[source.device] ?? source.device}
-        {source.ambiguous ? " · לא ודאי" : ""}
-      </p>
+    <div className="flex min-w-44 flex-col gap-1">
+      <div className="flex flex-wrap items-center gap-1">
+        <Badge tone={channelTone(source.channel)}>{CHANNEL_LABELS[source.channel] ?? source.channel}</Badge>
+        <span className="rounded-full border border-line px-2 py-0.5 text-xs text-ink">{DEVICE_LABELS[source.device] ?? source.device}</span>
+        {source.ambiguous ? <Badge tone="warning">לא ודאי</Badge> : null}
+      </div>
       {campaign ? (
-        <p className="max-w-48 truncate text-xs text-muted" dir="auto" title={campaign}>
+        <p className="line-clamp-2 break-words text-xs text-ink" dir="auto" title={campaign}>
+          <span className="text-muted">קמפיין: </span>
           {campaign}
         </p>
+      ) : origin ? (
+        <p className="text-xs text-ink" dir="ltr">
+          {origin}
+        </p>
       ) : null}
-    </>
+    </div>
   );
 }
 
