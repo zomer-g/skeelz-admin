@@ -1,9 +1,10 @@
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, lt, lte, sql } from "drizzle-orm";
 import { addDays, israelDay, israelMidnight } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import {
   gaCampaignDaily,
   gaCampaignEventDaily,
+  gaApplicationMinute,
   gaCampaignLandingDaily,
   gaChannelDaily,
   gaEventDaily,
@@ -20,6 +21,8 @@ import { getLiveVersion, gtmConfigured, sendsJobId } from "@/lib/google/gtm";
 import { smoov, smoovConfigured } from "@/lib/smoov/client";
 import { runSmoovPush, smoovPushConfigured, smoovPushDue } from "@/lib/smoov/push";
 import { logError, safeErrorMessage } from "@/lib/log";
+import { gaMinuteToUtc, rebuildApplicationSources } from "@/lib/metrics/attribution";
+import { APPLIED_EVENTS, APPLIED_EVENTS_SINCE } from "@/lib/metrics/jobs";
 
 /**
  * Google Analytics, Tag Manager and SMOOV into Postgres. Separate from the
@@ -108,7 +111,17 @@ async function syncGa4(): Promise<{ rows: number; note: string }> {
       metrics: ["sessions"],
       dimensionFilter: taggedCampaigns,
     });
-    quota = campaignLanding.quotaRemaining ?? channels.quotaRemaining ?? quota;
+    // The accepted applications per minute, for matching each Salesforce application to its source.
+    const applyMinutes =
+      to >= APPLIED_EVENTS_SINCE
+        ? await runReport({
+            ...range,
+            dimensions: ["dateHourMinute", "eventName", "pagePath", "sessionSource", "sessionMedium", "sessionCampaignName", "sessionDefaultChannelGroup", "deviceCategory"],
+            metrics: ["eventCount"],
+            dimensionFilter: { filter: { fieldName: "eventName", inListFilter: { values: [...APPLIED_EVENTS] } } },
+          })
+        : { rows: [], quotaRemaining: null };
+    quota = applyMinutes.quotaRemaining ?? campaignLanding.quotaRemaining ?? channels.quotaRemaining ?? quota;
 
     // Replace the whole window: GA's numbers for recent days change after the fact.
     await db.transaction(async (tx) => {
@@ -118,6 +131,23 @@ async function syncGa4(): Promise<{ rows: number; note: string }> {
       await tx.delete(gaCampaignDaily).where(and(gte(gaCampaignDaily.date, from), lte(gaCampaignDaily.date, to)));
       await tx.delete(gaCampaignEventDaily).where(and(gte(gaCampaignEventDaily.date, from), lte(gaCampaignEventDaily.date, to)));
       await tx.delete(gaCampaignLandingDaily).where(and(gte(gaCampaignLandingDaily.date, from), lte(gaCampaignLandingDaily.date, to)));
+      await tx.delete(gaApplicationMinute).where(and(gte(gaApplicationMinute.minute, israelMidnight(from)), lt(gaApplicationMinute.minute, israelMidnight(addDays(to, 1)))));
+
+      await insertChunks(
+        (rows) => tx.insert(gaApplicationMinute).values(rows).onConflictDoNothing(),
+        applyMinutes.rows.map((r) => ({
+          minute: gaMinuteToUtc(r.dims.dateHourMinute!),
+          eventName: r.dims.eventName!,
+          pagePath: r.dims.pagePath!,
+          siteJobKey: jobKeyFromPath(r.dims.pagePath!),
+          source: r.dims.sessionSource!,
+          medium: r.dims.sessionMedium!,
+          campaign: r.dims.sessionCampaignName!,
+          channelGroup: r.dims.sessionDefaultChannelGroup!,
+          deviceCategory: r.dims.deviceCategory!,
+          eventCount: r.metrics.eventCount!,
+        })),
+      );
 
       await insertChunks(
         (rows) => tx.insert(gaCampaignDaily).values(rows).onConflictDoNothing(),
@@ -189,14 +219,17 @@ async function syncGa4(): Promise<{ rows: number; note: string }> {
     });
 
     total +=
-      pages.rows.length + events.rows.length + channels.rows.length + campaigns.rows.length + campaignEvents.rows.length + campaignLanding.rows.length;
+      pages.rows.length + events.rows.length + channels.rows.length + campaigns.rows.length + campaignEvents.rows.length + campaignLanding.rows.length + applyMinutes.rows.length;
     await saveState("GA4", { cursor: israelMidnight(to) });
     from = addDays(to, 1);
   }
 
   const [{ n }] = (await db.select({ n: sql<number>`count(*)::int` }).from(gaPageDaily)) as [{ n: number }];
   await saveState("GA4", { rowCount: n });
-  return { rows: total, note: quota == null ? "" : `quota left today: ${quota}` };
+  // Salesforce applications created since the last run get their source now, older ones are re-checked.
+  const sources = await rebuildApplicationSources();
+  const matched = `application sources: ${sources.matched}/${sources.applications} matched${sources.ambiguous ? `, ${sources.ambiguous} ambiguous` : ""}`;
+  return { rows: total, note: quota == null ? matched : `quota left today: ${quota} · ${matched}` };
 }
 
 async function syncGtm(): Promise<{ rows: number; note: string }> {

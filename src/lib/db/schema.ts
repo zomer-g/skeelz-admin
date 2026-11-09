@@ -599,6 +599,56 @@ export const gaCampaignLandingDaily = pgTable(
   (t) => [primaryKey({ columns: [t.date, t.campaign, t.landingPage] }), index("ga_campaign_landing_campaign_idx").on(t.campaign)],
 );
 
+/**
+ * The site's accepted applications (job_application_registered / _guest) per minute, with the
+ * session's source and the device — the GA side of matching each Salesforce application to where
+ * it came from (src/lib/metrics/attribution.ts). `minute` is the minute's start, in UTC.
+ */
+export const gaApplicationMinute = pgTable(
+  "ga_application_minute",
+  {
+    minute: ts("minute").notNull(),
+    eventName: text("event_name").notNull(),
+    pagePath: text("page_path").notNull(),
+    siteJobKey: varchar("site_job_key", { length: 24 }),
+    source: text("source").notNull(),
+    medium: text("medium").notNull(),
+    campaign: text("campaign").notNull(),
+    channelGroup: text("channel_group").notNull(),
+    deviceCategory: text("device_category").notNull(),
+    eventCount: integer("event_count").notNull(),
+  },
+  (t) => [
+    primaryKey({ name: "ga_application_minute_pk", columns: [t.minute, t.eventName, t.pagePath, t.source, t.medium, t.campaign, t.channelGroup, t.deviceCategory] }),
+    index("ga_application_minute_job_idx").on(t.siteJobKey, t.minute),
+  ],
+);
+
+/**
+ * Where each site application came from: the GA application event matched to it by job, applicant
+ * type and minute (src/lib/metrics/attribution.ts). Rebuilt after every GA sync; an application with
+ * no row here had no matching event (blocked measurement, or created outside the site).
+ */
+export const applicationSource = pgTable(
+  "application_source",
+  {
+    caseId: varchar("case_id", { length: 18 }).primaryKey(),
+    applicantType: text("applicant_type").notNull(),
+    minute: ts("minute").notNull(),
+    /** Seconds from the Case's creation to the middle of the GA minute. */
+    deltaSeconds: integer("delta_seconds").notNull(),
+    source: text("source").notNull(),
+    medium: text("medium").notNull(),
+    campaign: text("campaign").notNull(),
+    channelGroup: text("channel_group").notNull(),
+    deviceCategory: text("device_category").notNull(),
+    /** Another event with different attributes was just as close: the attributes may belong to it. */
+    ambiguous: boolean("ambiguous").notNull(),
+    matchedAt: ts("matched_at").notNull().defaultNow(),
+  },
+  (t) => [index("application_source_channel_idx").on(t.channelGroup)],
+);
+
 /* -------------------------------------------------------------- campaigns */
 
 /** Editor-maintained details of a campaign, keyed by its UTM campaign name. */

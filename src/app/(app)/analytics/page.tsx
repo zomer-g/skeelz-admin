@@ -16,6 +16,16 @@ import { GA_DIM_LABELS, GA_EVENT_LABELS, GA_METRIC_LABELS, GA_REPORT_LABELS, gaE
 import { GA_REPORTS, JOB_SCOPES, runGaReport, type GaQuery, type JobScope } from "@/lib/metrics/ga-report";
 import { APPLIED_EVENTS, appliedSinceHint, JOB_EVENTS, loadJobGa, loadPositions, type Position } from "@/lib/metrics/jobs";
 import { CHANNEL_LABELS } from "@/lib/metrics/marketing";
+import { loadApplicationFacts } from "@/lib/metrics/candidates";
+import {
+  APPLICANT_LABELS,
+  buildSourceFunnel,
+  DEVICE_LABELS,
+  loadApplicationSources,
+  SOURCE_DIMENSIONS,
+  type ApplicantType,
+  type SourceDimension,
+} from "@/lib/metrics/attribution";
 
 export const metadata: Metadata = { title: "Google Analytics" };
 export const dynamic = "force-dynamic";
@@ -24,7 +34,7 @@ const PATH = "/analytics";
 /** The tab's own filters, kept in the URL next to the range. */
 const FILTERS = ["channel_group", "source", "medium", "campaign", "event_name", "page_path"] as const;
 const EXPLORER = ["x", "xg1", "xg2", "xl"] as const;
-const KEYS = ["range", "from", "to", "scope", "jobs", ...FILTERS, ...EXPLORER];
+const KEYS = ["range", "from", "to", "scope", "jobs", "by", ...FILTERS, ...EXPLORER];
 const GRAINS = ["date", "week", "month"];
 const JOB_LEVELS: Record<"" | JobScope, string> = { "": "כל האתר", jobs: "דפי משרות בלבד", paid: "דפי משרות בתשלום בלבד" };
 const MAX_JOBS = 50;
@@ -101,6 +111,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     eventOptions,
     jobGa,
     positions,
+    facts,
+    appSources,
   ] = await Promise.all([
     runGaReport(q("channels", [], 1)),
     runGaReport(q("channels", ["date"], 400)),
@@ -119,6 +131,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     runGaReport({ ...allTime, report: "events", groupBy: ["event_name"] }),
     loadJobGa(fromDay, toDay),
     loadPositions(),
+    loadApplicationFacts(),
+    loadApplicationSources(),
   ]);
 
   const byKey = new Map(positions.filter((p) => p.siteJobKey).map((p) => [p.siteJobKey!, p]));
@@ -157,6 +171,21 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
   const applied = registered + guest;
   const sinceHint = appliedSinceHint(fromDay);
 
+  // Site applications by where they came from, through the stages (lib/metrics/attribution.ts).
+  const by: SourceDimension = first(search.by) in SOURCE_DIMENSIONS ? (first(search.by) as SourceDimension) : "channel";
+  const bySource = buildSourceFunnel(facts, appSources, by, params.from, params.to, params.scope === "paid");
+  const groupLabel = (g: string | null) => {
+    if (g === null) return by === "type" ? "—" : "לא זוהה מקור";
+    if (by === "channel") return CHANNEL_LABELS[g] ?? g;
+    if (by === "device") return DEVICE_LABELS[g] ?? g;
+    if (by === "type") return APPLICANT_LABELS[g as ApplicantType] ?? g;
+    return g;
+  };
+  const sourceTotals = bySource.rows.reduce(
+    (t, r) => ({ applications: t.applications + r.funnel.applications, requestedCv: t.requestedCv + r.funnel.requestedCv, sent: t.sent + r.funnel.sent, interview: t.interview + r.funnel.interview, accepted: t.accepted + r.funnel.accepted }),
+    { applications: 0, requestedCv: 0, sent: 0, interview: 0, accepted: 0 },
+  );
+
   const daily = (r: Row[]) => new Map(r.map((x) => [String(x.date), num(x.sessions ?? x.event_count)]));
   const sessionsByDay = daily(trafficDaily.rows as Row[]);
   const opensByDay = daily(opensDaily.rows as Row[]);
@@ -194,7 +223,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
       <DashboardTabs active="analytics" query={rangeQuery(params)} />
       <DashboardShell preset={params.preset} scope={params.scope} fromDay={fromDay} toDay={toDay} showBasis={false} keep={keep}>
         <form method="get" action={PATH} className="mb-6 flex flex-col gap-3 rounded-card border-2 border-line bg-surface p-4" aria-label="מסנני Google Analytics">
-          {["range", "from", "to", "scope", ...EXPLORER].map((k) => (current.get(k) ? <input key={k} type="hidden" name={k} value={current.get(k)!} /> : null))}
+          {["range", "from", "to", "scope", "by", ...EXPLORER].map((k) => (current.get(k) ? <input key={k} type="hidden" name={k} value={current.get(k)!} /> : null))}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Field label="ערוץ">
               <select name="channel_group" defaultValue={filters.channel_group ?? ""} className={smallFieldClass}>
@@ -450,6 +479,67 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             ) : null}
           </Table>
           {jobRows.length > MAX_JOBS ? <p className="mt-3 text-xs text-muted">מוצגות {MAX_JOBS} המשרות עם הכי הרבה פתיחות; הסה״כ כולל את כולן.</p> : null}
+        </Card>
+
+        <SectionTitle hint={params.scope === "all" ? "הגשות מהאתר ב-Salesforce, כל המשרות" : "הגשות מהאתר ב-Salesforce, משרות בתשלום"}>הגשות לפי מקור: מההגשה ועד ההשמה</SectionTitle>
+        <Card level={3} title={`${SOURCE_DIMENSIONS[by]} · ${fmtInt(bySource.total)} הגשות`}>
+          <nav aria-label="חלוקה לפי" className="mb-4 flex flex-wrap gap-2">
+            {(Object.keys(SOURCE_DIMENSIONS) as SourceDimension[]).map((k) => (
+              <Link
+                key={k}
+                href={`${hrefWith({ by: k === "channel" ? null : k })}#by-source`}
+                scroll={false}
+                aria-current={k === by ? "true" : undefined}
+                className={`rounded-full px-4 py-1.5 text-sm font-medium ${k === by ? "bg-ink text-white" : "bg-surface text-ink ring-1 ring-line hover:bg-white"}`}
+              >
+                {SOURCE_DIMENSIONS[k]}
+              </Link>
+            ))}
+          </nav>
+          <div id="by-source" className="scroll-mt-4">
+            <Table
+              download={{ name: `הגשות לפי ${SOURCE_DIMENSIONS[by]}` }}
+              head={[SOURCE_DIMENSIONS[by], "הגשות", "מההגשות", 'ביקשנו קו"ח', "נשלחו למעסיק", "ראיון", "התקבלו", "מהגשה להשמה"]}
+              empty={bySource.rows.length ? undefined : "אין הגשות מהאתר בטווח"}
+              caption={`הגשות לפי ${SOURCE_DIMENSIONS[by]}`}
+            >
+              {bySource.rows.map((r) => (
+                <tr key={r.group ?? "—"}>
+                  <td className={`px-3 py-2 ${r.group === null ? "text-muted" : ""}`} dir={by === "source" || by === "campaign" ? "auto" : undefined}>
+                    {groupLabel(r.group)}
+                    {r.ambiguous ? <span className="block text-xs text-muted">{fmtInt(r.ambiguous)} בשיוך לא ודאי</span> : null}
+                  </td>
+                  <td className="px-3 py-2 font-medium tabular-nums">{fmtInt(r.funnel.applications)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtPercent(r.funnel.applications, bySource.total)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(r.funnel.requestedCv)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(r.funnel.sent)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(r.funnel.interview)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(r.funnel.accepted)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtPercent(r.funnel.accepted, r.funnel.applications)}</td>
+                </tr>
+              ))}
+              {bySource.rows.length > 1 ? (
+                <tr className="border-t-2 border-line font-bold">
+                  <td className="px-3 py-2">סה״כ</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(sourceTotals.applications)}</td>
+                  <td />
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(sourceTotals.requestedCv)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(sourceTotals.sent)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(sourceTotals.interview)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtInt(sourceTotals.accepted)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtPercent(sourceTotals.accepted, sourceTotals.applications)}</td>
+                </tr>
+              ) : null}
+            </Table>
+          </div>
+          <ul className="mt-3 flex flex-col gap-1 text-xs text-muted">
+            <li>
+              {fmtInt(bySource.matched)} מתוך {fmtInt(bySource.total)} הגשות ({fmtPercent(bySource.matched, bySource.total)}) שויכו למקור ב-Google Analytics. כל הגשה ב-Salesforce
+              מותאמת לאירוע ההגשה באתר של אותה משרה, אותו סוג מועמד (רשום / מזדמן) ואותה דקה.
+            </li>
+            <li>&quot;לא זוהה מקור&quot;: לא נמצא אירוע מתאים, בדרך כלל כי הדפדפן חסם את המדידה (חוסם פרסומות או סירוב לעוגיות), או שההגשה לא נוצרה דרך האתר.</li>
+            <li>השלבים נספרים מתי שהגיעו אליהם, גם אחרי הטווח. נמדד החל מ-9.11.2026; הגשות מלפני כן לא נכללות. מסנני הערוץ והמקור למעלה לא חלים על הטבלה הזו.</li>
+          </ul>
         </Card>
 
         <SectionTitle hint="כל דוח, בכל חיתוך, עם המסננים שלמעלה">חיתוך חופשי</SectionTitle>
