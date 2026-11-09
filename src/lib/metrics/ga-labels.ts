@@ -35,8 +35,10 @@ export const GA_METRIC_LABELS: Record<string, string> = {
 
 export const GA_EVENT_LABELS: Record<string, string> = {
   open_job_page: "פתיחת דף משרה",
-  Job_application_click_1: 'לחיצה על "הגש מועמדות"',
-  Job_application_yes: "אישור הגשה",
+  job_application_registered: "הגשה שנקלטה (מועמד רשום)",
+  job_application_guest: "הגשה שנקלטה (מועמד מזדמן)",
+  Job_application_click_1: 'לחיצה על "הגש מועמדות" (כולל ניסיונות שנכשלו)',
+  Job_application_yes: 'אישור "כן" של מועמד רשום',
   sign_up_click1: "לחיצה על הרשמה",
   sign_up_first_phase_complete: "הרשמה: שלב 1 הושלם",
   sign_up_second_phase_complete: "הרשמה: שלב 2 הושלם",

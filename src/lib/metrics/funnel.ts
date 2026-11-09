@@ -3,7 +3,7 @@ import { cached } from "@/lib/cache";
 import { addDays, israelDay } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { EMPLOYER_RESPONSE_STATUSES, RECORD_TYPES, STATUS, STATUS_HISTORY_START, type ApplicationFacts } from "./candidates";
-import { JOB_EVENTS, type Position } from "./jobs";
+import { APPLIED_EVENTS, JOB_EVENTS, type Position } from "./jobs";
 import type { Scope } from "./paid";
 
 /**
@@ -28,8 +28,7 @@ import type { Scope } from "./paid";
 export const STAGES = [
   { key: "sessions", label: "כניסות לאתר", short: "כניסות", source: "ga" },
   { key: "opens", label: "פתיחות של דפי משרות", short: "פתיחות", source: "ga" },
-  { key: "clicks", label: 'לחיצות "הגש מועמדות"', short: "לחיצות", source: "ga" },
-  { key: "confirms", label: "אישורי הגשה באתר", short: "אישורים", source: "ga" },
+  { key: "siteApplied", label: "הגשות באתר (רשומים + מזדמנים)", short: "הגשות באתר", source: "ga" },
   { key: "applied", label: "הגשות ב-Salesforce", short: "הגשות", source: "sf" },
   { key: "handled", label: "טופלו (מגע ראשון)", short: "טופלו", source: "sf" },
   { key: "sent", label: 'קו"ח נשלחו למעסיק', short: 'קו"ח נשלחו', source: "sf" },
@@ -39,7 +38,7 @@ export const STAGES = [
 ] as const;
 
 export type StageKey = (typeof STAGES)[number]["key"];
-type GaStage = "sessions" | "opens" | "clicks" | "confirms";
+type GaStage = "sessions" | "opens" | "siteApplied";
 
 /** Salesforce stages in order; an application's level is an index into this. */
 export const SF_STAGES = ["applied", "handled", "sent", "responded", "interview", "hired"] as const;
@@ -170,8 +169,8 @@ export interface GaDay {
 
 const GA_STAGE_OF: Record<string, GaDay["stage"]> = {
   [JOB_EVENTS.opens]: "opens",
-  [JOB_EVENTS.applyClicks]: "clicks",
-  [JOB_EVENTS.applyYes]: "confirms",
+  [JOB_EVENTS.appliedRegistered]: "siteApplied",
+  [JOB_EVENTS.appliedGuest]: "siteApplied",
 };
 
 /** The job events per day and job key, and site sessions per day, over all time (a few tens of thousands of rows). */
@@ -180,7 +179,7 @@ export function loadFunnelGa(): Promise<{ events: GaDay[]; sessions: Map<string,
     const [events, sessions, state] = await Promise.all([
       run(sql`
         SELECT date::text AS day, site_job_key AS key, event_name, sum(event_count) AS n FROM ga_event_daily
-         WHERE event_name IN ${Object.values(JOB_EVENTS)} GROUP BY 1, 2, 3`),
+         WHERE event_name IN ${[JOB_EVENTS.opens, ...APPLIED_EVENTS]} GROUP BY 1, 2, 3`),
       run(sql`SELECT date::text AS day, sum(sessions) AS n FROM ga_channel_daily GROUP BY 1`),
       run(sql`SELECT last_success_at FROM sync_state WHERE object = 'GA4'`),
     ]);
@@ -505,7 +504,7 @@ export function computeFunnel(input: FunnelInput): FunnelOutput {
   if (narrowJobs) for (const j of jobs.values()) if (j.key && (scope === "all" || j.paid) && jobMatches(j, filters)) allowedKeys.add(j.key);
   const keyAllowed = (key: string | null) => (narrowJobs ? key !== null && allowedKeys.has(key) : true);
 
-  const gaTotals: Record<GaStage, number> = { sessions: 0, opens: 0, clicks: 0, confirms: 0 };
+  const gaTotals: Record<GaStage, number> = { sessions: 0, opens: 0, siteApplied: 0 };
   const openedKeys = new Set<string>();
   const opensByKey = new Map<string, number>();
   for (const e of ga.events) {

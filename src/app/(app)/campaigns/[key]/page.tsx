@@ -119,7 +119,7 @@ export default async function CampaignPage({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="כניסות מהקמפיין" value={fmtInt(summary.sessions)} hint={`${fmtInt(summary.newUsers)} משתמשים חדשים · מעורבות ${fmtPercent(summary.engaged, summary.sessions)}`} />
         <StatCard label="פתיחות משרה" value={fmtInt(summary.opens)} hint="בכניסות מהקמפיין" />
-        <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(summary.applyClicks)} hint={`אישורי הגשה: ${fmtInt(summary.applyYes)}`} />
+        <StatCard label="הגשות שנקלטו באתר" value={fmtInt(summary.applied)} hint={`רשומים ${fmtInt(summary.appliedRegistered)} · מזדמנים ${fmtInt(summary.appliedGuest)}`} />
         <StatCard
           label="SMOOV"
           value={smoov?.sent != null ? fmtInt(smoov.sent) : "—"}
@@ -143,10 +143,10 @@ export default async function CampaignPage({
 
       <Card title={`משרות מקושרות · ${fmtInt(impacts.length)}`} className="mt-4">
         <p className="mb-3 text-sm text-muted">
-          {IMPACT_DAYS} הימים שמיום השליחה ({formatDay(summary.sendDay)}–{formatDay(afterTo)}) מול {IMPACT_DAYS} הימים שלפניו. פתיחות ולחיצות מכל התנועה לאתר, לא רק מהקמפיין.
+          {IMPACT_DAYS} הימים שמיום השליחה ({formatDay(summary.sendDay)}–{formatDay(afterTo)}) מול {IMPACT_DAYS} הימים שלפניו. פתיחות והגשות באתר מכל התנועה לאתר, לא רק מהקמפיין.
         </p>
         <Table download={{ name: "משרות מקושרות לקמפיין" }}
-          head={["משרה", "כניסות מהקמפיין לדף המשרה", "פתיחות משרה", "לחיצות הגשה", "הגשות", ""]}
+          head={["משרה", "כניסות מהקמפיין לדף המשרה", "פתיחות משרה", "הגשות באתר", "הגשות ב-Salesforce", ""]}
           empty={impacts.length === 0 ? "עדיין לא קושרו משרות לקמפיין" : undefined}
         >
           {impacts.map((i) => (
@@ -160,7 +160,7 @@ export default async function CampaignPage({
               </td>
               <td className="px-3 py-2 tabular-nums">{i.position.siteJobKey ? fmtInt(i.campaignSessions) : "—"}</td>
               <td className="px-3 py-2">{i.position.siteJobKey ? <Delta before={i.before.opens} after={i.after.opens} /> : "—"}</td>
-              <td className="px-3 py-2">{i.position.siteJobKey ? <Delta before={i.before.applyClicks} after={i.after.applyClicks} /> : "—"}</td>
+              <td className="px-3 py-2">{i.position.siteJobKey ? <Delta before={i.before.siteApplied} after={i.after.siteApplied} /> : "—"}</td>
               <td className="px-3 py-2">
                 <Delta before={i.before.applications} after={i.after.applications} />
               </td>

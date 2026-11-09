@@ -14,7 +14,8 @@ import { pageAuth } from "@/lib/auth/guard";
 import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtDecimal, fmtInt, fmtPercent } from "@/lib/format";
 import { loadApplicationFacts } from "@/lib/metrics/candidates";
-import { applicationFunnel, loadJobDailyOpens, loadJobEvents, loadJobGa, loadPosition, siteJobUrl } from "@/lib/metrics/jobs";
+import { EXPLAIN } from "@/lib/dashboard/explain";
+import { appliedSinceHint, applicationFunnel, EMPTY_GA, loadJobDailyOpens, loadJobEvents, loadJobGa, loadPosition, siteJobUrl } from "@/lib/metrics/jobs";
 
 export const metadata: Metadata = { title: "משרה" };
 export const dynamic = "force-dynamic";
@@ -58,7 +59,7 @@ export default async function JobPage({
     key ? loadJobDailyOpens(key, chartFrom, range.toDay) : Promise.resolve(new Map<string, number>()),
     key ? loadJobEvents(key, range.fromDay, range.toDay) : Promise.resolve([]),
   ]);
-  const ga = (key && gaMap.get(key)) || { pageViews: 0, opens: 0, applyClicks: 0, applyYes: 0 };
+  const ga = (key && gaMap.get(key)) || EMPTY_GA;
   const apps = facts
     .filter((f) => f.parentId === id && f.createdAt >= range.from && f.createdAt < range.to)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
@@ -143,7 +144,12 @@ export default async function JobPage({
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="פתיחות משרה באתר" value={key ? fmtInt(ga.opens) : "—"} hint={key ? `צפיות ישירות בדף: ${fmtInt(ga.pageViews)}` : "לא באתר"} />
-          <StatCard label='לחיצות "הגש מועמדות"' value={key ? fmtInt(ga.applyClicks) : "—"} hint={key ? `${fmtPercent(ga.applyClicks, ga.opens)} מהפתיחות` : undefined} />
+          <StatCard
+            label="הגשות שנקלטו באתר"
+            value={key ? fmtInt(ga.applied) : "—"}
+            hint={key ? (appliedSinceHint(range.fromDay) ?? `רשומים ${fmtInt(ga.appliedRegistered)} · מזדמנים ${fmtInt(ga.appliedGuest)}`) : undefined}
+            info={EXPLAIN.siteApplications}
+          />
           <StatCard label="הגשות" value={fmtInt(funnel.applications)} hint={key ? `${fmtPercent(funnel.applications, ga.opens)} מהפתיחות` : undefined} />
           <StatCard label="התקבלו לעבודה" value={fmtInt(funnel.accepted)} hint={`${fmtPercent(funnel.accepted, funnel.applications)} מההגשות`} />
         </div>
@@ -156,8 +162,8 @@ export default async function JobPage({
                 showShareOf={ga.opens || undefined}
                 items={[
                   { label: "פתיחות משרה", value: ga.opens },
-                  { label: 'לחיצות "הגש מועמדות"', value: ga.applyClicks },
-                  { label: "אישור הגשה", value: ga.applyYes },
+                  { label: "הגשות של מועמדים רשומים", value: ga.appliedRegistered },
+                  { label: "הגשות של מועמדים מזדמנים", value: ga.appliedGuest },
                   { label: "הגשות ב-Salesforce", value: funnel.applications },
                 ].map((s, i) => ({ ...s, color: FUNNEL[i + 2] }))}
               />

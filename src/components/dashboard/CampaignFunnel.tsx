@@ -64,6 +64,7 @@ export function CampaignFunnel({
             <ul className="mt-3 flex flex-col gap-1 text-xs text-muted">
               <li>שלושת השלבים הראשונים מ-SMOOV, לכל שליחה (גם פתיחות שקרו אחרי הטווח). השאר מ-Google Analytics, רק בטווח.</li>
               <li>שלבי SMOOV מופיעים רק לדיוורים שמקושרים לקמפיין ב-SMOOV.</li>
+              <li>הגשות באתר נספרות רק כשההגשה נקלטה (מופיע &quot;המשרה הוגשה&quot;), החל מ-9.11.2026.</li>
             </ul>
           </>
         ) : (
@@ -74,7 +75,7 @@ export function CampaignFunnel({
       <Card level={3} title={`קמפיינים בטווח · ${fmtInt(rows.length)}`} className="xl:col-span-2" tone="accent-light">
         <Table
           caption={`קמפיינים ${formatDay(fromDay)} – ${formatDay(toDay)}`}
-          head={["קמפיין", "יום שליחה", "נשלחו", "נפתחו", "הקליקו", "כניסות", "פתיחות משרות", "לחיצות הגשה", "אישורי הגשה", ""]}
+          head={["קמפיין", "יום שליחה", "נשלחו", "נפתחו", "הקליקו", "כניסות", "פתיחות משרות", "הגשות באתר", "מתוכן רשומים", "מתוכן מזדמנים", ""]}
           empty={rows.length === 0 ? "אין קמפיינים בטווח" : undefined}
         >
           {rows.slice(0, MAX_ROWS).map((r) => (
@@ -97,8 +98,9 @@ export function CampaignFunnel({
               </td>
               <td className="px-3 py-2 font-medium tabular-nums">{fmtInt(r.sessions)}</td>
               <td className="px-3 py-2 tabular-nums">{fmtInt(r.opens)}</td>
-              <td className="px-3 py-2 tabular-nums">{fmtInt(r.applyClicks)}</td>
-              <td className="px-3 py-2 tabular-nums">{fmtInt(r.applyYes)}</td>
+              <td className="px-3 py-2 font-medium tabular-nums">{fmtInt(r.applied)}</td>
+              <td className="px-3 py-2 tabular-nums">{fmtInt(r.appliedRegistered)}</td>
+              <td className="px-3 py-2 tabular-nums">{fmtInt(r.appliedGuest)}</td>
               <td className="px-3 py-2 text-end">
                 {r.key === selected ? (
                   <span className="text-xs text-muted">מוצג</span>
@@ -119,8 +121,9 @@ export function CampaignFunnel({
               <td className="px-3 py-2 tabular-nums">{cell(totals.mailClicks)}</td>
               <td className="px-3 py-2 tabular-nums">{cell(totals.sessions)}</td>
               <td className="px-3 py-2 tabular-nums">{cell(totals.opens)}</td>
-              <td className="px-3 py-2 tabular-nums">{cell(totals.applyClicks)}</td>
-              <td className="px-3 py-2 tabular-nums">{cell(totals.applyYes)}</td>
+              <td className="px-3 py-2 tabular-nums">{cell(totals.applied)}</td>
+              <td className="px-3 py-2 tabular-nums">{fmtInt(rows.reduce((s, r) => s + r.appliedRegistered, 0))}</td>
+              <td className="px-3 py-2 tabular-nums">{fmtInt(rows.reduce((s, r) => s + r.appliedGuest, 0))}</td>
               <td />
             </tr>
           ) : null}

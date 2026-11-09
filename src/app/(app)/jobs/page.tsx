@@ -12,7 +12,7 @@ import { EXPLAIN } from "@/lib/dashboard/explain";
 import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtInt, fmtRelative } from "@/lib/format";
 import { countNewJobs, loadApplicationFacts, syncFreshness } from "@/lib/metrics/candidates";
-import { buildJobRows, loadJobGa, loadPositions, matchesSearch, type JobRow } from "@/lib/metrics/jobs";
+import { appliedSinceHint, buildJobRows, loadJobGa, loadPositions, matchesSearch, type JobRow } from "@/lib/metrics/jobs";
 import { loadJobFacts, parseLevel } from "@/lib/metrics/geo";
 import { inScope } from "@/lib/metrics/paid";
 
@@ -61,8 +61,8 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
     .slice(0, MAX_ROWS);
 
   const totals = active.reduce(
-    (t, r) => ({ opens: t.opens + r.ga.opens, clicks: t.clicks + r.ga.applyClicks, applications: t.applications + r.funnel.applications }),
-    { opens: 0, clicks: 0, applications: 0 },
+    (t, r) => ({ opens: t.opens + r.ga.opens, siteApplied: t.siteApplied + r.ga.applied, applications: t.applications + r.funnel.applications }),
+    { opens: 0, siteApplied: 0, applications: 0 },
   );
   const detailQuery = query ? `?${query}` : "";
   const markedHref = (on: boolean) => {
@@ -108,7 +108,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="משרות עם פעילות" value={fmtInt(active.length)} hint="נפתחו באתר או קיבלו הגשות" info={EXPLAIN.jobsWithActivity} />
           <StatCard label="פתיחות משרה" value={fmtInt(totals.opens)} hint="של משרות שמזוהות ב-Salesforce" info={EXPLAIN.jobOpensKnown} />
-          <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(totals.clicks)} hint="של משרות שמזוהות ב-Salesforce" info={EXPLAIN.applyClicksKnown} />
+          <StatCard label="הגשות שנקלטו באתר" value={fmtInt(totals.siteApplied)} hint={appliedSinceHint(params.fromDay) ?? "של משרות שמזוהות ב-Salesforce"} info={EXPLAIN.siteApplicationsKnown} />
           <StatCard label="הגשות" value={fmtInt(totals.applications)} info={EXPLAIN.applicationsOfJobs} />
         </div>
 
@@ -158,7 +158,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
             </Link>
           </nav>
           <Table download={{ name: "משרות" }}
-            head={["משרה", "נפתחה", "פתיחות", "לחיצות הגשה", "הגשות", "נשלחו", "ראיון", "התקבלו"]}
+            head={["משרה", "נפתחה", "פתיחות", "הגשות באתר", "הגשות", "נשלחו", "ראיון", "התקבלו"]}
             empty={rows.length === 0 ? (markedOnly ? "אין משרות מסומנות בכתר בתצוגה הזו" : q ? "לא נמצאו משרות" : "אין משרות עם פעילות בטווח") : undefined}
           >
             {rows.map(({ position: p, ga: g, funnel: f }) => (
@@ -175,7 +175,7 @@ export default async function JobsPage({ searchParams }: { searchParams: Promise
                 </td>
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums">{fmtDate(p.createdAt)}</td>
                 <td className="px-3 py-2 tabular-nums">{p.siteJobKey ? fmtInt(g.opens) : <span className="text-muted">לא באתר</span>}</td>
-                <td className="px-3 py-2 tabular-nums">{p.siteJobKey ? fmtInt(g.applyClicks) : "—"}</td>
+                <td className="px-3 py-2 tabular-nums">{p.siteJobKey ? fmtInt(g.applied) : "—"}</td>
                 <td className="px-3 py-2 font-medium tabular-nums">{fmtInt(f.applications)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(f.sent)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(f.interview)}</td>

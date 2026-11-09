@@ -27,8 +27,7 @@ export const CAMPAIGN_STAGES = [
   { key: "mailClicks", label: "הקליקו על קישור", source: "smoov" },
   { key: "sessions", label: "כניסות לאתר", source: "ga" },
   { key: "opens", label: "פתיחות של דפי משרות", source: "ga" },
-  { key: "applyClicks", label: 'לחיצות "הגש מועמדות"', source: "ga" },
-  { key: "applyYes", label: "אישורי הגשה", source: "ga" },
+  { key: "applied", label: "הגשות באתר (רשומים + מזדמנים)", source: "ga" },
 ] as const;
 
 export type CampaignStage = (typeof CAMPAIGN_STAGES)[number]["key"];
@@ -63,7 +62,6 @@ export function campaignStageValues(rows: CampaignFunnelRow[]): Record<CampaignS
     mailClicks: sum((r) => r.mailClicks),
     sessions: sum((r) => r.sessions),
     opens: sum((r) => r.opens),
-    applyClicks: sum((r) => r.applyClicks),
-    applyYes: sum((r) => r.applyYes),
+    applied: sum((r) => r.applied),
   };
 }

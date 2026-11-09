@@ -3,7 +3,7 @@ import { addDays, israelDay } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { NON_CAMPAIGNS } from "@/lib/integrations/marketing-sync";
 import type { ApplicationFacts } from "./candidates";
-import { JOB_EVENTS, type Position } from "./jobs";
+import { APPLIED_EVENTS, JOB_EVENTS, type Position } from "./jobs";
 
 /**
  * Campaigns come from GA4's UTM campaign names — every tagged mailing shows up
@@ -30,8 +30,10 @@ export interface CampaignSummary {
   sendDay: string;
   detectedSendDay: string;
   opens: number;
-  applyClicks: number;
-  applyYes: number;
+  /** Applications accepted on the site from the campaign's sessions: registered + guest (see JOB_EVENTS). */
+  applied: number;
+  appliedRegistered: number;
+  appliedGuest: number;
   smoovCampaignId: number | null;
   linkedJobs: number;
 }
@@ -70,15 +72,15 @@ export async function loadCampaignSummaries(fromDay: string, toDay: string, key?
     ev AS (
       SELECT campaign,
              sum(event_count) FILTER (WHERE event_name = ${JOB_EVENTS.opens}) AS opens,
-             sum(event_count) FILTER (WHERE event_name = ${JOB_EVENTS.applyClicks}) AS apply_clicks,
-             sum(event_count) FILTER (WHERE event_name = ${JOB_EVENTS.applyYes}) AS apply_yes
+             sum(event_count) FILTER (WHERE event_name = ${JOB_EVENTS.appliedRegistered}) AS applied_registered,
+             sum(event_count) FILTER (WHERE event_name = ${JOB_EVENTS.appliedGuest}) AS applied_guest
         FROM ga_campaign_event_daily
        WHERE date >= ${fromDay}::date AND date <= ${toDay}::date ${keyFilter}
        GROUP BY campaign
     ),
     links AS (SELECT campaign_key, count(*) AS n FROM campaign_jobs GROUP BY 1)
     SELECT tot.campaign, tot.sessions, tot.new_users, tot.engaged, tot.first_day::text AS first_day, tot.last_day::text AS last_day,
-           peak.peak_day::text AS peak_day, med.medium, ev.opens, ev.apply_clicks, ev.apply_yes,
+           peak.peak_day::text AS peak_day, med.medium, ev.opens, ev.applied_registered, ev.applied_guest,
            cs.label, cs.smoov_campaign_id, cs.send_day::text AS send_day, links.n AS linked_jobs
       FROM tot
       JOIN peak USING (campaign)
@@ -100,8 +102,9 @@ export async function loadCampaignSummaries(fromDay: string, toDay: string, key?
     detectedSendDay: String(r.peak_day),
     sendDay: str(r.send_day) ?? String(r.peak_day),
     opens: num(r.opens),
-    applyClicks: num(r.apply_clicks),
-    applyYes: num(r.apply_yes),
+    applied: num(r.applied_registered) + num(r.applied_guest),
+    appliedRegistered: num(r.applied_registered),
+    appliedGuest: num(r.applied_guest),
     smoovCampaignId: r.smoov_campaign_id == null ? null : num(r.smoov_campaign_id),
     linkedJobs: num(r.linked_jobs),
   }));
@@ -155,7 +158,8 @@ export async function loadSmoovStats(campaignId: number) {
 
 export interface WindowCounts {
   opens: number;
-  applyClicks: number;
+  /** Applications accepted on the site (registered + guest). */
+  siteApplied: number;
   applications: number;
 }
 
@@ -180,7 +184,7 @@ export async function loadJobImpacts(key: string, sendDay: string, jobs: Positio
                  sum(event_count) FILTER (WHERE date >= ${beforeFrom}::date AND date <= ${beforeTo}::date) AS before,
                  sum(event_count) FILTER (WHERE date >= ${sendDay}::date AND date <= ${afterTo}::date) AS after
             FROM ga_event_daily
-           WHERE site_job_key IN ${keys} AND event_name IN ${[JOB_EVENTS.opens, JOB_EVENTS.applyClicks]}
+           WHERE site_job_key IN ${keys} AND event_name IN ${[JOB_EVENTS.opens, ...APPLIED_EVENTS]}
              AND date >= ${beforeFrom}::date AND date <= ${afterTo}::date
            GROUP BY 1, 2`),
         run(sql`
@@ -198,12 +202,12 @@ export async function loadJobImpacts(key: string, sendDay: string, jobs: Positio
       campaignSessions: num(landing.find((l) => l.site_job_key === k)?.n),
       before: {
         opens: ev(JOB_EVENTS.opens, "before"),
-        applyClicks: ev(JOB_EVENTS.applyClicks, "before"),
+        siteApplied: ev(JOB_EVENTS.appliedRegistered, "before") + ev(JOB_EVENTS.appliedGuest, "before"),
         applications: apps.filter((d) => d >= beforeFrom && d <= beforeTo).length,
       },
       after: {
         opens: ev(JOB_EVENTS.opens, "after"),
-        applyClicks: ev(JOB_EVENTS.applyClicks, "after"),
+        siteApplied: ev(JOB_EVENTS.appliedRegistered, "after") + ev(JOB_EVENTS.appliedGuest, "after"),
         applications: apps.filter((d) => d >= sendDay && d <= afterTo).length,
       },
     };

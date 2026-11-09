@@ -48,7 +48,14 @@ const INSERT_CHUNK = 1000;
 /** GA's placeholder "campaigns" for untagged traffic. */
 export const NON_CAMPAIGNS = ["(direct)", "(organic)", "(referral)", "(not set)", "(data deleted)", "(ai-assistant)", "(cross-network)"];
 /** Site events worth attributing to campaigns. */
-const CAMPAIGN_EVENTS = ["open_job_page", "Job_application_click_1", "Job_application_yes", "sign_up_second_phase_complete"];
+const CAMPAIGN_EVENTS = [
+  "open_job_page",
+  "job_application_registered",
+  "job_application_guest",
+  "Job_application_click_1",
+  "Job_application_yes",
+  "sign_up_second_phase_complete",
+];
 const taggedCampaigns = { notExpression: { filter: { fieldName: "sessionCampaignName", inListFilter: { values: NON_CAMPAIGNS } } } };
 
 async function saveState(object: string, values: Partial<typeof syncState.$inferInsert>): Promise<void> {

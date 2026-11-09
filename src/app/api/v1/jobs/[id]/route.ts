@@ -35,6 +35,8 @@ export const GET = withApiKey("/api/v1/jobs/{id}", "jobs:read", async (_req: Req
         job_opens: exposure?.opens ?? 0,
         apply_clicks: exposure?.applyClicks ?? 0,
         apply_confirmations: exposure?.applyYes ?? 0,
+        applications_registered: exposure?.appliedRegistered ?? 0,
+        applications_guest: exposure?.appliedGuest ?? 0,
         page_views: exposure?.pageViews ?? 0,
       },
     },

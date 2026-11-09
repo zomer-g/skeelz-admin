@@ -10,6 +10,7 @@ import { formatDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/das
 import { fmtInt, fmtPercent } from "@/lib/format";
 import { loadCampaignFunnel } from "@/lib/metrics/campaign-funnel";
 import { campaignLabel, isMailing, loadCampaignSummaries } from "@/lib/metrics/campaigns";
+import { appliedSinceHint } from "@/lib/metrics/jobs";
 
 export const metadata: Metadata = { title: "דיוורים" };
 export const dynamic = "force-dynamic";
@@ -58,12 +59,16 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
           <StatCard label="קמפיינים בטווח" value={fmtInt(all.length)} hint={`מתוכם ${fmtInt(mailings.length)} דיוורים (SMS / מייל)`} />
           <StatCard label="כניסות מקמפיינים" value={fmtInt(all.reduce((s, c) => s + c.sessions, 0))} />
           <StatCard label="פתיחות משרה מקמפיינים" value={fmtInt(all.reduce((s, c) => s + c.opens, 0))} />
-          <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(all.reduce((s, c) => s + c.applyClicks, 0))} />
+          <StatCard
+            label="הגשות באתר מקמפיינים"
+            value={fmtInt(all.reduce((s, c) => s + c.applied, 0))}
+            hint={appliedSinceHint(params.fromDay) ?? `רשומים ${fmtInt(all.reduce((s, c) => s + c.appliedRegistered, 0))} · מזדמנים ${fmtInt(all.reduce((s, c) => s + c.appliedGuest, 0))}`}
+          />
         </div>
 
         <Card title={`קמפיינים · ${fmtInt(campaigns.length)}`} className="mt-8">
           <Table download={{ name: "קמפיינים" }}
-            head={["קמפיין", "ערוץ", "יום שליחה", "כניסות", "מעורבות", "פתיחות משרה", "לחיצות הגשה", "משרות מקושרות", "SMOOV"]}
+            head={["קמפיין", "ערוץ", "יום שליחה", "כניסות", "מעורבות", "פתיחות משרה", "הגשות באתר", "משרות מקושרות", "SMOOV"]}
             empty={campaigns.length === 0 ? "אין קמפיינים בטווח" : undefined}
           >
             {campaigns.map((c) => (
@@ -83,7 +88,7 @@ export default async function CampaignsPage({ searchParams }: { searchParams: Pr
                 <td className="px-3 py-2 tabular-nums">{fmtInt(c.sessions)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtPercent(c.engaged, c.sessions)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(c.opens)}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtInt(c.applyClicks)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(c.applied)}</td>
                 <td className="px-3 py-2 tabular-nums">{c.linkedJobs ? fmtInt(c.linkedJobs) : "—"}</td>
                 <td className="px-3 py-2 tabular-nums" dir="ltr">
                   {c.smoovCampaignId ?? "—"}

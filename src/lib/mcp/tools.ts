@@ -30,6 +30,7 @@ import {
   loadSmoovStats,
 } from "@/lib/metrics/campaigns";
 import {
+  EMPTY_GA,
   filterPositions,
   loadJobDailyOpens,
   loadJobEvents,
@@ -322,7 +323,7 @@ const TOOLS: Tool[] = [
         events: Object.fromEntries([...m.events.entries()].sort(([, x], [, y]) => y - x)),
         dailySessions: series(m.dailySessions),
         dailyApplications: series(m.dailyApplications),
-        dailyApplyConfirmations: series(m.dailyApplyConfirmations),
+        dailySiteApplications: series(m.dailySiteApplications),
         event_names: SITE_EVENTS,
       };
     },
@@ -421,7 +422,7 @@ const TOOLS: Tool[] = [
       const ga = key
         ? {
             range: { from: fromDay, to: toDay },
-            totals: gaMap.get(key) ?? { pageViews: 0, opens: 0, applyClicks: 0, applyYes: 0 },
+            totals: gaMap.get(key) ?? EMPTY_GA,
             events,
             daily_job_opens: [...daily.entries()].sort(([x], [y]) => x.localeCompare(y)).map(([day, opens]) => ({ day, opens })),
           }

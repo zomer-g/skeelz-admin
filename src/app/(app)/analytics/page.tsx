@@ -14,7 +14,7 @@ import { fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
 import { ArgError } from "@/lib/mcp/args";
 import { GA_DIM_LABELS, GA_EVENT_LABELS, GA_METRIC_LABELS, GA_REPORT_LABELS, gaEventLabel } from "@/lib/metrics/ga-labels";
 import { GA_REPORTS, JOB_SCOPES, runGaReport, type GaQuery, type JobScope } from "@/lib/metrics/ga-report";
-import { JOB_EVENTS, loadJobGa, loadPositions, type Position } from "@/lib/metrics/jobs";
+import { APPLIED_EVENTS, appliedSinceHint, JOB_EVENTS, loadJobGa, loadPositions, type Position } from "@/lib/metrics/jobs";
 import { CHANNEL_LABELS } from "@/lib/metrics/marketing";
 
 export const metadata: Metadata = { title: "Google Analytics" };
@@ -92,7 +92,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     topPages,
     events,
     opensDaily,
-    yesDaily,
+    registeredDaily,
+    guestDaily,
     campaigns,
     campaignEvents,
     landing,
@@ -109,7 +110,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     runGaReport(q("pages", ["page_path"], 30)),
     runGaReport(q("events", ["event_name"], 100)),
     runGaReport(q("events", ["date"], 400, { event_name: JOB_EVENTS.opens })),
-    runGaReport(q("events", ["date"], 400, { event_name: JOB_EVENTS.applyYes })),
+    runGaReport(q("events", ["date"], 400, { event_name: JOB_EVENTS.appliedRegistered })),
+    runGaReport(q("events", ["date"], 400, { event_name: JOB_EVENTS.appliedGuest })),
     runGaReport(q("campaigns", ["campaign"], 30)),
     runGaReport(q("campaign_events", ["campaign", "event_name"], 300)),
     runGaReport(q("campaign_landing_pages", ["campaign", "landing_page"], 30)),
@@ -146,12 +148,20 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
     .map(([key, ga]) => ({ key, ga, position: byKey.get(key) ?? null }))
     .filter((j) => params.scope === "all" || j.position?.paid)
     .sort((a, b) => b.ga.opens - a.ga.opens || b.ga.pageViews - a.ga.pageViews);
-  const jobTotals = jobRows.reduce((s, j) => ({ opens: s.opens + j.ga.opens, clicks: s.clicks + j.ga.applyClicks, yes: s.yes + j.ga.applyYes }), { opens: 0, clicks: 0, yes: 0 });
+  const jobTotals = jobRows.reduce(
+    (s, j) => ({ opens: s.opens + j.ga.opens, registered: s.registered + j.ga.appliedRegistered, guest: s.guest + j.ga.appliedGuest, applied: s.applied + j.ga.applied }),
+    { opens: 0, registered: 0, guest: 0, applied: 0 },
+  );
+  const registered = eventCount(JOB_EVENTS.appliedRegistered);
+  const guest = eventCount(JOB_EVENTS.appliedGuest);
+  const applied = registered + guest;
+  const sinceHint = appliedSinceHint(fromDay);
 
   const daily = (r: Row[]) => new Map(r.map((x) => [String(x.date), num(x.sessions ?? x.event_count)]));
   const sessionsByDay = daily(trafficDaily.rows as Row[]);
   const opensByDay = daily(opensDaily.rows as Row[]);
-  const yesByDay = daily(yesDaily.rows as Row[]);
+  const registeredByDay = daily(registeredDaily.rows as Row[]);
+  const guestByDay = daily(guestDaily.rows as Row[]);
   const days = eachDay(fromDay, toDay);
 
   const keep = Object.fromEntries(KEYS.filter((k) => !["range", "from", "to", "scope"].includes(k)).flatMap((k) => (first(search[k]) ? [[k, first(search[k])]] : [])));
@@ -269,12 +279,25 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
           <StatCard label="כניסות מעורבות" value={fmtInt(num(t.engaged_sessions))} hint={`${fmtPercent(num(t.engaged_sessions), sessions)} מהכניסות`} info={EXPLAIN.gaEngaged} />
           <StatCard label="צפיות בדפים" value={fmtInt(num((pages.totals as Row).views))} info={EXPLAIN.gaPageViews} />
           <StatCard label="פתיחות דפי משרות" value={fmtInt(eventCount(JOB_EVENTS.opens))} info={EXPLAIN.gaJobOpens} />
-          <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(eventCount(JOB_EVENTS.applyClicks))} info={EXPLAIN.gaApplyClicks} />
           <StatCard
-            label="אישורי הגשה"
-            value={fmtInt(eventCount(JOB_EVENTS.applyYes))}
-            hint={`${fmtPercent(eventCount(JOB_EVENTS.applyYes), eventCount(JOB_EVENTS.opens))} מהפתיחות`}
-            info={EXPLAIN.gaApplyYes}
+            label="הגשות שנקלטו באתר"
+            value={fmtInt(applied)}
+            hint={sinceHint ?? `${fmtPercent(applied, eventCount(JOB_EVENTS.opens))} מהפתיחות`}
+            info={EXPLAIN.gaSiteApplications}
+          />
+        </div>
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <StatCard
+            label="הגשות של מועמדים רשומים"
+            value={fmtInt(registered)}
+            hint={sinceHint ?? `${fmtPercent(registered, applied)} מההגשות`}
+            info={EXPLAIN.siteApplicationsRegistered}
+          />
+          <StatCard
+            label="הגשות של מועמדים מזדמנים"
+            value={fmtInt(guest)}
+            hint={sinceHint ?? `${fmtPercent(guest, applied)} מההגשות`}
+            info={EXPLAIN.siteApplicationsGuest}
           />
         </div>
 
@@ -284,7 +307,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
             series={[
               { label: "כניסות לאתר", color: "var(--color-series-1)", points: days.map((day) => ({ day, value: sessionsByDay.get(day) ?? 0 })) },
               { label: "פתיחות דפי משרות", color: "var(--color-series-2)", points: days.map((day) => ({ day, value: opensByDay.get(day) ?? 0 })) },
-              { label: "אישורי הגשה", color: "var(--color-series-3)", points: days.map((day) => ({ day, value: yesByDay.get(day) ?? 0 })) },
+              { label: "הגשות של רשומים", color: "var(--color-series-3)", points: days.map((day) => ({ day, value: registeredByDay.get(day) ?? 0 })) },
+              { label: "הגשות של מזדמנים", color: "var(--color-brand)", points: days.map((day) => ({ day, value: guestByDay.get(day) ?? 0 })) },
             ]}
           />
         </Card>
@@ -360,7 +384,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         <SectionTitle hint="תגיות UTM: כניסות, ומה עשו באתר">קמפיינים</SectionTitle>
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           <Card level={3} title={`קמפיינים · ${fmtInt(campaigns.groups_total)}`}>
-            <Table download={{ name: "Analytics קמפיינים" }} head={["קמפיין", "כניסות", "חדשים", "פתיחות משרות", "לחיצות הגשה", "אישורים"]} empty={campaigns.rows.length ? undefined : "אין קמפיינים"} caption="קמפיינים">
+            <Table download={{ name: "Analytics קמפיינים" }} head={["קמפיין", "כניסות", "חדשים", "פתיחות משרות", "הגשות רשומים", "הגשות מזדמנים"]} empty={campaigns.rows.length ? undefined : "אין קמפיינים"} caption="קמפיינים">
               {(campaigns.rows as Row[]).map((r) => {
                 const ev = (name: string) => num((campaignEvents.rows as Row[]).find((e) => e.campaign === r.campaign && e.event_name === name)?.event_count);
                 return (
@@ -373,8 +397,8 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                     <td className="px-3 py-2 font-medium tabular-nums">{fmtInt(num(r.sessions))}</td>
                     <td className="px-3 py-2 tabular-nums">{fmtInt(num(r.new_users))}</td>
                     <td className="px-3 py-2 tabular-nums">{fmtInt(ev(JOB_EVENTS.opens))}</td>
-                    <td className="px-3 py-2 tabular-nums">{fmtInt(ev(JOB_EVENTS.applyClicks))}</td>
-                    <td className="px-3 py-2 tabular-nums">{fmtInt(ev(JOB_EVENTS.applyYes))}</td>
+                    <td className="px-3 py-2 tabular-nums">{fmtInt(ev(JOB_EVENTS.appliedRegistered))}</td>
+                    <td className="px-3 py-2 tabular-nums">{fmtInt(ev(JOB_EVENTS.appliedGuest))}</td>
                   </tr>
                 );
               })}
@@ -396,7 +420,7 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
         <SectionTitle hint={params.scope === "all" ? "כל המשרות" : "משרות בתשלום בלבד"}>ברמת המשרה</SectionTitle>
         <Card level={3} title={`משרות שנפתחו באתר בטווח · ${fmtInt(jobRows.length)}`}>
           <Table download={{ name: "Analytics משרות שנפתחו באתר" }}
-            head={["משרה", "צפיות", "פתיחות", "לחיצות הגשה", "אישורים", "מפתיחה לאישור"]}
+            head={["משרה", "צפיות", "פתיחות", "הגשות רשומים", "הגשות מזדמנים", "סה״כ הגשות", "מפתיחה להגשה"]}
             empty={jobRows.length ? undefined : "אין משרות עם פעילות באתר בטווח"}
             caption="Google Analytics לפי משרה"
           >
@@ -407,9 +431,10 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                 </td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(ga.pageViews)}</td>
                 <td className="px-3 py-2 font-medium tabular-nums">{fmtInt(ga.opens)}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtInt(ga.applyClicks)}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtInt(ga.applyYes)}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtPercent(ga.applyYes, ga.opens)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(ga.appliedRegistered)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(ga.appliedGuest)}</td>
+                <td className="px-3 py-2 font-medium tabular-nums">{fmtInt(ga.applied)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtPercent(ga.applied, ga.opens)}</td>
               </tr>
             ))}
             {jobRows.length > 1 ? (
@@ -417,9 +442,10 @@ export default async function AnalyticsPage({ searchParams }: { searchParams: Pr
                 <td className="px-3 py-2">סה״כ ({fmtInt(jobRows.length)} משרות)</td>
                 <td />
                 <td className="px-3 py-2 tabular-nums">{fmtInt(jobTotals.opens)}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtInt(jobTotals.clicks)}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtInt(jobTotals.yes)}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtPercent(jobTotals.yes, jobTotals.opens)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(jobTotals.registered)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(jobTotals.guest)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(jobTotals.applied)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtPercent(jobTotals.applied, jobTotals.opens)}</td>
               </tr>
             ) : null}
           </Table>

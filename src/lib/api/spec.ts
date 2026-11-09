@@ -337,7 +337,7 @@ export const ENDPOINTS: EndpointSpec[] = [
           ref("Job"),
           obj({
             applications: obj({ total: int, paid: int, by_status: { type: "object", additionalProperties: int } }),
-            site_last_30_days: obj({ from: str, to: str, job_opens: int, apply_clicks: int, apply_confirmations: int, page_views: int }),
+            site_last_30_days: obj({ from: str, to: str, job_opens: int, apply_clicks: int, apply_confirmations: int, applications_registered: int, applications_guest: int, page_views: int }),
           }),
         ],
       },

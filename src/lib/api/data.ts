@@ -93,6 +93,9 @@ export async function siteTotals(fromDay: string, toDay: string, scope: Scope) {
     job_opens: event(JOB_EVENTS.opens),
     apply_clicks: event(JOB_EVENTS.applyClicks),
     apply_confirmations: event(JOB_EVENTS.applyYes),
+    /** Applications the site accepted (from 9.11.2026): a signed-in candidate, and the guest form. */
+    applications_registered: event(JOB_EVENTS.appliedRegistered),
+    applications_guest: event(JOB_EVENTS.appliedGuest),
   };
 }
 

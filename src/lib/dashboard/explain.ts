@@ -23,7 +23,7 @@ export const EXPLAIN = {
   hired: `הגשות שעברו ל"התקבל" או הפכו להשמה.`,
   jobsWithActivity: `משרות שנפתחו באתר או קיבלו הגשה בטווח.`,
   jobOpensKnown: `פתיחות של חלון משרה באתר (open_job_page), רק של משרות שמזוהות ב-Salesforce לפי מזהה המשרה בכתובת.`,
-  applyClicksKnown: `לחיצות על "הגש מועמדות" בחלון המשרה (Job_application_click_1), רק של משרות שמזוהות ב-Salesforce.`,
+  siteApplicationsKnown: `הגשות שנקלטו באתר (מועמדים רשומים ומזדמנים), רק של משרות שמזוהות ב-Salesforce. נמדד החל מ-9.11.2026.`,
   applicationsOfJobs: `הגשות שנוצרו בטווח למשרות שברשימה.`,
 
   // Matching jobs and candidates
@@ -66,8 +66,9 @@ export const EXPLAIN = {
   pageViews: `צפיות בדפי האתר. משרה נפתחת בחלון, ולכן נספרת ב"פתיחות משרה" ולא כאן.`,
   engagement: `אחוז הכניסות עם מעורבות: 10 שניות ומעלה, יותר מדף אחד, או פעולה באתר.`,
   jobOpens: `פתיחות של חלון משרה באתר (open_job_page). במצב "בתשלום בלבד" רק משרות בתשלום.`,
-  applyClicks: `לחיצות על "הגש מועמדות" בחלון המשרה (Job_application_click_1).`,
-  applyConfirmations: `אישורי הגשה באתר (Job_application_yes). פער מול Salesforce נובע בדרך כלל מחסימת מדידה בדפדפן.`,
+  siteApplications: `הגשות שנקלטו באתר: האתר הציג "המשרה הוגשה" אחרי שהשרת קיבל את ההגשה (job_application_registered + job_application_guest). ניסיון הגשה שנכשל, למשל בלי שדות חובה, לא נספר. נמדד החל מ-9.11.2026. פער מול Salesforce נובע בדרך כלל מחסימת מדידה בדפדפן.`,
+  siteApplicationsRegistered: `הגשות של מועמדים מחוברים לאתר: לחיצה על "הגש מועמדות", אישור "כן", והאתר הציג "המשרה הוגשה" (job_application_registered). נמדד החל מ-9.11.2026.`,
+  siteApplicationsGuest: `הגשות של מועמדים מזדמנים בטופס שם, מייל וטלפון, רק כשההגשה נקלטה והאתר הציג "המשרה הוגשה" (job_application_guest). נמדד החל מ-9.11.2026.`,
   signUps: `סיום השלב השני בהרשמה לאתר (sign_up_second_phase_complete).`,
   mailings: `קמפיינים מתגיות UTM בערוץ SMS, מייל או WhatsApp (או שקושרו ל-SMOOV), עם 20 כניסות ומעלה בטווח.`,
 
@@ -78,8 +79,7 @@ export const EXPLAIN = {
   gaEngaged: `כניסות שנמשכו מעל 10 שניות, כללו המרה או שתי צפיות ומעלה. האחוז: מתוך כל הכניסות.`,
   gaPageViews: `צפיות בדפים (screen_page_views), לפי מסנני הדף ורמת המשרות.`,
   gaJobOpens: `פתיחות של דף משרה (open_job_page), לפי מסנני הדף ורמת המשרות.`,
-  gaApplyClicks: `לחיצות על "הגש מועמדות" (Job_application_click_1).`,
-  gaApplyYes: `אישורי הגשה באתר (Job_application_yes).`,
+  gaSiteApplications: `הגשות שנקלטו באתר, רשומים ומזדמנים יחד (job_application_registered + job_application_guest). נמדד החל מ-9.11.2026. האחוז: מתוך פתיחות דפי המשרות.`,
   // Applications › timing (docs/applications-tab.md)
   timingMean: `מתוך ההגשות שנוצרו בטווח ושהגיעו לשלב: הזמן הממוצע מיום ההגשה עד הפעם הראשונה שעברו אליו. כמה מקרים איטיים מושכים אותו למעלה, ולכן החציון לצידו.`,
   timingMedian: `חצי מההגשות שהגיעו לשלב הגיעו אליו תוך הזמן הזה מיום ההגשה, וחצי אחריו.`,

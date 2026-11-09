@@ -14,11 +14,31 @@ import { jobPaidSql } from "./paid";
  * badly; the open_job_page event is the real exposure measure.
  */
 
+/**
+ * Applications are counted from two GTM events that fire only once the site shows "המשרה הוגשה",
+ * i.e. after the server accepted the application (GTM version 14, published 9.11.2026):
+ * job_application_registered (a signed-in candidate) and job_application_guest (the guest form).
+ * The older click events counted attempts too — a guest who pressed "הגש מועמדות" with the
+ * required fields empty was counted every time — so they are kept for the external API only.
+ */
 export const JOB_EVENTS = {
   opens: "open_job_page",
+  appliedRegistered: "job_application_registered",
+  appliedGuest: "job_application_guest",
+  /** Legacy: every press of "הגש מועמדות", whether or not anything was submitted. External API only. */
   applyClicks: "Job_application_click_1",
+  /** Legacy: the registered candidate's "כן" confirmation. External API only. */
   applyYes: "Job_application_yes",
 } as const;
+
+/** The two events that are a real application on the site. */
+export const APPLIED_EVENTS = [JOB_EVENTS.appliedRegistered, JOB_EVENTS.appliedGuest] as const;
+
+/** The first day the application events exist; ranges that start earlier undercount. */
+export const APPLIED_EVENTS_SINCE = "2026-11-09";
+
+/** A hint for a figure built on the application events, when the range starts before they existed. */
+export const appliedSinceHint = (fromDay: string) => (fromDay < APPLIED_EVENTS_SINCE ? "נמדד החל מ-9.11.2026" : undefined);
 
 export interface Position {
   id: string;
@@ -42,6 +62,11 @@ export interface Position {
 export interface JobGa {
   pageViews: number;
   opens: number;
+  /** Applications accepted on the site: registered + guest. */
+  applied: number;
+  appliedRegistered: number;
+  appliedGuest: number;
+  /** Legacy click events, for the external API only (see JOB_EVENTS). */
   applyClicks: number;
   applyYes: number;
 }
@@ -69,7 +94,7 @@ const num = (v: unknown) => Number(v ?? 0);
 const str = (v: unknown) => (typeof v === "string" && v !== "" ? v : null);
 const asDate = (v: unknown) => (v == null ? null : v instanceof Date ? v : new Date(String(v)));
 
-const EMPTY_GA: JobGa = { pageViews: 0, opens: 0, applyClicks: 0, applyYes: 0 };
+export const EMPTY_GA: JobGa = { pageViews: 0, opens: 0, applied: 0, appliedRegistered: 0, appliedGuest: 0, applyClicks: 0, applyYes: 0 };
 
 function positionsSql(extra: ReturnType<typeof sql>) {
   return sql`
@@ -161,9 +186,12 @@ export async function loadJobGa(fromDay: string, toDay: string, key?: string): P
   for (const r of events) {
     const e = entry(String(r.site_job_key));
     if (r.event_name === JOB_EVENTS.opens) e.opens = num(r.n);
+    else if (r.event_name === JOB_EVENTS.appliedRegistered) e.appliedRegistered = num(r.n);
+    else if (r.event_name === JOB_EVENTS.appliedGuest) e.appliedGuest = num(r.n);
     else if (r.event_name === JOB_EVENTS.applyClicks) e.applyClicks = num(r.n);
     else if (r.event_name === JOB_EVENTS.applyYes) e.applyYes = num(r.n);
   }
+  for (const e of out.values()) e.applied = e.appliedRegistered + e.appliedGuest;
   return out;
 }
 

@@ -11,6 +11,7 @@ import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPa
 import { fmtInt, fmtPercent, fmtRelative } from "@/lib/format";
 import { campaignLabel, isMailing, loadCampaignSummaries } from "@/lib/metrics/campaigns";
 import { loadApplicationFacts } from "@/lib/metrics/candidates";
+import { appliedSinceHint } from "@/lib/metrics/jobs";
 import { CHANNEL_LABELS, loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
 import { inScope } from "@/lib/metrics/paid";
 
@@ -64,6 +65,10 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
   }
 
   const ev = (name: string) => m.events.get(name) ?? 0;
+  const siteRegistered = ev(SITE_EVENTS.appliedRegistered);
+  const siteGuest = ev(SITE_EVENTS.appliedGuest);
+  const siteApplied = siteRegistered + siteGuest;
+  const sinceHint = appliedSinceHint(params.fromDay);
   const days = eachDay(params.fromDay, params.toDay);
   const series = days.map((day) => ({ day, value: m.dailySessions.get(day) ?? 0 }));
   const candidateTotals = m.candidateAccounts.reduce(
@@ -108,7 +113,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
         </Card>
 
         <Card level={3} title={`דיוורים בטווח · ${fmtInt(mailings.length)}`} className="mt-4">
-          <Table download={{ name: "דיוורים בטווח" }} head={["דיוור", "ערוץ", "יום שליחה", "כניסות", "פתיחות משרה", "לחיצות הגשה"]} empty={mailings.length === 0 ? "לא זוהו דיוורים בטווח" : undefined}>
+          <Table download={{ name: "דיוורים בטווח" }} head={["דיוור", "ערוץ", "יום שליחה", "כניסות", "פתיחות משרה", "הגשות באתר"]} empty={mailings.length === 0 ? "לא זוהו דיוורים בטווח" : undefined}>
             {mailings.slice(0, 10).map((c) => (
               <tr key={c.key}>
                 <td className="px-3 py-2">
@@ -120,7 +125,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums">{formatDay(c.sendDay)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(c.sessions)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(c.opens)}</td>
-                <td className="px-3 py-2 tabular-nums">{fmtInt(c.applyClicks)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(c.applied)}</td>
               </tr>
             ))}
           </Table>
@@ -160,10 +165,10 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
           <StatCard label="התקבלו לעבודה" value={fmtInt(acceptedInRange.length)} hint="לפי תאריך הקבלה" info={EXPLAIN.hired} />
           <StatCard label="מועמדים שהגישו" value={fmtInt(m.applicantsTotal)} hint="מועמדים שונים עם הגשה בטווח" info={EXPLAIN.applicants} />
           <StatCard
-            label="אישורי הגשה ב-Analytics"
-            value={fmtInt(ev(SITE_EVENTS.applyYes))}
-            hint={`מול ${fmtInt(m.applications)} הגשות שנקלטו ב-Salesforce`}
-            info={EXPLAIN.applyConfirmations}
+            label="הגשות שנקלטו באתר"
+            value={fmtInt(siteApplied)}
+            hint={sinceHint ?? `רשומים ${fmtInt(siteRegistered)} · מזדמנים ${fmtInt(siteGuest)}`}
+            info={EXPLAIN.siteApplications}
           />
         </div>
 
@@ -173,7 +178,7 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
             markers={mailingMarkers}
             series={[
               { label: "הגשות ב-Salesforce", color: "var(--color-series-1)", points: days.map((day) => ({ day, value: m.dailyApplications.get(day) ?? 0 })) },
-              { label: "אישורי הגשה ב-Analytics", color: "var(--color-series-2)", points: days.map((day) => ({ day, value: m.dailyApplyConfirmations.get(day) ?? 0 })) },
+              { label: "הגשות שנקלטו באתר (Analytics)", color: "var(--color-series-2)", points: days.map((day) => ({ day, value: m.dailySiteApplications.get(day) ?? 0 })) },
               { label: "התקבלו לעבודה", color: "var(--color-series-3)", points: days.map((day) => ({ day, value: dailyAccepted.get(day) ?? 0 })) },
             ]}
           />
@@ -220,7 +225,12 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
             hint={paidOnly ? "open_job_page · משרות בתשלום" : "open_job_page"}
             info={EXPLAIN.jobOpens}
           />
-          <StatCard label='לחיצות "הגש מועמדות"' value={fmtInt(ev(SITE_EVENTS.applyClick))} hint="Job_application_click_1" info={EXPLAIN.applyClicks} />
+          <StatCard
+            label="הגשות שנקלטו באתר"
+            value={fmtInt(siteApplied)}
+            hint={sinceHint ?? `רשומים ${fmtInt(siteRegistered)} · מזדמנים ${fmtInt(siteGuest)}`}
+            info={EXPLAIN.siteApplications}
+          />
           <StatCard label="השלמת הרשמה" value={fmtInt(ev(SITE_EVENTS.signUpSecond))} hint="sign_up_second_phase_complete" info={EXPLAIN.signUps} />
           <StatCard label="הגשות שנקלטו ב-Salesforce" value={fmtInt(m.applications)} hint="הגשות שנוצרו בטווח" info={EXPLAIN.applications} />
         </div>
@@ -232,15 +242,14 @@ export default async function MarketingPage({ searchParams }: { searchParams: Pr
               items={[
                 { label: "כניסות", value: m.sessions },
                 { label: "פתיחות משרה", value: ev(SITE_EVENTS.openJob) },
-                { label: 'לחיצות "הגש מועמדות"', value: ev(SITE_EVENTS.applyClick) },
-                { label: "אישור הגשה", value: ev(SITE_EVENTS.applyYes) },
+                { label: "הגשות שנקלטו באתר", value: siteApplied },
                 { label: "הגשות ב-Salesforce", value: m.applications },
               ].map((s, i) => ({ ...s, color: FUNNEL[i] }))}
             />
             <p className="mt-3 text-xs text-muted">
               האחוזים ביחס לכניסות. משתמש יכול לפתוח כמה משרות בכניסה אחת.
               {paidOnly
-                ? " כניסות הן של כל האתר; פתיחות, לחיצות ואישורי הגשה נספרים רק למשרות בתשלום (לפי מזהה המשרה בכתובת), ופתיחות מדף הרשימה לא נכללות."
+                ? " כניסות הן של כל האתר; פתיחות והגשות באתר נספרות רק למשרות בתשלום (לפי מזהה המשרה בכתובת), ופתיחות מדף הרשימה לא נכללות."
                 : ""}
             </p>
           </Card>

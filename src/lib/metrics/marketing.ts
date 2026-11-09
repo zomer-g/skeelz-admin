@@ -19,12 +19,13 @@ import { applicationPaidSql, paidJobKeysSql } from "./paid";
  */
 
 /** GA events that happen on a job, and so can be told paid from unpaid by the job key. */
-const JOB_EVENT_NAMES = new Set<string>(["open_job_page", "Job_application_click_1", "Job_application_yes"]);
+const JOB_EVENT_NAMES = new Set<string>(["open_job_page", "job_application_registered", "job_application_guest", "Job_application_click_1", "Job_application_yes"]);
 
 export const SITE_EVENTS = {
   openJob: "open_job_page",
-  applyClick: "Job_application_click_1",
-  applyYes: "Job_application_yes",
+  /** Applications accepted on the site (see JOB_EVENTS in ./jobs.ts). */
+  appliedRegistered: "job_application_registered",
+  appliedGuest: "job_application_guest",
   signUpClick: "sign_up_click1",
   signUpFirst: "sign_up_first_phase_complete",
   signUpSecond: "sign_up_second_phase_complete",
@@ -74,8 +75,8 @@ export interface MarketingMetrics {
   applicantsTotal: number;
   /** Salesforce applications created per Israel day. */
   dailyApplications: Map<string, number>;
-  /** GA "Job_application_yes" (the apply confirmation) per day. */
-  dailyApplyConfirmations: Map<string, number>;
+  /** Applications accepted on the site per day, from GA: registered + guest. */
+  dailySiteApplications: Map<string, number>;
 }
 
 /** Accounts whose contacts are candidates are named with "מועמד". */
@@ -127,7 +128,7 @@ async function queryMarketingMetrics(p: DashboardParams): Promise<MarketingMetri
        GROUP BY 1`),
     rows(sql`
       SELECT date::text AS day, sum(event_count) AS n FROM ga_event_daily
-       WHERE ${inDays("date")} AND event_name = ${SITE_EVENTS.applyYes} ${keyScope} GROUP BY 1`),
+       WHERE ${inDays("date")} AND event_name IN ${[SITE_EVENTS.appliedRegistered, SITE_EVENTS.appliedGuest]} ${keyScope} GROUP BY 1`),
   ]);
 
   const [totals, pages, series, channels, sources, events, topPages, jobPages, appCounts, state] = await Promise.all([
@@ -189,6 +190,6 @@ async function queryMarketingMetrics(p: DashboardParams): Promise<MarketingMetri
     })),
     applicantsTotal: n(sfApplicants[0]?.n),
     dailyApplications: new Map(sfDaily.map((r) => [String(r.day), n(r.n)])),
-    dailyApplyConfirmations: new Map(gaApplyDaily.map((r) => [String(r.day), n(r.n)])),
+    dailySiteApplications: new Map(gaApplyDaily.map((r) => [String(r.day), n(r.n)])),
   };
 }
