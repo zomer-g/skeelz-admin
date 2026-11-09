@@ -57,6 +57,9 @@ export interface SourceMatch extends SourceAttrs {
   ambiguous: boolean;
 }
 
+/** Drops the invisible direction marks ad platforms put in UTM values (Facebook campaigns start with two). */
+export const stripMarks = (v: string) => v.replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g, "").trim();
+
 /** How far the middle of a GA minute may be from the Case's creation: the minute before or after it. */
 export const MAX_DISTANCE_S = 90;
 
@@ -162,9 +165,9 @@ export async function rebuildApplicationSources(): Promise<{ applications: numbe
           key: r.site_job_key ? String(r.site_job_key) : null,
           type,
           count: Number(r.event_count ?? 0),
-          source: String(r.source),
-          medium: String(r.medium),
-          campaign: String(r.campaign),
+          source: stripMarks(String(r.source)),
+          medium: stripMarks(String(r.medium)),
+          campaign: stripMarks(String(r.campaign)),
           channelGroup: String(r.channel_group),
           deviceCategory: String(r.device_category),
         }]
@@ -227,8 +230,8 @@ export function sourceGroup(s: StoredSource | undefined, by: SourceDimension, fa
   if (by === "type") return fast ? "guest" : "registered";
   if (!s) return null;
   if (by === "channel") return s.channelGroup;
-  if (by === "source") return `${s.source} / ${s.medium}`;
-  if (by === "campaign") return s.campaign;
+  if (by === "source") return `${stripMarks(s.source)} / ${stripMarks(s.medium)}`;
+  if (by === "campaign") return stripMarks(s.campaign);
   return s.deviceCategory;
 }
 
@@ -293,9 +296,9 @@ export function siteSourceJson(s: StoredSource | undefined) {
   if (!s) return null;
   return {
     channel: s.channelGroup,
-    source: s.source,
-    medium: s.medium,
-    campaign: s.campaign,
+    source: stripMarks(s.source),
+    medium: stripMarks(s.medium),
+    campaign: stripMarks(s.campaign),
     device: s.deviceCategory,
     applicant_type: s.applicantType,
     ambiguous: s.ambiguous,

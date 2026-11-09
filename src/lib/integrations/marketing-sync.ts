@@ -21,7 +21,7 @@ import { getLiveVersion, gtmConfigured, sendsJobId } from "@/lib/google/gtm";
 import { smoov, smoovConfigured } from "@/lib/smoov/client";
 import { runSmoovPush, smoovPushConfigured, smoovPushDue } from "@/lib/smoov/push";
 import { logError, safeErrorMessage } from "@/lib/log";
-import { gaMinuteToUtc, rebuildApplicationSources } from "@/lib/metrics/attribution";
+import { gaMinuteToUtc, rebuildApplicationSources, stripMarks } from "@/lib/metrics/attribution";
 import { APPLIED_EVENTS, APPLIED_EVENTS_SINCE } from "@/lib/metrics/jobs";
 
 /**
@@ -140,9 +140,9 @@ async function syncGa4(): Promise<{ rows: number; note: string }> {
           eventName: r.dims.eventName!,
           pagePath: r.dims.pagePath!,
           siteJobKey: jobKeyFromPath(r.dims.pagePath!),
-          source: r.dims.sessionSource!,
-          medium: r.dims.sessionMedium!,
-          campaign: r.dims.sessionCampaignName!,
+          source: stripMarks(r.dims.sessionSource!),
+          medium: stripMarks(r.dims.sessionMedium!),
+          campaign: stripMarks(r.dims.sessionCampaignName!),
           channelGroup: r.dims.sessionDefaultChannelGroup!,
           deviceCategory: r.dims.deviceCategory!,
           eventCount: r.metrics.eventCount!,

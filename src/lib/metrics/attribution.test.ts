@@ -1,11 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { gaMinuteToUtc, matchApplications, type GaApplyRow, type SiteApplication } from "./attribution";
+import { gaMinuteToUtc, matchApplications, stripMarks, type GaApplyRow, type SiteApplication } from "./attribution";
 
 const KEY = "6adf3539ef1875fea1429e7e";
 const attrs = { source: "facebook", medium: "paid", campaign: "jobs_nov", channelGroup: "Paid Social", deviceCategory: "mobile" };
 const row = (minute: string, over: Partial<GaApplyRow> = {}): GaApplyRow => ({ minute: new Date(minute), key: KEY, type: "guest", count: 1, ...attrs, ...over });
 const app = (id: string, createdAt: string, over: Partial<SiteApplication> = {}): SiteApplication => ({ id, key: KEY, type: "guest", createdAt: new Date(createdAt), ...over });
+
+describe("UTM values", () => {
+  it("lose the invisible direction marks Facebook puts in campaign names", () => {
+    assert.equal(stripMarks(String.fromCharCode(0x200e, 0x200e) + "Campaign skeelz CV - קרוסלת משרות"), "Campaign skeelz CV - קרוסלת משרות");
+    assert.equal(stripMarks("(direct)"), "(direct)");
+  });
+});
 
 describe("GA minute to UTC", () => {
   it("reads the property's Israel time, summer and winter", () => {

@@ -1,3 +1,4 @@
+import { stripMarks } from "@/lib/metrics/attribution";
 import { sql, type SQL } from "drizzle-orm";
 import { normStatus, normStatusSql, RECORD_TYPES, STATUS } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
@@ -186,9 +187,9 @@ function toRow(r: Record<string, unknown>): ApplicationRow {
         ? null
         : {
             channel: String(r.src_channel),
-            source: String(r.src_source),
-            medium: String(r.src_medium),
-            campaign: String(r.src_campaign),
+            source: stripMarks(String(r.src_source)),
+            medium: stripMarks(String(r.src_medium)),
+            campaign: stripMarks(String(r.src_campaign)),
             device: String(r.src_device),
             ambiguous: isTrue(r.src_ambiguous),
           },

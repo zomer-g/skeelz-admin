@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { Badge, formatDateTime, NewTabNote, Table, type TableSort } from "@/components/ui";
 import type { ActivityItem, ActivityKind } from "@/lib/entities/activity";
 import type { ApplicationRow, ApplicationSiteSource } from "@/lib/entities/applications";
-import { DEVICE_LABELS } from "@/lib/metrics/attribution";
+import { DEVICE_LABELS, stripMarks } from "@/lib/metrics/attribution";
 import { CHANNEL_LABELS } from "@/lib/metrics/marketing";
 import { fmtDate, fmtInt } from "@/lib/format";
 
@@ -176,14 +176,12 @@ function channelTone(channel: string): "brand" | "accent" | "success" | "neutral
   return "neutral";
 }
 
-/** UTM values often carry invisible direction marks from the ad platforms. */
-const clean = (v: string) => v.replace(/[\u200e\u200f\u202a-\u202e]/g, "").trim();
 
 /** Where a site application came from by Google Analytics (lib/metrics/attribution.ts), for a table cell. */
 export function SiteSourceCell({ source }: { source: ApplicationSiteSource | null }) {
   if (!source) return <span className="text-sm text-muted">לא זוהה</span>;
-  const campaign = UNTAGGED.has(source.campaign) ? null : clean(source.campaign);
-  const origin = UNTAGGED.has(source.source) ? null : `${clean(source.source)}${UNTAGGED.has(source.medium) ? "" : ` · ${clean(source.medium)}`}`;
+  const campaign = UNTAGGED.has(source.campaign) ? null : stripMarks(source.campaign);
+  const origin = UNTAGGED.has(source.source) ? null : `${stripMarks(source.source)}${UNTAGGED.has(source.medium) ? "" : ` · ${stripMarks(source.medium)}`}`;
   return (
     <div className="flex min-w-44 flex-col gap-1">
       <div className="flex flex-wrap items-center gap-1">
