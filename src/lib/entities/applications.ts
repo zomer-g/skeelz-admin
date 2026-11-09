@@ -31,6 +31,20 @@ export interface ApplicationFilters {
   companyKey?: string;
   /** One application by its Case id (the API's /applications/{id}). */
   id?: string;
+  /** Where a site application came from by Google Analytics (lib/metrics/attribution.ts): a channel group, or "none" = no match. */
+  channel?: string;
+  /** The device GA saw: mobile / desktop / tablet. */
+  device?: string;
+}
+
+/** Where a site application came from, by Google Analytics (application_source); null = no matching event. */
+export interface ApplicationSiteSource {
+  channel: string;
+  source: string;
+  medium: string;
+  campaign: string;
+  device: string;
+  ambiguous: boolean;
 }
 
 export interface ApplicationRow {
@@ -56,6 +70,8 @@ export interface ApplicationRow {
   acceptedAt: Date | null;
   /** תאריך תחילת עבודה (`Placement_Date__c`), YYYY-MM-DD. */
   startDate: string | null;
+  /** Where it came from on the site, by GA; null when no application event matched it. */
+  siteSource: ApplicationSiteSource | null;
 }
 
 const NORM_STATUS = normStatusSql("a.status");
@@ -77,7 +93,8 @@ const FROM = sql`
   JOIN sf_record_type rt ON rt.id = a.record_type_id
   LEFT JOIN sf_case j ON j.id = a.parent_id
   LEFT JOIN sf_contact ct ON ct.id = a.contact_id
-  LEFT JOIN sf_user u ON u.id = a.owner_id`;
+  LEFT JOIN sf_user u ON u.id = a.owner_id
+  LEFT JOIN application_source src ON src.case_id = a.id`;
 
 const IS_APPLICATION = sql`rt.developer_name IN (${RECORD_TYPES.application}, ${RECORD_TYPES.accepted}) AND NOT a.is_deleted`;
 
@@ -96,7 +113,9 @@ const COLUMNS = sql`
   -- The candidate's own קו"ח checkbox; unknown (null) when the application has no Contact.
   CASE WHEN a.contact_id IS NULL THEN NULL ELSE ${HAS_CV} END AS candidate_has_cv,
   ${ACCEPTED_AT} AS accepted_at,
-  nullif(a.data->>'Placement_Date__c', '') AS start_date`;
+  nullif(a.data->>'Placement_Date__c', '') AS start_date,
+  src.channel_group AS src_channel, src.source AS src_source, src.medium AS src_medium, src.campaign AS src_campaign,
+  src.device_category AS src_device, src.ambiguous AS src_ambiguous`;
 
 function whereOf(f: ApplicationFilters): SQL {
   const parts: SQL[] = [IS_APPLICATION];
@@ -127,6 +146,9 @@ function whereOf(f: ApplicationFilters): SQL {
   if (from) parts.push(sql`a.created_date >= ${from}`);
   if (to) parts.push(sql`a.created_date < ${to}`);
   if (f.owner) parts.push(sql`u.name = ${f.owner}`);
+  if (f.channel === "none") parts.push(sql`src.case_id IS NULL`);
+  else if (f.channel) parts.push(sql`src.channel_group = ${f.channel}`);
+  if (f.device) parts.push(sql`src.device_category = ${f.device}`);
   if (f.jobId && isSfId(f.jobId)) parts.push(sql`a.parent_id = ${f.jobId}`);
   if (f.contactId && isSfId(f.contactId)) parts.push(sql`a.contact_id = ${f.contactId}`);
   // Never widened to every application when the id is malformed.
@@ -159,6 +181,17 @@ function toRow(r: Record<string, unknown>): ApplicationRow {
     candidateHasCv: r.candidate_has_cv == null ? null : isTrue(r.candidate_has_cv),
     acceptedAt: asDate(r.accepted_at),
     startDate: str(r.start_date)?.slice(0, 10) ?? null,
+    siteSource:
+      r.src_channel == null
+        ? null
+        : {
+            channel: String(r.src_channel),
+            source: String(r.src_source),
+            medium: String(r.src_medium),
+            campaign: String(r.src_campaign),
+            device: String(r.src_device),
+            ambiguous: isTrue(r.src_ambiguous),
+          },
   };
 }
 
@@ -173,6 +206,7 @@ export const APPLICATION_SORTS: readonly SortColumn[] = [
   { key: "accepted", kind: "date", by: ACCEPTED_AT },
   { key: "start", kind: "date", by: sql`nullif(a.data->>'Placement_Date__c', '')` },
   { key: "owner", kind: "text", by: sql`u.name` },
+  { key: "source", kind: "text", by: sql`src.channel_group` },
 ];
 
 export async function searchApplications(
@@ -226,12 +260,15 @@ export async function loadApplicationStatusRows(f: ApplicationFilters): Promise<
 }
 
 /** Statuses and owners in use, most common first, for the filter menus. */
-export async function loadApplicationFilterOptions(): Promise<{ statuses: string[]; owners: string[] }> {
-  const [statuses, owners] = await Promise.all([
+export async function loadApplicationFilterOptions(): Promise<{ statuses: string[]; owners: string[]; channels: string[]; devices: string[] }> {
+  const [statuses, owners, channels, devices] = await Promise.all([
     run(sql`SELECT ${NORM_STATUS} AS v, count(*) AS n ${FROM} WHERE ${IS_APPLICATION} AND a.status IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`),
     run(sql`SELECT u.name AS v, count(*) AS n ${FROM} WHERE ${IS_APPLICATION} AND u.name IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`),
+    run(sql`SELECT channel_group AS v, count(*) AS n FROM application_source GROUP BY 1 ORDER BY 2 DESC`),
+    run(sql`SELECT device_category AS v, count(*) AS n FROM application_source GROUP BY 1 ORDER BY 2 DESC`),
   ]);
-  return { statuses: statuses.map((r) => String(r.v)), owners: owners.map((r) => String(r.v)) };
+  const list = (rows: Record<string, unknown>[]) => rows.map((r) => String(r.v));
+  return { statuses: list(statuses), owners: list(owners), channels: list(channels), devices: list(devices) };
 }
 
 export interface ApplicationDetail extends ApplicationRow {

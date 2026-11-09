@@ -41,7 +41,7 @@ import {
   loadPositionsByJobKeys,
 } from "@/lib/metrics/jobs";
 import { CHANNEL_LABELS, loadMarketingMetrics, SITE_EVENTS } from "@/lib/metrics/marketing";
-import { loadSourcesFor, siteSourceJson, sourceFunnelJson, type SourceDimension } from "@/lib/metrics/attribution";
+import { sourceFunnelJson, type SourceDimension } from "@/lib/metrics/attribution";
 import { registrationCohorts } from "@/lib/metrics/registrations";
 import { applyExclusions, countByStatus, DEDUPE_SECONDS, REGISTRATION_WINDOW_MINUTES, STATUS_GROUPS, TIME_BUCKETS, type ExclusionOptions, type StatusGroup } from "@/lib/metrics/segments";
 import { ArgError, inputSchema, type ArgValue, type Fields } from "./args";
@@ -499,11 +499,14 @@ const TOOLS: Tool[] = [
         },
         { page, pageSize, sort: mcpSort(a, APPLICATION_SORTS, "created") },
       );
-      const sources = await loadSourcesFor(result.rows.map((r) => r.id));
       return {
         total: result.total,
         page,
-        applications: result.rows.map((r) => ({ ...r, site_source: siteSourceJson(sources.get(r.id)), admin_url: link(ctx, `/applications/${r.id}`) })),
+        applications: result.rows.map(({ siteSource, ...r }) => ({
+          ...r,
+          site_source: siteSource ? { ...siteSource, applicant_type: r.fastApplied ? "guest" : "registered" } : null,
+          admin_url: link(ctx, `/applications/${r.id}`),
+        })),
       };
     },
     people: (r) => (r as { applications: unknown[] }).applications.length,
@@ -577,8 +580,13 @@ const TOOLS: Tool[] = [
       const id = s(a.id);
       const application = await loadApplication(id);
       if (!application) throw new NotFound("no application with this id");
-      const [timeline, sources] = await Promise.all([loadCaseTimeline(id), loadSourcesFor([id])]);
-      return { ...application, site_source: siteSourceJson(sources.get(id)), timeline, admin_url: link(ctx, `/applications/${id}`) };
+      const { siteSource, ...rest } = application;
+      return {
+        ...rest,
+        site_source: siteSource ? { ...siteSource, applicant_type: rest.fastApplied ? "guest" : "registered" } : null,
+        timeline: await loadCaseTimeline(id),
+        admin_url: link(ctx, `/applications/${id}`),
+      };
     },
     people: () => 1,
   },

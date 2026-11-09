@@ -9,7 +9,9 @@ import { loadApplication } from "@/lib/entities/applications";
 import { loadJobDetails } from "@/lib/entities/companies";
 import { isSfId, sfRecordUrl } from "@/lib/entities/search";
 import { fmtDate, fmtInt } from "@/lib/format";
-import { siteJobUrl } from "@/lib/metrics/jobs";
+import { APPLIED_EVENTS_SINCE, siteJobUrl } from "@/lib/metrics/jobs";
+import { DEVICE_LABELS } from "@/lib/metrics/attribution";
+import { CHANNEL_LABELS } from "@/lib/metrics/marketing";
 
 export const metadata: Metadata = { title: "הגשה" };
 export const dynamic = "force-dynamic";
@@ -99,6 +101,28 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
           />
         </Card>
       </div>
+
+      <Card title="מקור ההגשה (Google Analytics)" tone="accent-light" className="mt-4">
+        {app.siteSource ? (
+          <FieldList
+            items={[
+              ["ערוץ", CHANNEL_LABELS[app.siteSource.channel] ? `${CHANNEL_LABELS[app.siteSource.channel]} (${app.siteSource.channel})` : app.siteSource.channel],
+              ["מקור / מדיום", <span key="sm" dir="ltr">{`${app.siteSource.source} / ${app.siteSource.medium}`}</span>],
+              ["קמפיין", <span key="c" dir="auto">{app.siteSource.campaign}</span>],
+              ["מכשיר", DEVICE_LABELS[app.siteSource.device] ?? app.siteSource.device],
+              ["אירוע באתר", app.fastApplied ? "job_application_guest (מועמד מזדמן)" : "job_application_registered (מועמד רשום)"],
+              ["ודאות השיוך", app.siteSource.ambiguous ? "לא ודאי: באותה דקה הייתה הגשה נוספת למשרה ממקור אחר" : "ודאי"],
+            ]}
+          />
+        ) : (
+          <p className="text-sm text-muted">
+            {app.createdAt < new Date(`${APPLIED_EVENTS_SINCE}T10:36:00Z`)
+              ? "ההגשה נוצרה לפני שאירועי ההגשה ב-GTM הופעלו (9.11.2026), ולכן אין לה מקור."
+              : "לא נמצא אירוע הגשה תואם ב-Google Analytics: בדרך כלל הדפדפן חסם את המדידה (חוסם פרסומות או סירוב לעוגיות), או שההגשה לא נוצרה דרך האתר. אירועים מגיעים מ-GA באיחור של כמה שעות, והשיוך מתעדכן בכל סנכרון."}
+          </p>
+        )}
+        <p className="mt-3 text-xs text-muted">ההגשה מותאמת לאירוע ההגשה באתר של אותה משרה, אותו סוג מועמד ואותה דקה.</p>
+      </Card>
 
       <Card title="משרה" className="mt-4">
         <FieldList

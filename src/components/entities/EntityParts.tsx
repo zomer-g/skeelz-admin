@@ -2,7 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { Badge, formatDateTime, NewTabNote, Table, type TableSort } from "@/components/ui";
 import type { ActivityItem, ActivityKind } from "@/lib/entities/activity";
-import type { ApplicationRow } from "@/lib/entities/applications";
+import type { ApplicationRow, ApplicationSiteSource } from "@/lib/entities/applications";
+import { DEVICE_LABELS } from "@/lib/metrics/attribution";
+import { CHANNEL_LABELS } from "@/lib/metrics/marketing";
 import { fmtDate, fmtInt } from "@/lib/format";
 
 /** The coloured header of an entity page, with its direct links. */
@@ -163,6 +165,29 @@ export function Timeline({ items, empty = "לא נרשמה פעילות" }: { it
 }
 
 /** Applications, each linked to itself, its candidate and its job. */
+/** GA's placeholder campaigns: not worth repeating under the channel. */
+const UNTAGGED = new Set(["(direct)", "(organic)", "(referral)", "(not set)", "(none)"]);
+
+/** Where a site application came from by Google Analytics (lib/metrics/attribution.ts), compact for a table cell. */
+export function SiteSourceCell({ source }: { source: ApplicationSiteSource | null }) {
+  if (!source) return <span className="text-xs text-muted">לא זוהה</span>;
+  const campaign = UNTAGGED.has(source.campaign) ? null : source.campaign;
+  return (
+    <>
+      <span className="font-medium">{CHANNEL_LABELS[source.channel] ?? source.channel}</span>
+      <p className="text-xs text-muted">
+        {DEVICE_LABELS[source.device] ?? source.device}
+        {source.ambiguous ? " · לא ודאי" : ""}
+      </p>
+      {campaign ? (
+        <p className="max-w-48 truncate text-xs text-muted" dir="auto" title={campaign}>
+          {campaign}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 export function ApplicationsTable({
   rows,
   hide = [],
@@ -183,6 +208,7 @@ export function ApplicationsTable({
       head={[
         { label: "הוגשה", sort: "created" },
         { label: "סוג הגשה", sort: "fast" },
+        { label: "מקור (GA)", sort: "source" },
         ...(showCandidate ? [{ label: "מועמד", sort: "candidate" }, { label: 'קו"ח במאגר', sort: "cv" }] : []),
         ...(showJob ? [{ label: "משרה", sort: "job" }] : []),
         { label: "סטטוס", sort: "status" },
@@ -202,6 +228,9 @@ export function ApplicationsTable({
           </td>
           <td className="whitespace-nowrap px-3 py-2">
             {a.fastApplied ? <Badge tone="accent">מהירה</Badge> : <span className="text-muted">רגילה</span>}
+          </td>
+          <td className="px-3 py-2">
+            <SiteSourceCell source={a.siteSource} />
           </td>
           {showCandidate ? (
             <td className="px-3 py-2">

@@ -11,13 +11,15 @@ import { loadCandidate } from "@/lib/entities/candidates";
 import { choice, dayParam, isSfId, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
 import { sortParam, tableSort } from "@/lib/entities/sort";
 import { fmtInt } from "@/lib/format";
+import { DEVICE_LABELS } from "@/lib/metrics/attribution";
 import { loadPosition } from "@/lib/metrics/jobs";
+import { CHANNEL_LABELS } from "@/lib/metrics/marketing";
 
 export const metadata: Metadata = { title: "הגשות" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/applications";
-const KEYS = ["q", "status", "paid", "fast", "cv", "owner", "from", "to", "job", "candidate", "company", "sort", "dir", "page"];
+const KEYS = ["q", "status", "paid", "fast", "cv", "owner", "channel", "device", "from", "to", "job", "candidate", "company", "sort", "dir", "page"];
 
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
@@ -35,6 +37,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     fast: choice(search, "fast", ["fast", "regular"] as const),
     cv: choice(search, "cv", ["yes", "no"] as const),
     owner: param(search, "owner"),
+    channel: param(search, "channel", 100),
+    device: param(search, "device", 50),
     fromDay: dayParam(search, "from"),
     toDay: dayParam(search, "to"),
     jobId,
@@ -61,6 +65,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     fast: filters.fast ?? "",
     cv: filters.cv ?? "",
     owner: filters.owner,
+    channel: filters.channel ?? "",
+    device: filters.device ?? "",
     from: filters.fromDay,
     to: filters.toDay,
   };
@@ -88,6 +94,13 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
           { kind: "select", name: "fast", label: "סוג הגשה", options: [{ value: "fast", label: "הגשה מהירה" }, { value: "regular", label: "הגשה רגילה" }] },
           { kind: "select", name: "cv", label: "קו\"ח במאגר", options: [{ value: "yes", label: "יש קו\"ח" }, { value: "no", label: "אין קו\"ח" }] },
           { kind: "select", name: "owner", label: "מטפל", options: options.owners },
+          {
+            kind: "select",
+            name: "channel",
+            label: "מקור (Google Analytics)",
+            options: [...options.channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] ?? c })), { value: "none", label: "לא זוהה מקור" }],
+          },
+          { kind: "select", name: "device", label: "מכשיר", options: options.devices.map((d) => ({ value: d, label: DEVICE_LABELS[d] ?? d })) },
           { kind: "date", name: "from", label: "הוגשה מתאריך" },
           { kind: "date", name: "to", label: "עד תאריך" },
         ]}
