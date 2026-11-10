@@ -122,8 +122,12 @@
 
 - `job_application_registered`: מועמד מחובר (`apply/<id>` ואישור "כן").
 - `job_application_guest`: טופס מועמד מזדמן (`guestApply`).
+- `job_application_registered` עם `apply_mode=self_apply` (GTM גרסה 15, מ-10.11.2026): משרה שמגישים אליה ישירות
+  למעסיק (`selfApply`). מועמד מחובר רואה את פרטי הקשר של המעסיק, ולחיצה על "תודה, אגיש בעצמי" קוראת ל-`apply/<id>`
+  ויוצרת את ההגשה ב-Salesforce, בלי להציג "המשרה הוגשה". האירוע נורה על הלחיצה עצמה. מועמד מזדמן לא יכול להגיש
+  למשרה כזו (האתר מבקש להתחבר). לפני 10.11.2026 הגשות כאלה לא נספרו ולא שויכו למקור.
 
-בשניהם יש את הפרמטרים `applicant_type` ו-`job_id`. ההגדרות ב-`JOB_EVENTS` ב-`src/lib/metrics/jobs.ts`; לטווח שמתחיל
+בכולם יש את הפרמטרים `applicant_type` ו-`job_id`. ההגדרות ב-`JOB_EVENTS` ב-`src/lib/metrics/jobs.ts`; לטווח שמתחיל
 לפני 9.11.2026 מוצגת ההערה "נמדד החל מ-9.11.2026" (`appliedSinceHint`). האירועים הישנים נשארו ב-API החיצוני בלבד
 (`apply_clicks`, `apply_confirmations`), לצד `applications_registered` ו-`applications_guest`.
 
