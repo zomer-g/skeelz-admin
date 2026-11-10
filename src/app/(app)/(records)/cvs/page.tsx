@@ -3,8 +3,8 @@ import Link from "next/link";
 import { CopyContacts } from "@/components/entities/CopyContacts";
 import { Pager, SearchForm } from "@/components/entities/Search";
 import { Badge, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
-import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
+import { peopleScreen } from "@/lib/security/people-screen";
 import { TOPIC_GROUPS, topicLabel, TOPICS } from "@/lib/cv-topics";
 import { viewPath } from "@/lib/dashboard/params";
 import { fileSize } from "@/lib/entities/cv";
@@ -28,6 +28,8 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
   const path = viewPath(ACTION, search, KEYS);
   const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
+  const people = await peopleScreen(auth.user.email, path);
+  if (!people.ok) return people.render;
 
   const filters = cvFilters(search);
   const page = pageParam(search);
@@ -36,7 +38,7 @@ export default async function CvsPage({ searchParams }: { searchParams: Promise<
     searchCvs(filters, { page, sort, who: { actor: auth.user.email, via: "screen" }, topics: true }),
     topicsRefreshedAt(),
   ]);
-  logRecordsShown(auth.user.email, path, rows);
+  await people.shown(rows);
   const access = await loadFileAccess(rows.map((r) => r.documentId));
   const values: Record<string, string> = {
     q: filters.q,

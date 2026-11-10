@@ -4,8 +4,8 @@ import { notFound } from "next/navigation";
 import { ApplicationsTable, EntityHeader, FieldList, Timeline } from "@/components/entities/EntityParts";
 import { JobTexts, jobFieldItems, MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card } from "@/components/ui";
-import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
+import { peopleScreen } from "@/lib/security/people-screen";
 import { loadFullCaseTimeline } from "@/lib/entities/activity";
 import { searchApplications } from "@/lib/entities/applications";
 import { jobStatusLabel, loadJobDetails } from "@/lib/entities/companies";
@@ -30,6 +30,8 @@ export default async function PositionPage({ params }: { params: Promise<{ id: s
   if (!isSfId(id)) notFound();
   const auth = await pageAuth("viewer", `/positions/${id}`);
   if (!auth.ok) return auth.render;
+  const people = await peopleScreen(auth.user.email, `/positions/${id}`);
+  if (!people.ok) return people.render;
 
   const [position, details] = await Promise.all([loadPosition(id), loadJobDetails(id)]);
   if (!position) notFound();
@@ -38,7 +40,7 @@ export default async function PositionPage({ params }: { params: Promise<{ id: s
     searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", jobId: id }, { pageSize: MAX_APPLICATIONS }),
     loadJobActivity([id]),
   ]);
-  logRecordsShown(auth.user.email, `/positions/${id}`, applications.rows);
+  await people.shown(applications.rows);
   const last = activity.get(id) ?? null;
   const companyHref = details?.companyKey ? `/companies/${encodeURIComponent(details.companyKey)}` : null;
   const companyName = position.company ?? details?.companyName ?? null;

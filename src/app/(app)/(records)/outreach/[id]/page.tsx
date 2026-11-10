@@ -4,8 +4,8 @@ import { notFound } from "next/navigation";
 import { Pager } from "@/components/entities/Search";
 import { EntityHeader } from "@/components/entities/EntityParts";
 import { Badge, buttonClass, Card, smallFieldClass, Table } from "@/components/ui";
-import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
+import { peopleScreen } from "@/lib/security/people-screen";
 import { viewPath } from "@/lib/dashboard/params";
 import { isTopicId, TOPIC_GROUPS, topicLabel, TOPICS } from "@/lib/cv-topics";
 import { jobStatusLabel } from "@/lib/entities/companies";
@@ -42,6 +42,8 @@ export default async function OutreachJobPage({ params, searchParams }: { params
   const path = viewPath(action, search, ["s", "topic", "words", "reach", "applied", "page"]);
   const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
+  const people = await peopleScreen(auth.user.email, path);
+  if (!people.ok) return people.render;
 
   const job = await loadOutreachJob(id);
   if (!job) notFound();
@@ -53,7 +55,7 @@ export default async function OutreachJobPage({ params, searchParams }: { params
   const withApplied = param(search, "applied") === "1";
   const page = pageParam(search);
   const { rows, total, wordSearch } = await searchOutreach(job, { topics, words, reach, withApplied }, { page, who: { actor: auth.user.email, via: "screen" } });
-  logRecordsShown(auth.user.email, path, rows);
+  await people.shown(rows);
 
   // The choices: what is chosen, then the other fields the job's text pointed at.
   const offered = [...new Set([...topics, ...job.topics.map((t) => t.id)])].slice(0, topics.length + MORE_TOPICS);

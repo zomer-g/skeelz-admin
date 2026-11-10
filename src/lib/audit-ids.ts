@@ -43,3 +43,24 @@ export function recordIds(result: unknown, max = MAX_LOGGED_IDS): LoggedIds {
   walk(result, "", 0);
   return { ids: [...seen], more };
 }
+
+/** How many ids a screen's records.shown entry keeps: enough for every row a list renders. */
+export const MAX_SHOWN_IDS = 1_000;
+
+/**
+ * How many of a screen's rows are people not shown to this person earlier today: a row is new when
+ * none of its ids (contact, record, email) is in `seen`. Re-opening a page, or the same candidate on
+ * two applications, counts once. `rows` is the list the screen rendered.
+ */
+export function countNewRows(rows: unknown, seen: ReadonlySet<string>): number {
+  const list = Array.isArray(rows) ? rows : [rows];
+  const taken = new Set(seen);
+  let n = 0;
+  for (const row of list) {
+    const { ids } = recordIds(row, MAX_SHOWN_IDS);
+    if (!ids.length || ids.some((id) => taken.has(id))) continue;
+    n++;
+    for (const id of ids) taken.add(id);
+  }
+  return n;
+}

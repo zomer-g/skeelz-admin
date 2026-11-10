@@ -24,7 +24,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   grants 40 more at a time at `/admin/security`; counted from the audit log.
 - **Security & privacy duties** (`docs/cv-security.md`, `docs/security-review-2026-11-07.md`): every candidate-file open and every search inside CVs (with its
   results and the page shown, `cvs.text_search`) is logged; a screen that lists people also writes `records.shown` (the ids/emails of the rendered
-  rows, `logRecordsShown`, `src/lib/audit-ids.ts`) — a new list of people must too. Every hand-over of personal data (file, contact copy, payments
+  rows and how many were new today, `peopleScreen`, `src/lib/security/people-screen.tsx`) — a new list of people must too, and so spends the daily export budget. Every hand-over of personal data (file, contact copy, payments
   download, MCP/API people) writes its entry with `writeAuditStrict` *before* the data leaves and runs under `withUserLock`
   (`src/lib/security/lock.ts`, `handover.test.ts`); plain `writeAudit` is for informational entries only (failures are counted for `AdminAlerts`).
   `audit_log` is append-only in the database (trigger, migration 0027: no UPDATE/TRUNCATE, no DELETE under 24 months); "who saw X" is
@@ -130,8 +130,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `/api/candidates/contacts` + `CopyContacts` — `candidateFilters()` parses the URL once for both the page and that route, each
   value appears once (phones compared by digits), it stops at 5,000, and every copy writes `candidates.contacts_copied` with the
   filter and the count. **Daily export budget** (`src/lib/security/exports.ts`): those counts, `cvs.contacts_copied`, `payments.exported` and
-  `mcp.people_listed` (every MCP tool that returns people declares `people(result)`) and `api.people_listed` (API keys with
-  `people:read`, under the issuer) are summed per user per Israel day:
+  `mcp.people_listed` (every MCP tool that returns people declares `people(result)`), `api.people_listed` (API keys with
+  `people:read`, under the issuer) and `records.shown` (every list screen of people, through `peopleScreen` in
+  `src/lib/security/people-screen.tsx`: each person once a day, `countNewRows`; past the limit the screen shows the refusal) are summed per user per Israel day:
   10,000 a day, admin alert at 5,000, past it a copy is cut then refused and a tool call refused, until an admin grants
   10,000 more at `/admin/security` (`export_quota_grants`). Any new route or tool that hands out names/emails/phones must count there.
   **Finding a CV** (`src/lib/entities/cv.ts`, the box on `/emails/<address>`): it sits in one of three places — on the Contact,

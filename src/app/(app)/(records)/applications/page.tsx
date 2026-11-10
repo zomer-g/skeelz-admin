@@ -3,8 +3,8 @@ import Link from "next/link";
 import { ApplicationsTable } from "@/components/entities/EntityParts";
 import { Pager, SearchForm } from "@/components/entities/Search";
 import { Card, PageHeader } from "@/components/ui";
-import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
+import { peopleScreen } from "@/lib/security/people-screen";
 import { viewPath } from "@/lib/dashboard/params";
 import { APPLICATION_SORTS, loadApplicationFilterOptions, searchApplications, type ApplicationFilters } from "@/lib/entities/applications";
 import { loadCandidate } from "@/lib/entities/candidates";
@@ -26,6 +26,8 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
   const path = viewPath(ACTION, search, KEYS);
   const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
+  const people = await peopleScreen(auth.user.email, path);
+  if (!people.ok) return people.render;
 
   const jobId = isSfId(param(search, "job")) ? param(search, "job") : "";
   const contactId = isSfId(param(search, "candidate")) ? param(search, "candidate") : "";
@@ -54,7 +56,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     jobId ? loadPosition(jobId) : Promise.resolve(null),
     contactId ? loadCandidate(contactId) : Promise.resolve(null),
   ]);
-  logRecordsShown(auth.user.email, path, rows);
+  await people.shown(rows);
 
   // Scope parameters (a job, a candidate, an employer) are kept across searches but are not form fields.
   const scope = { job: jobId, candidate: contactId, company: companyKey };

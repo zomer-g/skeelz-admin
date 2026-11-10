@@ -4,8 +4,8 @@ import { notFound } from "next/navigation";
 import { ApplicationsTable, EntityHeader, FieldList } from "@/components/entities/EntityParts";
 import { MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card, Table } from "@/components/ui";
-import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
+import { peopleScreen } from "@/lib/security/people-screen";
 import { searchApplications } from "@/lib/entities/applications";
 import { jobStatusLabel, loadCompany } from "@/lib/entities/companies";
 import { sfRecordUrl } from "@/lib/entities/search";
@@ -27,6 +27,8 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
   }
   const auth = await pageAuth("viewer", `/companies/${encodeURIComponent(key)}`);
   if (!auth.ok) return auth.render;
+  const people = await peopleScreen(auth.user.email, `/companies/${encodeURIComponent(key)}`);
+  if (!people.ok) return people.render;
 
   const found = await loadCompany(key);
   if (!found) notFound();
@@ -36,7 +38,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
     loadJobActivity(jobs.map((j) => j.id)),
     searchApplications({ q: "", status: "", paid: "", owner: "", fromDay: "", toDay: "", companyKey: key }, { pageSize: RECENT_APPLICATIONS }),
   ]);
-  logRecordsShown(auth.user.email, `/companies/${encodeURIComponent(key)}`, applications.rows);
+  await people.shown(applications.rows);
   const now = new Date();
 
   return (

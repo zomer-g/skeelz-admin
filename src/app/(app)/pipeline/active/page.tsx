@@ -3,8 +3,8 @@ import Link from "next/link";
 import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
 import { Badge, Card, smallFieldClass, Table } from "@/components/ui";
-import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
+import { peopleScreen } from "@/lib/security/people-screen";
 import { formatDay, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtInt, fmtRelative } from "@/lib/format";
 import { FILTER_KEYS, reachedAt, SF_STAGES, STAGES, STALE_DAYS, type FunnelApp } from "@/lib/metrics/funnel";
@@ -53,6 +53,8 @@ export default async function ActivePage({ searchParams }: { searchParams: Promi
   const path = viewPath(PATH, search, PARAM_KEYS);
   const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
+  const people = await peopleScreen(auth.user.email, path);
+  if (!people.ok) return people.render;
 
   const [p, histories] = await Promise.all([loadPipeline(search, "all"), loadStatusHistories()]);
   const { params, filters, filtered, freshness, anchor, anchorStage, anchorIsSite, timeline, options } = p;
@@ -106,7 +108,7 @@ export default async function ActivePage({ searchParams }: { searchParams: Promi
         ? (y.shown?.at.getTime() ?? 0) - (x.shown?.at.getTime() ?? 0)
         : y.a.level - x.a.level || y.moved.getTime() - x.moved.getTime(),
     );
-  logRecordsShown(auth.user.email, path, rows.slice(0, MAX_ROWS).map(({ a }) => ({ contactId: a.fact.contactId, id: a.fact.id })));
+  await people.shown(rows.slice(0, MAX_ROWS).map(({ a }) => ({ contactId: a.fact.contactId, id: a.fact.id })));
 
   const statusSelect = (name: string, label: string, value: string) => (
     <Field label={label}>

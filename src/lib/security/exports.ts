@@ -12,7 +12,7 @@ import { raiseAlert } from "./files";
  * hired candidates, and the MCP tools
  * that list people (and API keys with people:read, under their issuer) return names, emails
  * and phones a page at a time. Each is logged with how
- * many people it returned, and the day's total is counted from those log entries, like the file
+ * many people it returned — and so does every list screen, each person it shows once a day — and the day's total is counted from those log entries, like the file
  * limit (lib/security/files.ts): 10,000 people a day; at 5,000 the admins get an alert; past the
  * limit a copy is cut to what is left (then refused), a tool call is refused, the admins are
  * asked, and an admin may let the person export another 10,000 that day — as often as needed.
@@ -20,7 +20,9 @@ import { raiseAlert } from "./files";
 export const EXPORT_LIMITS = { daily: 10_000, alertAt: 5_000, grant: 10_000 } as const;
 
 /** The log entries that carry people out, each with `details.count`. */
-export const EXPORT_ACTIONS = ["candidates.contacts_copied", "cvs.contacts_copied", "emails.contacts_copied", "payments.exported", "mcp.people_listed", "api.people_listed"] as const;
+/** `records.shown` = the people a list screen showed, each once a day (lib/security/people-screen.tsx). */
+export const EXPORT_ACTIONS = ["candidates.contacts_copied", "cvs.contacts_copied", "emails.contacts_copied", "payments.exported", "mcp.people_listed", "api.people_listed", "records.shown"] as const;
+export const SCREEN_SHOWN = "records.shown";
 export const MCP_PEOPLE_LISTED = "mcp.people_listed";
 /** An API answer with `include=people`, counted under the key's issuer (lib/api/people.ts). */
 export const API_PEOPLE_LISTED = "api.people_listed";
@@ -97,7 +99,7 @@ export async function atExportLimit(email: string, usage: ExportUsage, where: st
 
 /** The message a person sees when the day's budget is gone. */
 export const exportLimitMessage = (usage: ExportUsage) =>
-  `הגעת למגבלה היומית של ${usage.allowed.toLocaleString("he-IL")} פרטי מועמדים להעתקה. מנהל המערכת קיבל הודעה, והוא יכול לאשר לך עוד ${EXPORT_LIMITS.grant.toLocaleString("he-IL")} להיום.`;
+  `הגעת למגבלה היומית של ${usage.allowed.toLocaleString("he-IL")} פרטי מועמדים (במסכים, בהעתקות ובחיבורים). מנהל המערכת קיבל הודעה, והוא יכול לאשר לך עוד ${EXPORT_LIMITS.grant.toLocaleString("he-IL")} להיום.`;
 
 /** An admin lets `email` export another batch today; their open export alerts for today are handled. */
 export async function grantMoreExports(admin: string, email: string): Promise<ExportUsage> {
@@ -117,17 +119,18 @@ export interface ExportUsageRow {
   refused: number;
   allowed: number;
   /** Where the people went: the copy buttons, the MCP tools, the API. */
-  via: { screen: number; mcp: number; api: number };
+  via: { screen: number; lists: number; mcp: number; api: number };
 }
 
 /** Everyone who took people's details out today (or was refused), most first. */
 export async function loadExportUsageToday(): Promise<ExportUsageRow[]> {
   const day = israelDay();
   const rows = (
-    await getDb().execute<{ email: string; exported: number; screen: number; mcp: number; api: number; refused: number; extra: number }>(sql`
+    await getDb().execute<{ email: string; exported: number; screen: number; lists: number; mcp: number; api: number; refused: number; extra: number }>(sql`
       SELECT a.actor AS email,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action IN ${EXPORT_ACTIONS}), 0)::int AS exported,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action IN ('candidates.contacts_copied', 'cvs.contacts_copied', 'emails.contacts_copied', 'payments.exported')), 0)::int AS screen,
+             coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action = ${SCREEN_SHOWN}), 0)::int AS lists,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action = ${MCP_PEOPLE_LISTED}), 0)::int AS mcp,
              coalesce(sum((a.details->>'count')::int) FILTER (WHERE a.action = ${API_PEOPLE_LISTED}), 0)::int AS api,
              count(*) FILTER (WHERE a.action = ${EXPORT_REFUSED})::int AS refused,
@@ -142,7 +145,7 @@ export async function loadExportUsageToday(): Promise<ExportUsageRow[]> {
     exported: Number(r.exported),
     refused: Number(r.refused),
     allowed: EXPORT_LIMITS.daily + Number(r.extra),
-    via: { screen: Number(r.screen), mcp: Number(r.mcp), api: Number(r.api) },
+    via: { screen: Number(r.screen), lists: Number(r.lists), mcp: Number(r.mcp), api: Number(r.api) },
   }));
 }
 

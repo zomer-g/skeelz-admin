@@ -158,14 +158,15 @@ export default async function SecurityPage() {
           </p>
         </Card>
 
-        <Card title={`ייצוא פרטי קשר היום (${exports.length} משתמשים)`}>
-          <Table head={["משתמש", "פרטים שהתקבלו", "מזה דרך MCP", "מזה דרך API", "מותר היום", "נחסמו", ""]} empty={exports.length === 0 ? "אף אחד לא ייצא פרטי קשר היום" : undefined}>
+        <Card title={`פרטי מועמדים היום (${exports.length} משתמשים)`}>
+          <Table head={["משתמש", "פרטים שהתקבלו", "מזה במסכים", "מזה דרך MCP", "מזה דרך API", "מותר היום", "נחסמו", ""]} empty={exports.length === 0 ? "אף אחד לא קיבל היום פרטי מועמדים" : undefined}>
             {exports.map((u) => (
               <tr key={u.email}>
                 <td className="px-3 py-2" dir="ltr">
                   {u.email}
                 </td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(u.exported)}</td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(u.via.lists)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(u.via.mcp)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(u.via.api)}</td>
                 <td className="px-3 py-2 tabular-nums">{fmtInt(u.allowed)}</td>

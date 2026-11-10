@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SearchForm } from "@/components/entities/Search";
 import { Badge, Card, NewTabNote, PageHeader, StatCard, Table } from "@/components/ui";
-import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
+import { peopleScreen } from "@/lib/security/people-screen";
 import { israelDay, viewPath } from "@/lib/dashboard/params";
 import { AUTO_SUBJECT, loadPaymentStatuses, loadPayments, PAYMENT_SORT_FIELDS, PAYMENT_SORTS, paymentFilters, PAYMENTS_SINCE } from "@/lib/entities/payments";
 import { type SearchParams } from "@/lib/entities/search";
@@ -38,6 +38,8 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const path = viewPath(ACTION, search, KEYS);
   const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
+  const people = await peopleScreen(auth.user.email, path);
+  if (!people.ok) return people.render;
 
   const filters = paymentFilters(search);
   const sort = sortParam(search, PAYMENT_SORTS, "start");
@@ -45,7 +47,7 @@ export default async function PaymentsPage({ searchParams }: { searchParams: Pro
   const [loaded, statuses] = await Promise.all([loadPayments(filters), loadPaymentStatuses()]);
   const rows = sortRows(loaded, PAYMENT_SORT_FIELDS, sort);
   // Every row is on screen (no paging): the candidates are what is worth recording.
-  logRecordsShown(auth.user.email, path, rows.map((r) => ({ contactId: r.contactId, id: r.id })));
+  await people.shown(rows.map((r) => ({ contactId: r.contactId, id: r.id })));
 
   const today = israelDay();
   const sfBase = process.env.SF_LOGIN_URL?.replace(/\/+$/, "");

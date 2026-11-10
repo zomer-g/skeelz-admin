@@ -19,7 +19,7 @@ export type AlertKind = "files_many" | "files_limit" | "export_many" | "export_l
 export const ALERT_LABELS: Record<AlertKind, string> = {
   files_many: `פתח ${FILE_LIMITS.alertAt} קבצי מועמדים היום`,
   files_limit: "הגיע למגבלת הקבצים היומית ומבקש עוד",
-  export_many: "ייצא היום פרטי קשר של מועמדים רבים",
+  export_many: "קיבל היום פרטים של מועמדים רבים (מסכים, העתקות, חיבורים)",
   export_limit: "הגיע למגבלת הייצוא היומית ומבקש עוד",
 };
 /** Which limit an alert belongs to, so the admin screen offers the right grant. */

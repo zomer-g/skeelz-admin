@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { recordIds } from "./audit-ids";
+import { countNewRows, recordIds } from "./audit-ids";
 
 test("collects Salesforce ids and emails at id/email keys, once each", () => {
   const r = recordIds({
@@ -29,4 +29,17 @@ test("caps the list and says so", () => {
 
 test("ignores names, phones and words that only look like ids", () => {
   assert.deepEqual(recordIds({ id: "abcdefghijklmno", name: "x@y", phone: "0501234567" }).ids, []);
+});
+
+test("a screen counts each person once a day", () => {
+  const seen = new Set(["0031x00000AbCdE"]);
+  const rows = [
+    { contactId: "0031x00000AbCdE", id: "5001x00000AaAaAAAA" }, // shown earlier today
+    { contactId: "0031x00000BbBbB", id: "5001x00000BbBbBAAA" },
+    { contactId: "0031x00000BbBbB", id: "5001x00000CcCcCAAA" }, // same person, second application
+    { email: "New@Example.com" },
+    { title: "no ids" },
+  ];
+  assert.equal(countNewRows(rows, seen), 2);
+  assert.equal(countNewRows([], seen), 0);
 });

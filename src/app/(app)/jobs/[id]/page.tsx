@@ -9,8 +9,8 @@ import { FieldList } from "@/components/entities/EntityParts";
 import { JobTexts, jobFieldItems, MarkedBadge } from "@/components/entities/JobFields";
 import { Badge, Card, StatCard, Table } from "@/components/ui";
 import { jobStatusLabel, loadJobDetails } from "@/lib/entities/companies";
-import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
+import { peopleScreen } from "@/lib/security/people-screen";
 import { eachDay, formatDay, israelDay, parseDashboardParams, rangeQuery, viewPath } from "@/lib/dashboard/params";
 import { fmtDate, fmtDecimal, fmtInt, fmtPercent } from "@/lib/format";
 import { loadApplicationFacts } from "@/lib/metrics/candidates";
@@ -41,6 +41,8 @@ export default async function JobPage({
   const path = viewPath(`/jobs/${id}`, search);
   const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
+  const people = await peopleScreen(auth.user.email, path);
+  if (!people.ok) return people.render;
 
   const position = await loadPosition(id);
   if (!position) notFound();
@@ -63,7 +65,7 @@ export default async function JobPage({
   const apps = facts
     .filter((f) => f.parentId === id && f.createdAt >= range.from && f.createdAt < range.to)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  logRecordsShown(auth.user.email, path, apps.map((a) => ({ contactId: a.contactId, id: a.id })));
+  await people.shown(apps.map((a) => ({ contactId: a.contactId, id: a.id })));
   const funnel = applicationFunnel(apps);
   const statuses = new Map<string, number>();
   for (const a of apps) statuses.set(a.status ?? "ללא סטטוס", (statuses.get(a.status ?? "ללא סטטוס") ?? 0) + 1);

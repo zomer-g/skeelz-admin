@@ -3,8 +3,8 @@ import Link from "next/link";
 import { CopyContacts } from "@/components/entities/CopyContacts";
 import { Pager, SearchForm } from "@/components/entities/Search";
 import { Badge, Card, PageHeader, Table } from "@/components/ui";
-import { logRecordsShown } from "@/lib/audit";
 import { pageAuth } from "@/lib/auth/guard";
+import { peopleScreen } from "@/lib/security/people-screen";
 import { viewPath } from "@/lib/dashboard/params";
 import { EMAIL_SORTS, emailFilters, emailPath, loadCaseTypes, searchEmails } from "@/lib/entities/emails";
 import { PAGE_SIZE, pageParam, type SearchParams } from "@/lib/entities/search";
@@ -23,6 +23,8 @@ export default async function EmailsPage({ searchParams }: { searchParams: Promi
   const path = viewPath(ACTION, search, KEYS);
   const auth = await pageAuth("viewer", path);
   if (!auth.ok) return auth.render;
+  const people = await peopleScreen(auth.user.email, path);
+  if (!people.ok) return people.render;
 
   const types = await loadCaseTypes();
   const parsed = emailFilters(search);
@@ -30,7 +32,7 @@ export default async function EmailsPage({ searchParams }: { searchParams: Promi
   const page = pageParam(search);
   const sort = sortParam(search, EMAIL_SORTS, "last");
   const { rows, total } = await searchEmails(filters, { page, sort });
-  logRecordsShown(auth.user.email, path, rows);
+  await people.shown(rows);
 
   const values: Record<string, string> = {
     q: filters.q,
