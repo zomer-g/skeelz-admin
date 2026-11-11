@@ -20,9 +20,9 @@ describe("hand-overs of personal data are logged strictly and serialised", () =>
     assert.doesNotMatch(code, /writeAudit\(userEmail, FILE_OPENED/);
   });
 
-  for (const route of ["candidates", "cvs", "emails"]) {
+  for (const route of ["candidates", "cvs", "emails", "outreach/[id]"]) {
     it(`/api/${route}/contacts counts under the export lock, strictly`, () => {
-      const code = read("app", "api", route, "contacts", "route.ts");
+      const code = read("app", "api", ...route.split("/"), "contacts", "route.ts");
       assert.match(code, /return guardedExport\(user\.email,/);
       assert.match(code, /await writeAuditStrict\(user\.email, "[a-z]+\.contacts_copied"/);
     });

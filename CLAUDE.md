@@ -164,7 +164,9 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   it, to approach before they apply. The job's field = the same `cv-topics` phrases matched in code against its title (×3),
   description and skills (`src/lib/job-topics.ts`, gender forms like "מנהל/ת", "רכז.ת" folded first); with no topic, the title's
   words are searched in the files live (SOSL). Ranked per person (best file): topic/word match + same sub-district/district as
-  the job + recent file; people who applied are hidden unless asked. Every search writes `cvs.text_search` with its results.
+  the job + recent file; people who applied are hidden unless asked. Every search writes `cvs.text_search` with its results. `CopyContacts` under the list hands over the
+  emails or phones of every ranked person through `/api/outreach/[id]/contacts` (`outreachFilters()` shared with the page, 5,000 max, logged as
+  `cvs.contacts_copied` with the job, in the daily export budget).
   **Employer lead Cases** (`/leads`, `src/lib/entities/leads.ts`): Cases of type `lead_employer`, listed as records (the
   employers tab still counts leads by the Account's employer status).
   `/emails` treats one address as one person: every Contact with that email, and every Case on them plus Contact-less

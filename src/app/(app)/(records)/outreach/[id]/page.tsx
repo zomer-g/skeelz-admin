@@ -1,17 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CopyContacts } from "@/components/entities/CopyContacts";
 import { Pager } from "@/components/entities/Search";
 import { EntityHeader } from "@/components/entities/EntityParts";
 import { Badge, buttonClass, Card, smallFieldClass, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { peopleScreen } from "@/lib/security/people-screen";
 import { viewPath } from "@/lib/dashboard/params";
-import { isTopicId, TOPIC_GROUPS, topicLabel, TOPICS } from "@/lib/cv-topics";
+import { TOPIC_GROUPS, topicLabel, TOPICS } from "@/lib/cv-topics";
 import { jobStatusLabel } from "@/lib/entities/companies";
 import { emailPath } from "@/lib/entities/emails";
-import { defaultReach, loadOutreachJob, parseWords, REACH_LABELS, REACHES, searchOutreach, type OutreachJob, type Reach } from "@/lib/entities/outreach";
-import { choice, isSfId, PAGE_SIZE, pageParam, param, type SearchParams } from "@/lib/entities/search";
+import { loadOutreachJob, outreachFilters, REACH_LABELS, REACHES, searchOutreach } from "@/lib/entities/outreach";
+import { isSfId, PAGE_SIZE, pageParam, type SearchParams } from "@/lib/entities/search";
 import { fmtDate, fmtDecimal, fmtInt } from "@/lib/format";
 import { placeText } from "@/lib/geo/filters";
 
@@ -20,18 +21,6 @@ export const dynamic = "force-dynamic";
 
 /** How many of the other fields the job's text pointed at are offered as choices. */
 const MORE_TOPICS = 6;
-
-/** The topics in the URL; before the form is first sent (`s` missing), the ones read from the job. */
-function chosenTopics(search: SearchParams, job: OutreachJob): string[] {
-  if (param(search, "s") !== "1") return job.suggested;
-  const raw = search.topic;
-  // Checkboxes send one `topic` each; the pager sends them joined by commas.
-  const values = (Array.isArray(raw) ? raw : raw ? [raw] : [])
-    .flatMap((v) => v.split(","))
-    .map((v) => v.trim())
-    .filter(isTopicId);
-  return [...new Set(values)].slice(0, 10);
-}
 
 /** One job's outreach: the candidates whose CVs fit it best (lib/entities/outreach.ts). */
 export default async function OutreachJobPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<SearchParams> }) {
@@ -48,13 +37,10 @@ export default async function OutreachJobPage({ params, searchParams }: { params
   const job = await loadOutreachJob(id);
   if (!job) notFound();
 
-  const topics = chosenTopics(search, job);
-  // Before the form is sent, the title's words stand in for a job no topic fits.
-  const words = param(search, "s") === "1" ? parseWords(param(search, "words")) : job.suggested.length ? [] : job.keywords;
-  const reach: Reach = job.napa == null ? "all" : choice(search, "reach", REACHES) || defaultReach(job);
-  const withApplied = param(search, "applied") === "1";
+  const filters = outreachFilters(search, job);
+  const { topics, words, reach, withApplied } = filters;
   const page = pageParam(search);
-  const { rows, total, wordSearch } = await searchOutreach(job, { topics, words, reach, withApplied }, { page, who: { actor: auth.user.email, via: "screen" } });
+  const { rows, total, wordSearch } = await searchOutreach(job, filters, { page, who: { actor: auth.user.email, via: "screen" } });
   await people.shown(rows);
 
   // The choices: what is chosen, then the other fields the job's text pointed at.
@@ -233,6 +219,14 @@ export default async function OutreachJobPage({ params, searchParams }: { params
           ))}
         </Table>
         <Pager action={action} values={pagerValues} page={page} pageSize={PAGE_SIZE} total={total} />
+        {total > 0 ? (
+          <CopyContacts
+            endpoint={`/api/outreach/${job.id}/contacts`}
+            query={new URLSearchParams(Object.entries(pagerValues).filter(([, v]) => v)).toString()}
+            total={total}
+            subject={`כל ${fmtInt(total)} המועמדים המתאימים בחיפוש (כל אחד פעם אחת, מהמתאים ביותר)`}
+          />
+        ) : null}
         <p className="mt-3 text-xs text-muted">
           כל אדם מופיע פעם אחת, עם קורות החיים שמתאימים לו ביותר. הדירוג: תחום שנבחר שנמצא בקובץ (3 נקודות, תחום כללי 2, ואותו תחום רחב 1), כל מילה שנמצאה בקובץ (2), מגורים באותה נפה
           (3) או באותו מחוז (1.5), וקובץ שהגיע ב-90 הימים האחרונים (1) או בשנה האחרונה (0.5). מי שכבר הגיש/ה למשרה לא מוצג/ת, אלא אם סומן. כל חיפוש כאן נרשם

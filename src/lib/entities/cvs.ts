@@ -416,7 +416,7 @@ export async function topicsRefreshedAt(): Promise<Date | null> {
 export type CvContactField = "email" | "phone";
 export const MAX_CV_CONTACTS = 5_000;
 /** SKEELZ's own mail domain, left out of the copied addresses. */
-const OWN_EMAIL_DOMAIN = "skeelz.co.il";
+export const OWN_EMAIL_DOMAIN = "skeelz.co.il";
 
 /**
  * The emails (or phones) of the people behind every file the filter finds — not only the page on

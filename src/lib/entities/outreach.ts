@@ -13,8 +13,8 @@ import { logError } from "@/lib/log";
 import { salesforceConfigured, sf } from "@/lib/sf/client";
 import { skillNames } from "@/lib/skills";
 import { cvFilePath } from "./cv";
-import { CV_EXTENSIONS, CVS, type SearchActor } from "./cvs";
-import { asDate, htmlToText, isSfId, isTrue, num, PAGE_SIZE, run, str } from "./search";
+import { CV_EXTENSIONS, CVS, MAX_CV_CONTACTS, OWN_EMAIL_DOMAIN, type CvContactField, type SearchActor } from "./cvs";
+import { asDate, choice, htmlToText, isSfId, isTrue, num, PAGE_SIZE, param, run, str, type SearchParams } from "./search";
 
 /**
  * Outreach ("פעילות יזומה", /outreach/[id], reached from each row of the jobs list /positions): for a job, the candidates whose CVs fit it best, so the
@@ -145,6 +145,30 @@ export function parseWords(v: string): string[] {
 /** The reach that fits the job when none is chosen: its district, or everywhere for a job with no locality. */
 export const defaultReach = (job: OutreachJob): Reach => (job.napa == null ? "all" : "district");
 
+/**
+ * The search as the URL carries it, read once for the page and its copy route. Before the form is
+ * first sent (`s` missing), the topics read from the job, or the title's words for a job no topic fits.
+ */
+export function outreachFilters(search: SearchParams, job: OutreachJob): OutreachFilters {
+  const sent = param(search, "s") === "1";
+  let topics = job.suggested;
+  if (sent) {
+    const raw = search.topic;
+    // Checkboxes send one `topic` each; the pager sends them joined by commas.
+    const values = (Array.isArray(raw) ? raw : raw ? [raw] : [])
+      .flatMap((v) => v.split(","))
+      .map((v) => v.trim())
+      .filter(isTopicId);
+    topics = [...new Set(values)].slice(0, 10);
+  }
+  return {
+    topics,
+    words: sent ? parseWords(param(search, "words")) : job.suggested.length ? [] : job.keywords,
+    reach: job.napa == null ? "all" : choice(search, "reach", REACHES) || defaultReach(job),
+    withApplied: param(search, "applied") === "1",
+  };
+}
+
 export interface OutreachRow {
   rank: number;
   score: number;
@@ -208,15 +232,11 @@ async function findWords(words: string[]): Promise<Map<string, string[]> | null>
   }
 }
 
-/** The people whose CVs fit the job best, one row each (their best file), page by page. */
-export async function searchOutreach(
-  job: OutreachJob,
-  f: OutreachFilters,
-  { page = 1, pageSize = PAGE_SIZE, who }: { page?: number; pageSize?: number; who?: SearchActor } = {},
-): Promise<{ rows: OutreachRow[]; total: number; wordSearch: "ok" | "unavailable" | null }> {
+/** The ranked people of a search (one row each, `best`), as SQL the list and the copy buttons share. */
+async function outreachQuery(job: OutreachJob, f: OutreachFilters) {
   const chosen = f.topics.filter(isTopicId);
   const words = f.words;
-  if (!chosen.length && !words.length) return { rows: [], total: 0, wordSearch: null };
+  if (!chosen.length && !words.length) return null;
   const foundWords = await findWords(words);
   const wordSearch = words.length ? (foundWords ? "ok" : "unavailable") : null;
   const wanted = chosen.length
@@ -276,6 +296,31 @@ export async function searchOutreach(
        ORDER BY s.person, s.topic_score + s.place_score + s.fresh_score DESC, s.received_at DESC NULLS LAST, s.document_id
     )`;
   const order = sql`b.score DESC, b.received_at DESC NULLS LAST, b.document_id`;
+  return { ranked, order, chosen, words, foundWords, wordSearch, reach, napa, district } as const;
+}
+
+/** A search's log entry: what was asked and what came back, as on /cvs. */
+async function logOutreachSearch(job: OutreachJob, f: OutreachFilters, q: NonNullable<Awaited<ReturnType<typeof outreachQuery>>>, total: number, logged: OutreachRow[], who: SearchActor) {
+  const { chosen, words, foundWords, reach, napa, district } = q;
+  await writeAudit(who.actor, "cvs.text_search", `פעילות יזומה: ${job.title ?? job.id}`, {
+    via: who.via,
+    outreach: { jobId: job.id, reach, withApplied: f.withApplied },
+    filters: { topic: chosen.join(","), ...(words.length ? { text: words.join(" ") } : {}), ...(reach === "napa" ? { napa: String(napa) } : reach === "district" ? { area: String(district) } : {}) },
+    matched: foundWords ? foundWords.size : null,
+    results: total,
+    files: logged.slice(0, LOGGED_RESULTS).map((r) => ({ documentId: r.documentId, title: r.title, name: r.name, email: r.email })),
+  });
+}
+
+/** The people whose CVs fit the job best, one row each (their best file), page by page. */
+export async function searchOutreach(
+  job: OutreachJob,
+  f: OutreachFilters,
+  { page = 1, pageSize = PAGE_SIZE, who }: { page?: number; pageSize?: number; who?: SearchActor } = {},
+): Promise<{ rows: OutreachRow[]; total: number; wordSearch: "ok" | "unavailable" | null }> {
+  const q = await outreachQuery(job, f);
+  if (!q) return { rows: [], total: 0, wordSearch: null };
+  const { ranked, order, napa, wordSearch } = q;
   const [rows, count] = await Promise.all([
     run(sql`${ranked}
       SELECT b.*,
@@ -294,16 +339,44 @@ export async function searchOutreach(
       offset === 0 && result.length >= Math.min(total, LOGGED_RESULTS)
         ? result
         : (await run(sql`${ranked} SELECT b.* FROM best b ORDER BY ${order} LIMIT ${LOGGED_RESULTS}`)).map((r, i) => toRow(r, i + 1, napa));
-    await writeAudit(who.actor, "cvs.text_search", `פעילות יזומה: ${job.title ?? job.id}`, {
-      via: who.via,
-      outreach: { jobId: job.id, reach, withApplied: f.withApplied },
-      filters: { topic: chosen.join(","), ...(words.length ? { text: words.join(" ") } : {}), ...(reach === "napa" ? { napa: String(napa) } : reach === "district" ? { area: String(district) } : {}) },
-      matched: foundWords ? foundWords.size : null,
-      results: total,
-      files: logged.slice(0, LOGGED_RESULTS).map((r) => ({ documentId: r.documentId, title: r.title, name: r.name, email: r.email })),
-    });
+    await logOutreachSearch(job, f, q, total, logged, who);
   }
   return { rows: result, total, wordSearch };
+}
+
+/**
+ * The emails (or phones) of every person the search ranks, not the page: for the copy buttons
+ * on /outreach/[id]. Best match first, each value once (phones compared by digits), at most
+ * MAX_CV_CONTACTS, staff addresses left out as on /cvs. The search behind it is logged like on screen.
+ */
+export async function loadOutreachContacts(
+  job: OutreachJob,
+  f: OutreachFilters,
+  field: CvContactField,
+  who: SearchActor,
+): Promise<{ values: string[]; people: number; truncated: boolean; wordSearch: "ok" | "unavailable" | null }> {
+  const q = await outreachQuery(job, f);
+  if (!q) return { values: [], people: 0, truncated: false, wordSearch: null };
+  const { ranked, order, napa } = q;
+  const [rows, logged] = await Promise.all([
+    run(sql`${ranked}
+      SELECT b.email, (SELECT v.phone FROM cv v WHERE v.document_id = b.document_id LIMIT 1) AS phone
+        FROM best b ORDER BY ${order}`),
+    run(sql`${ranked} SELECT b.* FROM best b ORDER BY ${order} LIMIT ${LOGGED_RESULTS}`),
+  ]);
+  await logOutreachSearch(job, f, q, rows.length, logged.map((r, i) => toRow(r, i + 1, napa)), who);
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const r of rows) {
+    const value = str(field === "email" ? r.email : r.phone)?.trim();
+    if (!value) continue;
+    if (field === "email" && value.toLowerCase().endsWith(`@${OWN_EMAIL_DOMAIN}`)) continue;
+    const key = field === "phone" ? value.replace(/\D/g, "") : value.toLowerCase();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    values.push(field === "email" ? key : value);
+  }
+  return { values: values.slice(0, MAX_CV_CONTACTS), people: rows.length, truncated: values.length > MAX_CV_CONTACTS, wordSearch: q.wordSearch };
 }
 
 function toRow(r: Record<string, unknown>, rank: number, jobNapa: number | null): OutreachRow {
