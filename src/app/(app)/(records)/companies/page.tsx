@@ -54,6 +54,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
             { label: "משרות פעילות", sort: "active" },
             { label: "כל המשרות", sort: "jobs" },
             { label: "הגשות", sort: "applications" },
+            { label: 'קו"ח שנשלחו למעסיק', sort: "sent" },
             { label: "משרה אחרונה", sort: "recent" },
             { label: "איש קשר", sort: "contact" },
             "מיקומים",
@@ -84,6 +85,7 @@ export default async function CompaniesPage({ searchParams }: { searchParams: Pr
               </td>
               <td className="px-3 py-2 tabular-nums">{fmtInt(c.jobs)}</td>
               <td className="px-3 py-2 tabular-nums">{fmtInt(c.applications)}</td>
+              <td className="px-3 py-2 tabular-nums">{c.sent ? fmtInt(c.sent) : <span className="text-muted">0</span>}</td>
               <td className="whitespace-nowrap px-3 py-2 tabular-nums">{fmtDate(c.lastJobAt)}</td>
               <td className="px-3 py-2">
                 {c.contactName ?? "—"}

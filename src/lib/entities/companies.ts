@@ -1,5 +1,5 @@
 import { sql, type SQL } from "drizzle-orm";
-import { RECORD_TYPES } from "@/lib/metrics/candidates";
+import { normStatusSql, RECORD_TYPES, STATUS } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { jobPaidSql } from "@/lib/metrics/paid";
 import { districtName, districtOf, subdistrictName } from "@/lib/geo/map";
@@ -50,9 +50,16 @@ const JOBS = sql`
       LEFT JOIN sf_account acc ON acc.id = p.account_id
      WHERE rt.developer_name = ${RECORD_TYPES.position} AND NOT p.is_deleted
   ),
+  sent_apps AS (
+    SELECT DISTINCT h.case_id FROM sf_case_history h
+     WHERE h.field = 'Status' AND ${normStatusSql("h.new_value")} = ${STATUS.sent}
+  ),
+  -- Sent to the employer = the application ever reached "נשלחו קו״ח" (as the pipeline counts it, lib/metrics/jobs.ts).
   job_apps AS (
-    SELECT a.parent_id, count(*) AS n
+    SELECT a.parent_id, count(*) AS n,
+           count(*) FILTER (WHERE sa.case_id IS NOT NULL OR ${normStatusSql("a.status")} = ${STATUS.sent}) AS sent
       FROM sf_case a JOIN sf_record_type art ON art.id = a.record_type_id
+      LEFT JOIN sent_apps sa ON sa.case_id = a.id
      WHERE art.developer_name IN (${RECORD_TYPES.application}, ${RECORD_TYPES.accepted}) AND NOT a.is_deleted AND a.parent_id IS NOT NULL
      GROUP BY a.parent_id
   )`;
@@ -69,6 +76,7 @@ const COMPANIES = sql`
            count(*) FILTER (WHERE j.marked) AS marked_jobs,
            count(*) FILTER (WHERE j.marked AND j.p_status = 'Active') AS marked_active_jobs,
            coalesce(sum(ja.n), 0) AS applications,
+           coalesce(sum(ja.sent), 0) AS sent,
            min(j.created_date) AS first_job_at,
            max(j.created_date) AS last_job_at,
            (array_agg(j.contact_name ORDER BY j.created_date DESC) FILTER (WHERE j.contact_name IS NOT NULL))[1] AS contact_name,
@@ -109,6 +117,8 @@ export interface CompanyRow {
   markedJobs: number;
   markedActiveJobs: number;
   applications: number;
+  /** Applications whose CV was sent to the employer (status ever "נשלחו קו\"ח"). */
+  sent: number;
   firstJobAt: Date | null;
   lastJobAt: Date | null;
   contactName: string | null;
@@ -128,6 +138,7 @@ function toCompany(r: Record<string, unknown>): CompanyRow {
     markedJobs: num(r.marked_jobs),
     markedActiveJobs: num(r.marked_active_jobs),
     applications: num(r.applications),
+    sent: num(r.sent),
     firstJobAt: asDate(r.first_job_at),
     lastJobAt: asDate(r.last_job_at),
     contactName: str(r.contact_name),
@@ -146,6 +157,7 @@ export const COMPANY_SORTS: readonly SortColumn[] = [
   { key: "name", kind: "text", by: sql`c.name` },
   { key: "jobs", kind: "number", by: sql`c.jobs` },
   { key: "applications", kind: "number", by: sql`c.applications` },
+  { key: "sent", kind: "number", by: sql`c.sent` },
   { key: "recent", kind: "date", by: sql`c.last_job_at` },
   { key: "contact", kind: "text", by: sql`c.contact_name` },
 ];
@@ -187,6 +199,7 @@ export interface CompanyJob {
   createdAt: Date | null;
   siteJobKey: string | null;
   applications: number;
+  sent: number;
   contactName: string | null;
   contactEmail: string | null;
 }
@@ -196,7 +209,7 @@ export async function loadCompany(key: string): Promise<{ company: CompanyRow; j
   const [rows, jobs] = await Promise.all([
     run(sql`${COMPANIES} SELECT c.* FROM companies c WHERE c.key = ${key}`),
     run(sql`WITH ${JOBS}
-      SELECT j.*, coalesce(ja.n, 0) AS applications FROM jobs j LEFT JOIN job_apps ja ON ja.parent_id = j.id
+      SELECT j.*, coalesce(ja.n, 0) AS applications, coalesce(ja.sent, 0) AS sent FROM jobs j LEFT JOIN job_apps ja ON ja.parent_id = j.id
        WHERE j.company_key = ${key}
        ORDER BY (j.p_status = 'Active') DESC NULLS LAST, j.created_date DESC`),
   ]);
@@ -216,6 +229,7 @@ export async function loadCompany(key: string): Promise<{ company: CompanyRow; j
       createdAt: asDate(r.created_date),
       siteJobKey: str(r.site_job_key),
       applications: num(r.applications),
+      sent: num(r.sent),
       contactName: str(r.contact_name),
       contactEmail: str(r.contact_email),
     })),

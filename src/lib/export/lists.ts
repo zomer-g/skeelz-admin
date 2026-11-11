@@ -61,7 +61,7 @@ export const LIST_EXPORTS: Record<string, ListExport> = {
       const { rows } = await searchCompanies(companyFilters(search), { page: 1, pageSize: MAX_LIST_ROWS, sort: sortParam(search, COMPANY_SORTS, "active") });
       return {
         name: "מעסיקים",
-        headers: ["מעסיק", "משרות פעילות", "פעילות בתשלום", "פעילות בכתר", "כל המשרות", "הגשות", "משרה אחרונה", "איש קשר", "מייל", "טלפון", "מיקומים"],
+        headers: ["מעסיק", "משרות פעילות", "פעילות בתשלום", "פעילות בכתר", "כל המשרות", "הגשות", 'קו"ח שנשלחו למעסיק', "משרה אחרונה", "איש קשר", "מייל", "טלפון", "מיקומים"],
         rows: rows.map((c) => [
           c.name,
           c.activeJobs,
@@ -69,6 +69,7 @@ export const LIST_EXPORTS: Record<string, ListExport> = {
           c.markedActiveJobs,
           c.jobs,
           c.applications,
+          c.sent,
           day(c.lastJobAt),
           c.contactName,
           c.contactEmail,

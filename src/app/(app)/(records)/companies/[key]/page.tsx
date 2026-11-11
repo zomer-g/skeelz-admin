@@ -68,6 +68,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
             ["משרות בתשלום", company.paidJobs ? `${fmtInt(company.paidActiveJobs)} פעילות מתוך ${fmtInt(company.paidJobs)}` : null],
             ["משרות מסומנות בכתר", company.markedJobs ? `${fmtInt(company.markedActiveJobs)} פעילות מתוך ${fmtInt(company.markedJobs)}` : null],
             ["הגשות", fmtInt(company.applications)],
+            ['קו"ח שנשלחו למעסיק', fmtInt(company.sent)],
             ["משרה ראשונה", fmtDate(company.firstJobAt)],
             ["משרה אחרונה", fmtDate(company.lastJobAt)],
           ]}
@@ -76,7 +77,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
       </Card>
 
       <Card title={`משרות · ${fmtInt(jobs.length)}`} className="mt-4">
-        <Table head={["משרה", "סטטוס באתר", "מיקום והיקף", "נפתחה", "הגשות", "אימות אחרון", ""]} empty={jobs.length === 0 ? "אין משרות" : undefined}>
+        <Table head={["משרה", "סטטוס באתר", "מיקום והיקף", "נפתחה", "הגשות", 'קו"ח שנשלחו', "אימות אחרון", ""]} empty={jobs.length === 0 ? "אין משרות" : undefined}>
           {jobs.map((j) => {
             const last = activity.get(j.id) ?? null;
             const days = daysSince(last?.at ?? null, now);
@@ -109,6 +110,7 @@ export default async function CompanyPage({ params }: { params: Promise<{ key: s
                     "0"
                   )}
                 </td>
+                <td className="px-3 py-2 tabular-nums">{fmtInt(j.sent)}</td>
                 <td className="whitespace-nowrap px-3 py-2 text-xs">
                   {last ? (
                     days != null && days > NO_TOUCH_DAYS && j.status === "Active" ? (
