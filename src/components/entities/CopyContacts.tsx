@@ -7,7 +7,8 @@ import { buttonClass } from "@/components/ui";
  * Hands over the contact details behind the current search — every match, not
  * the page on screen. Emails come back comma-separated (what a mail client's
  * "To" field wants) and phones one per line (what a spreadsheet or a calling
- * round wants). When the browser refuses the clipboard, the list is shown in a
+ * round wants). "מיילים לאקסל" hands the same emails one per line, so a
+ * spreadsheet (or a SMOOV import file) gets one address per cell. When the browser refuses the clipboard, the list is shown in a
  * box to copy by hand instead of failing silently.
  */
 export function CopyContacts({
@@ -24,12 +25,13 @@ export function CopyContacts({
   subject?: string;
 }) {
   const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState<"email" | "phone" | null>(null);
+  const [busy, setBusy] = useState<"email" | "emailLines" | "phone" | null>(null);
   const [fallback, setFallback] = useState("");
   const box = useRef<HTMLTextAreaElement>(null);
 
-  async function copy(field: "email" | "phone") {
-    setBusy(field);
+  async function copy(kind: "email" | "emailLines" | "phone") {
+    const field = kind === "phone" ? "phone" : "email";
+    setBusy(kind);
     setMessage("");
     setFallback("");
     try {
@@ -47,7 +49,7 @@ export function CopyContacts({
         return;
       }
 
-      const text = field === "email" ? data.values.join(", ") : data.values.join("\n");
+      const text = kind === "email" ? data.values.join(", ") : data.values.join("\n");
       const note = data.limited
         ? ` (${(data.left_out ?? 0).toLocaleString("he-IL")} נוספים לא הועתקו — זו המגבלה היומית; מנהל המערכת קיבל הודעה)`
         : data.truncated
@@ -79,11 +81,14 @@ export function CopyContacts({
         <button type="button" className={buttonClass("secondary", "sm")} onClick={() => copy("email")} disabled={busy !== null}>
           {busy === "email" ? "מעתיק…" : "מיילים"}
         </button>
+        <button type="button" className={buttonClass("secondary", "sm")} onClick={() => copy("emailLines")} disabled={busy !== null}>
+          {busy === "emailLines" ? "מעתיק…" : "מיילים לאקסל"}
+        </button>
         <button type="button" className={buttonClass("secondary", "sm")} onClick={() => copy("phone")} disabled={busy !== null}>
           {busy === "phone" ? "מעתיק…" : "טלפונים"}
         </button>
       </div>
-      <p className="mt-2 text-xs text-muted">מיילים מופרדים בפסיק, טלפונים שורה לכל אחד. כל העתקה נרשמת ביומן הפעילות ונספרת במגבלת הייצוא היומית.</p>
+      <p className="mt-2 text-xs text-muted">מיילים מופרדים בפסיק (לשדה הנמענים); מיילים לאקסל וטלפונים שורה לכל אחד, כל ערך בתא משלו. כל העתקה נרשמת ביומן הפעילות ונספרת במגבלת הייצוא היומית.</p>
       <p role="status" className="mt-2 min-h-[1.25rem] text-sm font-medium text-accent-dark">
         {message}
       </p>
