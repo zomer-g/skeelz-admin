@@ -144,6 +144,8 @@ export interface FitResult {
  * ends up inside a window, and the time that takes comes out of breaks. Windows are quarter hours, in
  * Israel time.
  *
+ * Only days that already have a window are fitted; actions on a day with no window at all are left alone.
+ *
  * 1. Cover: an action outside every window extends the nearest window of its day (within FIT_JOIN_MIN) to
  *    the quarter hour that holds it with FIT_KEEP_MIN to spare, or opens a quarter-hour window of its own.
  * 2. Free: the minutes added are taken back from the longest breaks inside windows that hold actions: a
@@ -160,7 +162,13 @@ export function fitWindows(windows: readonly TimeWindow[], actions: readonly Dat
   const ws = mergeWindows(windows).map((w) => ({ workDate: w.workDate, start: w.start.getTime(), end: w.end.getTime() }));
   const total = (list: { start: number; end: number }[]) => list.reduce((t, w) => t + (w.end - w.start), 0);
   const before = total(ws);
-  const times = actions.map((a) => a.getTime()).filter((t) => !Number.isNaN(t)).sort((a, b) => a - b);
+  // Only days the timesheet covers: a day with no window has no report at all, and its actions are not "outside the hours"
+  // of a reconstruction. Fitting must never invent a timesheet for such a day (a range reaching into a month with no report).
+  const days = new Set(ws.map((w) => w.workDate));
+  const times = actions
+    .map((a) => a.getTime())
+    .filter((t) => !Number.isNaN(t) && days.has(israelDayOf(new Date(t))))
+    .sort((a, b) => a - b);
   const inside = (t: number) => ws.some((w) => w.start <= t && t <= w.end);
 
   // 1. Cover. Every action outside counts, also one that an earlier extension already took in.
