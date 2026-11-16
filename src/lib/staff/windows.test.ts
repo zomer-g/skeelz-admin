@@ -226,6 +226,12 @@ describe("fitWindows", () => {
     assert.equal(r.freedMinutes, 0);
   });
 
+  it("counts every action that was outside, also one an earlier extension took in", () => {
+    const r = fitWindows([win("2026-10-07", "16:15", "16:45")], ["16:30", "16:48", "16:52", "16:55"].map((t) => at("2026-10-07", t)));
+    assert.equal(r.covered, 3);
+    assert.deepEqual(r.windows.map((x) => `${hm(x.start)}-${hm(x.end)}`), ["16:15-17:15"]);
+  });
+
   it("windows with no action are left alone, and nothing changes when every action is inside", () => {
     const w = [win("2026-10-18", "09:00", "11:45"), win("2026-10-18", "20:00", "21:45")];
     const r = fitWindows(w, [at("2026-10-18", "20:03"), at("2026-10-18", "21:03")]);
