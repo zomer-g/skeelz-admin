@@ -71,7 +71,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
             <Bars title="משימות Salesforce" items={bars(rows.filter((r) => r.sfName), (r) => r.sfTasks)} />
             <Bars title="מיילים שנשלחו" items={bars(rows.filter((r) => r.sfName), (r) => r.sfEmails)} />
             <Bars title="שיחות" items={bars(rows.filter((r) => r.sfName), (r) => r.sfCalls)} />
-            <Bars title="מקרים שנפתחו (כל הסוגים)" items={bars(rows.filter((r) => r.sfName), caseTotal)} />
+            <Bars title="מקרים בבעלותו שנפתחו בחודש (כל הסוגים)" items={bars(rows.filter((r) => r.sfName), caseTotal)} />
           </div>
         </Card>
 
@@ -87,7 +87,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
             .
           </p>
           <Table
-            head={["עובד", "שעות", "משימות מאנדיי", "משימות Salesforce", "מיילים", "שיחות", "סה״כ משימות", "מקרים שנפתחו"]}
+            head={["עובד", "שעות", "משימות מאנדיי", "משימות Salesforce", "מיילים", "שיחות", "סה״כ משימות", "מקרים בבעלותו"]}
             empty={rows.length ? undefined : "אף עובד עוד לא מקושר למאנדיי או ל-Salesforce"}
           >
             {rows.map((r) => (
@@ -194,9 +194,9 @@ function CasesByType({ rows, month }: { rows: StaffMonthRow[]; month: string }) 
   const ordered = [...types.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
   const countOf = (r: StaffMonthRow, type: string) => r.cases.find((c) => c.caseType === type)?.count ?? 0;
   return (
-    <Card title={`מקרים שנפתחו לפי סוג · ${monthLabel(month)}`}>
+    <Card title={`מקרים בבעלותו שנפתחו בחודש, לפי סוג · ${monthLabel(month)}`}>
       <p className="mb-6 text-sm text-muted">
-        מקרים (Cases) ב-Salesforce שנפתחו בחודש, לפי סוג הרשומה, אצל העובד שהוא הבעלים שלהם היום. מקרה שהועבר לעובד אחר נספר אצל הבעלים הנוכחי.
+        מקרים (Cases) ב-Salesforce שנפתחו בחודש, לפי סוג הרשומה, אצל העובד שהוא הבעלים שלהם היום. מקרה שהועבר לעובד אחר נספר אצל הבעלים הנוכחי. זה מדד של שיוך מקרים לעובד, לא של עבודה: מקרים משויכים לבעלים גם אוטומטית, ועובד יכול להיות הבעלים של מקרה שלא נגע בו. העבודה עצמה נמדדת במשימות (מיילים, שיחות) ובמסך &quot;פעולות ביחידת זמן&quot;.
       </p>
       {!linked.length ? (
         <p className="text-sm text-muted">אף עובד לא מקושר למשתמש Salesforce</p>

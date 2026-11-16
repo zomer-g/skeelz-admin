@@ -7,8 +7,16 @@
 export const TIME_SOURCES = ["demo", "sheet", "api", "manual"] as const;
 export type TimeSource = (typeof TIME_SOURCES)[number];
 
-/** An action is credited with the minutes since the one before it, at most this many. */
+/**
+ * An action is credited with the minutes since the one before it (the first in a window: since the window
+ * opened) when that stretch is at most this long.
+ */
 export const ATTRIBUTION_CAP_MIN = 45;
+/**
+ * A longer stretch is a break, not work on the next action: the action gets this many minutes and the rest
+ * of the stretch stays unassigned (until 16.11.2026 it got the full cap, which credited idle time to it).
+ */
+export const BREAK_CREDIT_MIN = 15;
 /** The demo timesheet: a window opens this long before the first task and closes this long after the last. */
 export const DEMO_PAD_MIN = 15;
 /** The demo timesheet: a pause longer than this between two tasks splits the day into two windows. */
@@ -32,6 +40,8 @@ export interface TimeWindow {
 export interface WorkWindow extends TimeWindow {
   /** Some of it comes from the demo timesheet. */
   demo: boolean;
+  /** The sources of the rows merged into it (demo, sheet, api, manual). */
+  sources?: string[];
 }
 
 /* ------------------------------------------------------------------ demo */
@@ -84,10 +94,16 @@ export function preferReal<T extends Entry>(entries: readonly T[]): T[] {
 }
 
 /** One employee's windows, overlapping or touching ones merged, so no minute is counted twice. Sorted by start. */
-export function mergeWindows(windows: readonly (TimeWindow & { source?: string; demo?: boolean })[]): WorkWindow[] {
+export function mergeWindows(windows: readonly (TimeWindow & { source?: string; demo?: boolean; sources?: string[] })[]): WorkWindow[] {
   const sorted = windows
     .filter((w) => w.end.getTime() > w.start.getTime())
-    .map((w) => ({ workDate: w.workDate, start: w.start, end: w.end, demo: Boolean(w.demo) || w.source === "demo" }))
+    .map((w) => ({
+      workDate: w.workDate,
+      start: w.start,
+      end: w.end,
+      demo: Boolean(w.demo) || w.source === "demo",
+      sources: [...new Set([...(w.sources ?? []), ...(w.source ? [w.source] : [])])],
+    }))
     .sort((a, b) => a.start.getTime() - b.start.getTime());
   const out: WorkWindow[] = [];
   for (const w of sorted) {
@@ -95,9 +111,120 @@ export function mergeWindows(windows: readonly (TimeWindow & { source?: string; 
     if (cur && w.start.getTime() <= cur.end.getTime()) {
       if (w.end.getTime() > cur.end.getTime()) cur.end = w.end;
       cur.demo ||= w.demo;
+      cur.sources = [...new Set([...(cur.sources ?? []), ...w.sources])];
     } else out.push({ ...w });
   }
   return out;
+}
+
+/* ------------------------------------------------- fitting a reconstruction */
+
+const floorQ = (t: number) => Math.floor(t / QUARTER) * QUARTER;
+const ceilQ = (t: number) => Math.ceil(t / QUARTER) * QUARTER;
+
+/** Around an action a fitted timesheet keeps at least this much on each side, so the action is never at a cut edge. */
+export const FIT_KEEP_MIN = 15;
+/** An action outside every window joins a window of the same day that ends or starts within this many minutes; farther away it gets its own window. */
+export const FIT_JOIN_MIN = 60;
+
+export interface FitResult {
+  windows: TimeWindow[];
+  /** Actions that were outside every window before. */
+  covered: number;
+  /** Minutes added to cover them. */
+  addedMinutes: number;
+  /** Minutes taken out of breaks to keep the total; less than addedMinutes when there were not enough breaks. */
+  freedMinutes: number;
+  /** Windows cut in two at a break. */
+  splits: number;
+}
+
+/**
+ * Fits a reconstructed timesheet (no report was handed in) to the actions, keeping its total: every action
+ * ends up inside a window, and the time that takes comes out of breaks. Windows are quarter hours, in
+ * Israel time.
+ *
+ * 1. Cover: an action outside every window extends the nearest window of its day (within FIT_JOIN_MIN) to
+ *    the quarter hour that holds it with FIT_KEEP_MIN to spare, or opens a quarter-hour window of its own.
+ * 2. Free: the minutes added are taken back from the longest breaks inside windows that hold actions: a
+ *    stretch with no action longer than ATTRIBUTION_CAP_MIN, keeping FIT_KEEP_MIN after the action before it
+ *    and before the one after it. A break in the middle of a window splits it in two (a morning and an
+ *    afternoon, say); one at a window's edge shortens it. Windows with no action at all are left alone:
+ *    they rest on other activity (logins, edits) the tasks don't show.
+ *
+ * No action is ever cut out. When the breaks are not enough, the total grows by what is missing (freedMinutes
+ * < addedMinutes) rather than leaving an action outside.
+ */
+export function fitWindows(windows: readonly TimeWindow[], actions: readonly Date[]): FitResult {
+  const keep = FIT_KEEP_MIN * MIN;
+  const ws = mergeWindows(windows).map((w) => ({ workDate: w.workDate, start: w.start.getTime(), end: w.end.getTime() }));
+  const total = (list: { start: number; end: number }[]) => list.reduce((t, w) => t + (w.end - w.start), 0);
+  const before = total(ws);
+  const times = actions.map((a) => a.getTime()).filter((t) => !Number.isNaN(t)).sort((a, b) => a - b);
+  const inside = (t: number) => ws.some((w) => w.start <= t && t <= w.end);
+
+  // 1. Cover.
+  let covered = 0;
+  for (const t of times) {
+    if (inside(t)) continue;
+    covered += 1;
+    const day = israelDayOf(new Date(t));
+    const near = ws
+      .filter((w) => w.workDate === day)
+      .map((w) => ({ w, gap: t < w.start ? w.start - t : t - w.end }))
+      .filter((x) => x.gap <= FIT_JOIN_MIN * MIN)
+      .sort((a, b) => a.gap - b.gap)[0];
+    if (near) {
+      if (t < near.w.start) near.w.start = Math.min(near.w.start, floorQ(t - keep));
+      else near.w.end = Math.max(near.w.end, ceilQ(t + keep));
+    } else {
+      ws.push({ workDate: day, start: floorQ(t - keep), end: ceilQ(t + keep) });
+    }
+    const merged = mergeWindows(ws.map((w) => ({ workDate: w.workDate, start: new Date(w.start), end: new Date(w.end) })));
+    ws.splice(0, ws.length, ...merged.map((w) => ({ workDate: w.workDate, start: w.start.getTime(), end: w.end.getTime() })));
+  }
+  const added = total(ws) - before;
+
+  // 2. Free, longest breaks first.
+  type Cut = { w: (typeof ws)[number]; from: number; to: number; edge: "start" | "end" | "middle" };
+  const cuts: Cut[] = [];
+  for (const w of ws) {
+    const own = times.filter((t) => w.start <= t && t <= w.end);
+    if (!own.length) continue;
+    const add = (from: number, to: number, edge: Cut["edge"]) => {
+      if (to - from >= QUARTER) cuts.push({ w, from, to, edge });
+    };
+    if (own[0]! - w.start > ATTRIBUTION_CAP_MIN * MIN) add(w.start, floorQ(own[0]! - keep), "start");
+    for (let i = 1; i < own.length; i++) {
+      if (own[i]! - own[i - 1]! > ATTRIBUTION_CAP_MIN * MIN) add(ceilQ(own[i - 1]! + keep), floorQ(own[i]! - keep), "middle");
+    }
+    if (w.end - own[own.length - 1]! > ATTRIBUTION_CAP_MIN * MIN) add(ceilQ(own[own.length - 1]! + keep), w.end, "end");
+  }
+  cuts.sort((a, b) => b.to - b.from - (a.to - a.from) || a.from - b.from);
+  let need = added;
+  let splits = 0;
+  const holes: Cut[] = [];
+  for (const c of cuts) {
+    if (need <= 0) break;
+    const take = Math.min(c.to - c.from, ceilQ(need));
+    // A break in the middle is cut from its start (right after the action before it); an edge from the outside in.
+    if (c.edge === "end") holes.push({ ...c, from: c.to - take });
+    else holes.push({ ...c, to: c.from + take });
+    if (c.edge === "middle") splits += 1;
+    need -= take;
+  }
+  const out: TimeWindow[] = [];
+  for (const w of ws) {
+    const mine = holes.filter((h) => h.w === w).sort((a, b) => a.from - b.from);
+    let start = w.start;
+    for (const h of mine) {
+      if (h.from > start) out.push({ workDate: w.workDate, start: new Date(start), end: new Date(h.from) });
+      start = Math.max(start, h.to);
+    }
+    if (w.end > start) out.push({ workDate: w.workDate, start: new Date(start), end: new Date(w.end) });
+  }
+  out.sort((a, b) => a.start.getTime() - b.start.getTime());
+  return { windows: out, covered, addedMinutes: added / MIN, freedMinutes: (added - Math.max(0, need)) / MIN, splits };
 }
 
 export const windowMinutes = (w: TimeWindow) => (w.end.getTime() - w.start.getTime()) / MIN;
@@ -127,16 +254,21 @@ export function actionKind(subtype: string | null, type: string | null): ActionK
 }
 
 /**
- * Subjects seen on real tasks (Sept–Oct 2026; Salesforce prefixes emails with "דואר אלקטרוני: "):
- * - asking for a CV: the template "קיבלנו את מועמדותך למשרת …" (and the candidate's replies to it,
- *   "RE: קיבלנו את מועמדותך…"), or any subject that says "קורות חיים";
- * - with the employer: "SKEELZ | מועמד/ת למשרת … – <name>" (sending a candidate), "הגשה למשרה: …"
- *   (and its RE: thread), "עדכון סטטוס: מועמדים למשרת …";
+ * Subjects seen on real tasks (Sept–Oct 2026; Salesforce prefixes emails with "דואר אלקטרוני: "), every
+ * employee's templates (שרית's and אסתי's differ):
+ * - asking for a CV: the templates "קיבלנו את מועמדותך למשרת …" and "קיבלתי את בקשתך להגיש מועמדות…"
+ *   (and replies to them), or a subject that asks to send one ("בבקשה שלחי קורות חיים", "שלחי בבקשה קורות
+ *   חיים", "קורות חיים עדכניים"). Checked first;
+ * - with the employer: "SKEELZ | מועמד/ת למשרת … – <name>" and "הגשה למשרה: …" / "הגשת מועמדות למשרה: …"
+ *   (sending a candidate, and their threads), "עדכון סטטוס: מועמדים למשרת …", and a CV sent on
+ *   ("… קורות חיים של <name>");
+ * - any other subject that says "קורות חיים" is a CV request;
  * - everything else on a submission is with the candidate: calls ("שיחה"), "עידכון מסקילז",
  *   "בהמשך לשיחתנו", replies.
  */
-const CV_REQUEST = /קיבלנו את מועמדותך|קורות\s*חיים/;
-const TO_EMPLOYER = /SKEELZ\s*\|\s*מועמד|הגשה למשרה|עדכון סטטוס:\s*מועמדים/i;
+const CV_ASK = /קיבלנו את מועמדותך|קיבלתי את בקשתך|שלח\S*\s+(?:\S+\s+){0,2}קורות\s*חיים|קורות\s*חיים\s+עדכני/;
+const TO_EMPLOYER = /SKEELZ\s*\|\s*מועמד|הגש(?:ה|ת\s+מועמדות)\s+למשר|עדכון סטטוס:\s*מועמדים|קורות\s*חיים\s+של\s/i;
+const CV_ANY = /קורות\s*חיים/;
 
 /**
  * What an action was for, by the type of Case it sits on and its subject. Every action on a
@@ -147,8 +279,9 @@ export function actionCategory(caseType: string | null, subject: string | null):
   if (caseType === CV_CASE_TYPE) return "cv_request";
   if (caseType !== SUBMISSION_TYPE) return "other";
   const s = subject ?? "";
-  if (CV_REQUEST.test(s)) return "cv_request";
+  if (CV_ASK.test(s)) return "cv_request";
   if (TO_EMPLOYER.test(s)) return "employer";
+  if (CV_ANY.test(s)) return "cv_request";
   return "candidate";
 }
 
@@ -163,6 +296,8 @@ export interface Action {
   positionId: string | null;
   /** The Account (an employer) the task sits on, when it is on an Account rather than a Case. */
   accountId?: string | null;
+  /** The Case's number, for the detailed timesheet (never the subject: it names candidates). */
+  caseNumber?: string | null;
 }
 
 /** Where an action sits, for the time per record type: a Case's RecordType DeveloperName, or one of these. */
@@ -181,6 +316,8 @@ export interface AttributedAction extends Action {
   window: number | null;
   /** Minutes credited to it; 0 outside every window. */
   minutes: number;
+  /** It came after a break (a stretch longer than the cap) and got BREAK_CREDIT_MIN only. */
+  afterBreak: boolean;
 }
 
 export interface WindowResult extends WorkWindow {
@@ -193,11 +330,17 @@ export interface WindowResult extends WorkWindow {
 
 /**
  * The attribution model. Within each window the actions are sorted; each gets the minutes since
- * the previous action (the first: since the window opened), at most ATTRIBUTION_CAP_MIN. What is
- * left of the window is unassigned. An action outside every window gets no time. `windows` are one
- * employee's, merged (mergeWindows).
+ * the previous action (the first: since the window opened) when that stretch is at most
+ * ATTRIBUTION_CAP_MIN. A longer stretch is a break: the action gets BREAK_CREDIT_MIN and the rest stays
+ * unassigned. What is left of the window is unassigned. An action outside every window gets no time.
+ * `windows` are one employee's, merged (mergeWindows).
  */
-export function attribute(windows: readonly WorkWindow[], actions: readonly Action[], cap = ATTRIBUTION_CAP_MIN): { actions: AttributedAction[]; windows: WindowResult[] } {
+export function attribute(
+  windows: readonly WorkWindow[],
+  actions: readonly Action[],
+  cap = ATTRIBUTION_CAP_MIN,
+  breakCredit = BREAK_CREDIT_MIN,
+): { actions: AttributedAction[]; windows: WindowResult[] } {
   const ws = [...windows].sort((a, b) => a.start.getTime() - b.start.getTime());
   const results: WindowResult[] = ws.map((w) => ({ ...w, minutes: windowMinutes(w), actions: 0, attributed: 0, unassigned: windowMinutes(w) }));
   const prev = ws.map((w) => w.start.getTime());
@@ -206,16 +349,18 @@ export function attribute(windows: readonly WorkWindow[], actions: readonly Acti
     const t = a.at.getTime();
     const i = ws.findIndex((w) => w.start.getTime() <= t && t <= w.end.getTime());
     if (i < 0) {
-      out.push({ ...a, window: null, minutes: 0 });
+      out.push({ ...a, window: null, minutes: 0, afterBreak: false });
       continue;
     }
-    const minutes = Math.min(cap, Math.max(0, (t - prev[i]!) / MIN));
+    const gap = Math.max(0, (t - prev[i]!) / MIN);
+    const afterBreak = gap > cap;
+    const minutes = afterBreak ? Math.min(breakCredit, cap) : gap;
     prev[i] = t;
     const r = results[i]!;
     r.actions += 1;
     r.attributed += minutes;
     r.unassigned = r.minutes - r.attributed;
-    out.push({ ...a, window: i, minutes });
+    out.push({ ...a, window: i, minutes, afterBreak });
   }
   return { actions: out, windows: results };
 }
@@ -274,11 +419,16 @@ export interface WindowsSummary {
   /** Time by record type of what the action sits on (every Case RecordType, Accounts, nothing), most minutes first. */
   targets: TargetTime[];
   windows: WindowResult[];
+  /** Every action with its window and minutes, oldest first: the detailed timesheet. */
+  actions: AttributedAction[];
+  /** Actions in a window that came after a break and got BREAK_CREDIT_MIN only. */
+  afterBreak: number;
 }
 
 /** Everything the dashboard shows for one employee, from their merged windows and their actions in the range. */
 export function summarizeWindows(windows: readonly WorkWindow[], actions: readonly Action[], cap = ATTRIBUTION_CAP_MIN): WindowsSummary {
   const r = attribute(windows, actions, cap);
+  let afterBreak = 0;
   const inWindow = zeroKinds();
   const outside = zeroKinds();
   const minutesByKind = zeroKinds();
@@ -293,6 +443,7 @@ export function summarizeWindows(windows: readonly WorkWindow[], actions: readon
     bucket.total += 1;
     bucket[a.kind] += 1;
     if (a.window == null) continue;
+    if (a.afterBreak) afterBreak += 1;
     minutesByKind.total += a.minutes;
     minutesByKind[a.kind] += a.minutes;
     categories[a.category].actions += 1;
@@ -343,6 +494,8 @@ export function summarizeWindows(windows: readonly WorkWindow[], actions: readon
       .map(([key, t]) => ({ key, minutes: t.minutes, actions: t.actions, records: t.records.size, avgPerRecord: avg(t.minutes, t.records.size) }))
       .sort((a, b) => b.minutes - a.minutes || b.actions - a.actions),
     windows: r.windows,
+    actions: r.actions,
+    afterBreak,
   };
 }
 

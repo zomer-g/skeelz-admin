@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/lib/audit";
 import { requireStaffManager } from "@/lib/auth/session";
-import { deleteTimeEntries, importTimesheet, loadDemoTimesheet } from "@/lib/staff/timesheet";
+import { parseDashboardParams } from "@/lib/dashboard/params";
+import { deleteTimeEntries, fitReconstructedTimesheet, importTimesheet, loadDemoTimesheet } from "@/lib/staff/timesheet";
 
 // Timesheets (docs/staff.md): every action checks for a staff manager itself, whatever the page showed.
 // The audit entries say who did what and how many rows, never the hours.
@@ -55,5 +56,38 @@ export async function importSheet(_prev: TimesheetActionState, form: FormData): 
     ok: !r.errors.length,
     message: `נשמרו ${r.rows} חלונות של ${r.people} עובדים ב-${r.days} ימים${r.errors.length ? `. ${r.errors.length} שורות לא נקלטו` : ""}`,
     errors,
+  };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Fits one employee's reconstructed timesheet in the shown range to their Salesforce actions (docs/staff.md,
+ * "התאמת שחזור לפעולות"): every action inside a window, the month's total kept from breaks. Only a reconstruction is rewritten.
+ */
+export async function fitTimesheet(_prev: TimesheetActionState, form: FormData): Promise<TimesheetActionState> {
+  const manager = await requireStaffManager();
+  const userId = String(form.get("userId") ?? "");
+  if (!UUID.test(userId)) return { ok: false, message: "עובד לא תקין" };
+  const p = parseDashboardParams({ range: "custom", from: String(form.get("from") ?? ""), to: String(form.get("to") ?? "") });
+  const r = await fitReconstructedTimesheet(userId, p.fromDay, p.toDay, p.from, p.to);
+  if (!r) return { ok: true, message: "כל הפעולות כבר בתוך חלונות העבודה, אין מה להתאים" };
+  if ("error" in r) return { ok: false, message: r.error };
+  await writeAudit(manager.email, "staff.timesheet_fitted", userId, {
+    from: p.fromDay,
+    to: p.toDay,
+    covered: r.covered,
+    splits: r.splits,
+    windowsBefore: r.windowsBefore,
+    windowsAfter: r.windowsAfter,
+  });
+  revalidatePath("/staff/windows");
+  revalidatePath("/staff");
+  const short = r.addedMinutes - r.freedMinutes;
+  return {
+    ok: true,
+    message: `הדוח של ${r.name} הותאם: ${r.covered} פעולות נכנסו לשעות העבודה, ${r.splits} חלונות פוצלו (${r.windowsBefore} חלונות לפני, ${r.windowsAfter} אחרי). ${
+      short > 0 ? `לא היו מספיק הפסקות, ולכן סך השעות גדל ב-${short} דקות.` : "סך השעות לא השתנה."
+    }`,
   };
 }
