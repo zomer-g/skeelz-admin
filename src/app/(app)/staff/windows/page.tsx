@@ -37,6 +37,8 @@ const fmtRate = (n: number | null | undefined) => (n == null ? "—" : one.forma
 const TIME = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as ActionCategory[];
 
+const RATE = "זמן ממוצע לפעולה = סך שעות העבודה בדוח השעות (בדקות) חלקי כל הפעולות של העובד בטווח, גם אלה שמחוץ לחלונות. פעולות לשעה = אותן פעולות חלקי אותן שעות, ולכן 60 חלקי פעולות לשעה = זמן ממוצע לפעולה. בסיכום הכללי נספרים רק עובדים שיש להם דוח שעות.";
+const ATTRIBUTED = "לפי מודל השיוך (רק זמן משויך)";
 const MODEL = `דוח השעות נותן חלונות עבודה (תאריך, משעה עד שעה; כמה חלונות ביום אפשר). פעולה (משימת Salesforce של העובד) נספרת בחלון כשזמן היצירה שלה בתוכו. בכל חלון הפעולות ממוינות לפי הזמן, וכל פעולה מקבלת את הדקות שעברו מהפעולה שלפניה (הראשונה: מתחילת החלון), אם עברו עד ${ATTRIBUTION_CAP_MIN} דקות. פער ארוך יותר הוא הפסקה: הפעולה מקבלת ${BREAK_CREDIT_MIN} דקות והשאר נשאר "לא משויך". פעולה מחוץ לכל חלון לא מקבלת זמן ונספרת בנפרד.`;
 const PURPOSE = `לפי סוג המקרה והנושא. כל פעולה על מקרה "קורות חיים" היא בקשת קורות חיים. על הגשה (הגשות קמביום): נושא שמבקש קורות חיים ("קיבלנו את מועמדותך", "קיבלתי את בקשתך", "שלחי קורות חיים", "קורות חיים עדכניים") הוא בקשת קורות חיים; "SKEELZ | מועמד/ת למשרת", "הגשה למשרה", "הגשת מועמדות למשרה", "עדכון סטטוס: מועמדים" או "קורות חיים של…" הם מול המעסיק; נושא אחר שמופיע בו "קורות חיים" הוא בקשת קורות חיים; כל השאר (שיחות, עדכונים, תשובות) מול המועמד. פעולות על מקרים מסוג אחר הן "אחרות". תיקון וראיון = מול המועמד + מול המעסיק.`;
 const SUBMISSION = "כל הדקות ששויכו לפעולות על מקרי הגשה (הגשות קמביום), חלקי מספר ההגשות השונות שנגעו בהן בתוך חלונות העבודה.";
@@ -62,6 +64,8 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
   const withHours = data.employees.filter((e) => e.summary.hours > 0);
   const shown = data.employees.filter((e) => e.summary.hours > 0 || e.summary.outside.total > 0);
   const total = totals(shown);
+  // The overall rate: hours and every action of the employees who have a timesheet only.
+  const timed = withHours.reduce((t, e) => ({ hours: t.hours + e.summary.hours, actions: t.actions + e.summary.inWindow.total + e.summary.outside.total }), { hours: 0, actions: 0 });
   const who = (e: EmployeeWindows) => e.name;
   const bars = (list: EmployeeWindows[], value: (e: EmployeeWindows) => number, display?: (e: EmployeeWindows) => string): BarItem[] =>
     list.map((e) => ({ label: who(e), value: value(e), display: display?.(e) })).sort((a, b) => b.value - a.value);
@@ -126,8 +130,13 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <StatCard label="שעות עבודה" value={fmtHours(total.hours)} hint={`${fmtCount(withHours.length)} עובדים עם דוח שעות`} info="סכום אורכי חלונות העבודה בדוח השעות, בימים שבטווח. חלונות חופפים של אותו עובד נספרים פעם אחת." />
               <StatCard label="פעולות בתוך שעות העבודה" value={fmtCount(total.inWindow)} hint={`ועוד ${fmtCount(total.outside)} מחוץ לשעות`} info={MODEL} />
-              <StatCard label="זמן ממוצע לפעולה" value={fmtMin(total.inWindow ? total.attributedMinutes / total.inWindow : null)} info={MODEL} />
-              <StatCard label="זמן ממוצע להגשה" value={fmtMin(total.submissions ? total.submissionMinutes / total.submissions : null)} hint={`${fmtCount(total.submissions)} הגשות`} info={`זמן ממוצע להגשה: ${SUBMISSION}`} />
+              <StatCard
+                label="זמן ממוצע לפעולה"
+                value={fmtMin(timed.actions && timed.hours ? (timed.hours * 60) / timed.actions : null)}
+                hint={timed.hours ? `${fmtRate(timed.actions / timed.hours)} פעולות לשעה` : undefined}
+                info={RATE}
+              />
+              <StatCard label="זמן ממוצע להגשה" value={fmtMin(total.submissions ? total.submissionMinutes / total.submissions : null)} hint={`${fmtCount(total.submissions)} הגשות · ${ATTRIBUTED}`} info={`זמן ממוצע להגשה, ${ATTRIBUTED}: ${SUBMISSION}`} />
               <StatCard
                 label="שעות שויכו לפעולות"
                 value={fmtHours(total.attributedMinutes / 60)}
@@ -151,12 +160,12 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
                   <Bars title="שעות עבודה" items={bars(withHours, (e) => e.summary.hours, (e) => fmtHours(e.summary.hours))} />
                   <Bars title="פעולות בתוך שעות העבודה" items={bars(shown, (e) => e.summary.inWindow.total)} />
                   <Bars title="פעולות לשעה" items={bars(withHours, (e) => e.summary.perHour?.total ?? 0, (e) => fmtRate(e.summary.perHour?.total))} />
-                  <Bars title="זמן ממוצע לפעולה (דקות)" items={bars(withHours, (e) => e.summary.avgMinutes.total ?? 0, (e) => fmtMin(e.summary.avgMinutes.total))} />
+                  <Bars title="זמן ממוצע לפעולה (דקות)" items={bars(withHours, (e) => e.summary.minutesPerAction ?? 0, (e) => fmtMin(e.summary.minutesPerAction))} />
                 </div>
                 <div className="mt-8">
                   <Table
                     caption="שעות ופעולות לפי עובד"
-                    head={["עובד", "שעות", "פעולות בשעות", "מיילים", "שיחות", "אחרות", "מחוץ לשעות", "לשעה", "דק׳ לפעולה", "דק׳ למייל", "דק׳ לשיחה", "הגשות", "דק׳ להגשה"]}
+                    head={["עובד", "שעות", "פעולות בשעות", "מיילים", "שיחות", "אחרות", "מחוץ לשעות", "לשעה", "דק׳ לפעולה", "דק׳ למייל*", "דק׳ לשיחה*", "הגשות", "דק׳ להגשה*"]}
                   >
                     {shown.map((e) => {
                       const s = e.summary;
@@ -186,7 +195,7 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
                           <td className="px-3 py-2 tabular-nums">{fmtCount(s.inWindow.task)}</td>
                           <td className="px-3 py-2 tabular-nums">{fmtCount(s.outside.total)}</td>
                           <td className="px-3 py-2 tabular-nums">{fmtRate(s.perHour?.total)}</td>
-                          <td className="px-3 py-2 tabular-nums">{fmtMin(s.avgMinutes.total)}</td>
+                          <td className="px-3 py-2 tabular-nums">{fmtMin(s.minutesPerAction)}</td>
                           <td className="px-3 py-2 tabular-nums">{fmtMin(s.avgMinutes.email)}</td>
                           <td className="px-3 py-2 tabular-nums">{fmtMin(s.avgMinutes.call)}</td>
                           <td className="px-3 py-2 tabular-nums">{fmtCount(s.submissions)}</td>
@@ -195,17 +204,20 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
                       );
                     })}
                   </Table>
+                  <p className="mt-2 text-xs text-muted">
+                    דק׳ לפעולה = שעות חלקי כל הפעולות (בשעות ומחוצה להן), ההופכי של &quot;לשעה&quot;. * {ATTRIBUTED}: הדקות ששויכו לפעולות מהסוג חלקי מספרן, ולכן אינן מתחברות לדק׳ לפעולה.
+                  </p>
                 </div>
               </>
             )}
           </Card>
 
           <Card title="צפי לפי הקצב בטווח">
-            <p className="mb-4 text-sm text-muted">כמה פעולות צפויות בעוד מספר שעות עבודה, לפי הפעולות לשעה של כל עובד בטווח (פעולות בתוך חלונות העבודה חלקי שעות העבודה).</p>
+            <p className="mb-4 text-sm text-muted">כמה פעולות צפויות בעוד מספר שעות עבודה, לפי הפעולות לשעה של כל עובד בטווח (כל הפעולות בטווח חלקי שעות העבודה).</p>
             <ExpectedRates rows={withHours.map((e) => ({ id: e.id, name: e.name, perHour: e.summary.perHour ?? { total: 0, email: 0, call: 0, task: 0 } }))} />
           </Card>
 
-          <Card title="לאן הלך הזמן">
+          <Card title={`לאן הלך הזמן, ${ATTRIBUTED}`}>
             <p className="mb-6 text-sm text-muted">לאן הלך הזמן, {PURPOSE}</p>
             {!withHours.length ? (
               <p className="text-sm text-muted">אין לאף עובד שעות בטווח.</p>
@@ -361,8 +373,11 @@ function Methodology() {
           <li>
             <h3 className="mb-1 text-base font-bold">המדדים</h3>
             <ul className="flex list-disc flex-col gap-1 ps-5">
-              <li>פעולות לשעה = פעולות בתוך החלונות חלקי שעות העבודה. הצפי &quot;בעוד N שעות&quot; הוא אותו קצב כפול N.</li>
-              <li>זמן ממוצע לפעולה = הדקות ששויכו חלקי מספר הפעולות בתוך החלונות, בסך הכול ולפי סוג (מייל, שיחה).</li>
+              <li>זמן ממוצע לפעולה = סך שעות העבודה בדוח השעות (בדקות) חלקי כל הפעולות של העובד בטווח, גם אלה שמחוץ לחלונות. אין בו שיוך: מי שרואה את השעות ואת מספר הפעולות יכול לחשב אותו בעצמו.</li>
+              <li>פעולות לשעה = אותן פעולות חלקי אותן שעות. שני המדדים הופכיים זה לזה: 60 חלקי פעולות לשעה = זמן ממוצע לפעולה. הצפי &quot;בעוד N שעות&quot; הוא אותו קצב כפול N. בסיכום הכללי נספרים רק השעות והפעולות של עובדים שיש להם דוח שעות.</li>
+              <li>
+                המדדים לפי סוג ({ATTRIBUTED}): דק׳ למייל, דק׳ לשיחה, דק׳ להגשה, זמן לפי סוג מקרה, לפי משרה ו&quot;לאן הלך הזמן&quot;. אין להם חלוקה פשוטה, ולכן הם נשענים על הדקות ששויכו לפעולות (סעיף 4). סכומם קטן מסך השעות, וההפרש הוא הזמן הלא משויך, לכן אין להשוות אותם ישירות לזמן ממוצע לפעולה.
+              </li>
               <li>זמן ממוצע להגשה = {SUBMISSION}</li>
               <li>זמן לפי סוג מקרה: {BY_TYPE}</li>
               <li>זמן לפי משרה = הזמן של פעולות על הגשות, לפי המשרה שההגשה שייכת לה.</li>
@@ -521,7 +536,7 @@ function CaseTypes({ employees, recordTypes }: { employees: EmployeeWindows[]; r
     </tr>
   );
   return (
-    <Card title="זמן לפי סוג מקרה">
+    <Card title={`זמן לפי סוג מקרה, ${ATTRIBUTED}`}>
       <p className="mb-6 text-sm text-muted">זמן לפי סוג מקרה: {BY_TYPE} סוג בלי פעולות בטווח מוצג באפור.</p>
       {!used.length ? (
         <p className="text-sm text-muted">אין פעולות בתוך שעות העבודה בטווח.</p>
@@ -571,7 +586,7 @@ function Positions({ employees, positions }: { employees: EmployeeWindows[]; pos
   const top = [...byJob.values()].sort((a, b) => b.minutes - a.minutes).slice(0, 15);
   const title = (id: string | null) => (id ? (positions.get(id)?.title ?? positions.get(id)?.caseNumber ?? "משרה") : "בלי משרה");
   return (
-    <Card title="זמן לפי משרה">
+    <Card title={`זמן לפי משרה, ${ATTRIBUTED}`}>
       <p className="mb-6 text-sm text-muted">
         הזמן ששויך לפעולות על הגשות (הגשות קמביום), לפי המשרה שההגשה שייכת לה (ParentId), כל העובדים יחד. 15 המשרות שלקחו הכי הרבה זמן. הגשה שטופלה בידי שני עובדים נספרת אצל כל אחד מהם.
       </p>

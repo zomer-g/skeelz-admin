@@ -412,9 +412,11 @@ export interface WindowsSummary {
   outside: KindCounts;
   /** Minutes credited, by kind. */
   minutesByKind: KindCounts;
-  /** Actions in windows per hour worked; null without hours. */
+  /** Every action in the range (inside and outside the windows) per hour worked; null without hours. 60 / perHour.total = minutesPerAction. */
   perHour: KindCounts | null;
-  /** Average minutes credited per action in a window; null where there are none. */
+  /** Timesheet minutes / every action in the range (inside and outside the windows); null without hours or without actions. */
+  minutesPerAction: number | null;
+  /** Attribution model only: minutes credited per action in a window, by kind; null where there are none. Sums to less than the hours (the rest is unassigned). */
   avgMinutes: Record<keyof KindCounts, number | null>;
   /** Distinct submissions (RecordType2) touched in a window, and the minutes on them. */
   submissions: number;
@@ -476,6 +478,7 @@ export function summarizeWindows(windows: readonly WorkWindow[], actions: readon
   const totalMinutes = r.windows.reduce((t, w) => t + w.minutes, 0);
   const hours = totalMinutes / 60;
   const avg = (minutes: number, n: number) => (n ? minutes / n : null);
+  const all: KindCounts = { total: inWindow.total + outside.total, email: inWindow.email + outside.email, call: inWindow.call + outside.call, task: inWindow.task + outside.task };
   return {
     hours,
     attributedHours: minutesByKind.total / 60,
@@ -483,7 +486,8 @@ export function summarizeWindows(windows: readonly WorkWindow[], actions: readon
     inWindow,
     outside,
     minutesByKind,
-    perHour: hours > 0 ? { total: inWindow.total / hours, email: inWindow.email / hours, call: inWindow.call / hours, task: inWindow.task / hours } : null,
+    perHour: hours > 0 ? { total: all.total / hours, email: all.email / hours, call: all.call / hours, task: all.task / hours } : null,
+    minutesPerAction: hours > 0 && all.total > 0 ? totalMinutes / all.total : null,
     avgMinutes: {
       total: avg(minutesByKind.total, inWindow.total),
       email: avg(minutesByKind.email, inWindow.email),
