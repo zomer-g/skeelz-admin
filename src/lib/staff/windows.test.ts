@@ -217,6 +217,13 @@ describe("fitWindows", () => {
     assert.equal(r.splits, 1);
   });
 
+  it("never invents a timesheet for a day that has none (a range reaching into a month with no report)", () => {
+    const w = [win("2026-10-29", "09:00", "10:00")];
+    const r = fitWindows(w, [at("2026-10-29", "09:30"), at("2026-11-02", "10:00"), at("2026-11-03", "12:00")]);
+    assert.deepEqual(r.windows.map((x) => [x.workDate, hm(x.start), hm(x.end)]), [["2026-10-29", "09:00", "10:00"]]);
+    assert.deepEqual([r.covered, r.addedMinutes], [0, 0]);
+  });
+
   it("an action far from every window gets a window of its own; nothing to free leaves the total larger, never an action outside", () => {
     const w = [win("2026-10-20", "09:00", "09:30")];
     const times = [at("2026-10-20", "09:10"), at("2026-10-20", "16:40")];
