@@ -1,17 +1,30 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Explained } from "@/components/Explained";
 import { BarList, type BarItem } from "@/components/dashboard/BarList";
 import { DashboardShell } from "@/components/dashboard/DashboardShell";
 import { Badge, Card, PageHeader, StatCard, Table } from "@/components/ui";
 import { pageAuthStaff } from "@/lib/auth/guard";
 import { parseDashboardParams, viewPath } from "@/lib/dashboard/params";
+import { casePath } from "@/lib/entities/emails";
 import { loadWindowsDashboard, type EmployeeWindows } from "@/lib/staff/timesheet";
-import { ATTRIBUTION_CAP_MIN, CATEGORY_LABELS, DEMO_PAD_MIN, DEMO_SPLIT_GAP_MIN, ON_ACCOUNT, ON_NOTHING, type ActionCategory, type TargetTime } from "@/lib/staff/windows";
+import {
+  ATTRIBUTION_CAP_MIN,
+  BREAK_CREDIT_MIN,
+  CATEGORY_LABELS,
+  DEMO_PAD_MIN,
+  DEMO_SPLIT_GAP_MIN,
+  FIT_JOIN_MIN,
+  FIT_KEEP_MIN,
+  ON_ACCOUNT,
+  ON_NOTHING,
+  type ActionCategory,
+  type TargetTime,
+  type WindowResult,
+} from "@/lib/staff/windows";
 import { dayLabel, fmtCount, fmtHours } from "../format";
 import { StaffNav } from "../StaffNav";
 import { ExpectedRates } from "./ExpectedRates";
-import { DemoButtons, SheetImport } from "./TimesheetTools";
+import { DemoButtons, FitButton, SheetImport } from "./TimesheetTools";
 
 export const metadata: Metadata = { title: "פעולות ביחידת זמן" };
 export const dynamic = "force-dynamic";
@@ -24,10 +37,13 @@ const fmtRate = (n: number | null | undefined) => (n == null ? "—" : one.forma
 const TIME = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
 const CATEGORIES = Object.keys(CATEGORY_LABELS) as ActionCategory[];
 
-const MODEL = `מודל השיוך: דוח השעות נותן חלונות עבודה (מתאריך-שעה עד שעה). פעולה (משימת Salesforce שהעובד יצר) נספרת בחלון כשזמן היצירה שלה בתוכו. בתוך כל חלון הפעולות ממוינות לפי הזמן, וכל פעולה מקבלת את הדקות שעברו מהפעולה שלפניה (הראשונה: מתחילת החלון), עד ${ATTRIBUTION_CAP_MIN} דקות לכל היותר. מה שנשאר מהחלון הוא "לא משויך". פעולה מחוץ לכל חלון לא מקבלת זמן ונספרת בנפרד.`;
-const PURPOSE = `לאן הלך הזמן: פעולה על מקרה "קורות חיים" (cv_message), או על הגשה (הגשות קמביום, RecordType2) שהנושא שלה הוא תבנית "קיבלנו את מועמדותך" או שמופיע בו "קורות חיים", היא בקשת קורות חיים. על הגשה, נושא "SKEELZ | מועמד/ת למשרת", "הגשה למשרה" או "עדכון סטטוס: מועמדים" הוא מול המעסיק, וכל השאר (שיחות, עדכונים, תשובות) מול המועמד. פעולות על מקרים אחרים הן "אחרות". תיקון וראיון = מול המועמד + מול המעסיק.`;
-const SUBMISSION = "זמן ממוצע להגשה: כל הדקות ששויכו לפעולות על מקרי הגשה (הגשות קמביום), חלקי מספר ההגשות השונות שנגעו בהן בתוך חלונות העבודה.";
-const BY_TYPE = `זמן לפי סוג מקרה: כל פעולה נספרת לפי סוג הרשומה (Record Type) של המקרה שהיא רשומה עליו — הגשות, קול יכול, פניות WEHAVE, קורות חיים, משרות, השמות וכל סוג אחר — או "חשבון (מעסיק)" כשהיא על חשבון, או "בלי מקרה". זמן ממוצע למקרה = הדקות ששויכו לפעולות על מקרים מהסוג, חלקי מספר המקרים השונים מהסוג שנגעו בהם בתוך חלונות העבודה (כמו הזמן להגשה). מקרה שטופל בידי שני עובדים נספר אצל כל אחד מהם.`;
+const MODEL = `דוח השעות נותן חלונות עבודה (תאריך, משעה עד שעה; כמה חלונות ביום אפשר). פעולה (משימת Salesforce של העובד) נספרת בחלון כשזמן היצירה שלה בתוכו. בכל חלון הפעולות ממוינות לפי הזמן, וכל פעולה מקבלת את הדקות שעברו מהפעולה שלפניה (הראשונה: מתחילת החלון), אם עברו עד ${ATTRIBUTION_CAP_MIN} דקות. פער ארוך יותר הוא הפסקה: הפעולה מקבלת ${BREAK_CREDIT_MIN} דקות והשאר נשאר "לא משויך". פעולה מחוץ לכל חלון לא מקבלת זמן ונספרת בנפרד.`;
+const PURPOSE = `לפי סוג המקרה והנושא. כל פעולה על מקרה "קורות חיים" היא בקשת קורות חיים. על הגשה (הגשות קמביום): נושא שמבקש קורות חיים ("קיבלנו את מועמדותך", "קיבלתי את בקשתך", "שלחי קורות חיים", "קורות חיים עדכניים") הוא בקשת קורות חיים; "SKEELZ | מועמד/ת למשרת", "הגשה למשרה", "הגשת מועמדות למשרה", "עדכון סטטוס: מועמדים" או "קורות חיים של…" הם מול המעסיק; נושא אחר שמופיע בו "קורות חיים" הוא בקשת קורות חיים; כל השאר (שיחות, עדכונים, תשובות) מול המועמד. פעולות על מקרים מסוג אחר הן "אחרות". תיקון וראיון = מול המועמד + מול המעסיק.`;
+const SUBMISSION = "כל הדקות ששויכו לפעולות על מקרי הגשה (הגשות קמביום), חלקי מספר ההגשות השונות שנגעו בהן בתוך חלונות העבודה.";
+const BY_TYPE = `כל פעולה נספרת לפי סוג הרשומה (Record Type) של המקרה שהיא רשומה עליו, או "חשבון (מעסיק)" כשהיא על חשבון, או "בלי מקרה". זמן ממוצע למקרה = הדקות ששויכו לפעולות על מקרים מהסוג, חלקי מספר המקרים השונים מהסוג שנגעו בהם בתוך חלונות העבודה. מקרה שטופל בידי שני עובדים נספר אצל כל אחד מהם.`;
+const SOURCE_LABEL: Record<string, string> = { sheet: "דוח שהוגש", api: "מערכת שעות", manual: "הזנה ידנית", demo: "דמו" };
+const KIND_LABEL = { email: "מייל", call: "שיחה", task: "משימה" } as const;
+const DAY_TIME = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", weekday: "short", day: "numeric", month: "numeric" });
 const DEMO_TEXT = `דוח שעות דמו, לא אמיתי: לכל יום שבו לעובדת יש משימות ב-Salesforce, חלון מ-${DEMO_PAD_MIN} דקות לפני המשימה הראשונה (מעוגל לרבע שעה למטה) עד ${DEMO_PAD_MIN} דקות אחרי האחרונה (מעוגל למעלה), ושני חלונות כשיש הפסקה של יותר מ-${DEMO_SPLIT_GAP_MIN / 60} שעות בין משימות.`;
 
 /**
@@ -37,10 +53,11 @@ const DEMO_TEXT = `דוח שעות דמו, לא אמיתי: לכל יום שבו
  */
 export default async function StaffWindowsPage({ searchParams }: { searchParams: Promise<Search> }) {
   const search = await searchParams;
-  const auth = await pageAuthStaff(viewPath("/staff/windows", search, ["range", "from", "to"]));
+  const auth = await pageAuthStaff(viewPath("/staff/windows", search, ["range", "from", "to", "who"]));
   if (!auth.ok) return auth.render;
 
   const p = parseDashboardParams(search, new Date(), "30d");
+  const openWho = typeof search.who === "string" ? search.who : null;
   const data = await loadWindowsDashboard(p.fromDay, p.toDay, p.from, p.to);
   const withHours = data.employees.filter((e) => e.summary.hours > 0);
   const shown = data.employees.filter((e) => e.summary.hours > 0 || e.summary.outside.total > 0);
@@ -74,6 +91,34 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
             </div>
           ) : null}
 
+          {data.employees.some((e) => e.fit) ? (
+            <Card title="פעולות מחוץ לשעות בדוח משוחזר">
+              <p className="mb-4 text-sm text-muted">
+                בדוח משוחזר כל פעולה אמורה להיות בתוך שעות העבודה, כי הדוח נבנה מהפעילות עצמה. ההתאמה מכניסה כל פעולה שנשארה בחוץ לחלון, ומשלמת על הזמן הזה מההפסקות הארוכות ביותר, כך שסך
+                השעות של הטווח נשמר. כשההפסקה באמצע חלון, החלון מתפצל לשניים (למשל בוקר ואחר הצהריים). ההתאמה משנה רק דוח משוחזר, אף פעם דוח שהוגש. פירוט בסעיף 2 של המתודולוגיה.
+              </p>
+              <div className="flex flex-col gap-6">
+                {data.employees
+                  .filter((e) => e.fit)
+                  .map((e) => {
+                    const f = e.fit!;
+                    const short = f.addedMinutes - f.freedMinutes;
+                    return (
+                      <div key={e.id} className="flex flex-col gap-2">
+                        <h3 className="font-bold">{e.name}</h3>
+                        <p className="text-sm">
+                          {fmtCount(f.covered)} פעולות מחוץ לשעות. ההתאמה תוסיף {fmtCount(f.addedMinutes)} דקות כדי לכסות אותן ותחזיר {fmtCount(f.freedMinutes)} דקות מהפסקות, תפצל{" "}
+                          {fmtCount(f.splits)} חלונות ({fmtCount(f.windowsBefore)} חלונות לפני, {fmtCount(f.windowsAfter)} אחרי).{" "}
+                          {short > 0 ? `אין מספיק הפסקות, ולכן סך השעות יגדל ב-${fmtCount(short)} דקות.` : "סך השעות לא ישתנה."}
+                        </p>
+                        <FitButton userId={e.id} name={e.name} from={p.fromDay} to={p.toDay} />
+                      </div>
+                    );
+                  })}
+              </div>
+            </Card>
+          ) : null}
+
           <section aria-labelledby="totals" className="flex flex-col gap-4">
             <h2 id="totals" className="sr-only">
               סיכום הטווח
@@ -82,25 +127,20 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
               <StatCard label="שעות עבודה" value={fmtHours(total.hours)} hint={`${fmtCount(withHours.length)} עובדים עם דוח שעות`} info="סכום אורכי חלונות העבודה בדוח השעות, בימים שבטווח. חלונות חופפים של אותו עובד נספרים פעם אחת." />
               <StatCard label="פעולות בתוך שעות העבודה" value={fmtCount(total.inWindow)} hint={`ועוד ${fmtCount(total.outside)} מחוץ לשעות`} info={MODEL} />
               <StatCard label="זמן ממוצע לפעולה" value={fmtMin(total.inWindow ? total.attributedMinutes / total.inWindow : null)} info={MODEL} />
-              <StatCard label="זמן ממוצע להגשה" value={fmtMin(total.submissions ? total.submissionMinutes / total.submissions : null)} hint={`${fmtCount(total.submissions)} הגשות`} info={SUBMISSION} />
-              <StatCard label="שעות שויכו לפעולות" value={fmtHours(total.attributedMinutes / 60)} info={MODEL} />
+              <StatCard label="זמן ממוצע להגשה" value={fmtMin(total.submissions ? total.submissionMinutes / total.submissions : null)} hint={`${fmtCount(total.submissions)} הגשות`} info={`זמן ממוצע להגשה: ${SUBMISSION}`} />
+              <StatCard
+                label="שעות שויכו לפעולות"
+                value={fmtHours(total.attributedMinutes / 60)}
+                hint={total.afterBreak ? `${fmtCount(total.afterBreak)} פעולות אחרי הפסקה קיבלו ${BREAK_CREDIT_MIN} דק׳` : undefined}
+                info={MODEL}
+              />
               <StatCard label="לא משויך" value={fmtHours(total.hours - total.attributedMinutes / 60)} info={MODEL} />
-              <StatCard label="בקשת קורות חיים" value={fmtHours(total.categories.cv_request / 60)} info={PURPOSE} />
-              <StatCard label="תיקון וראיון (מועמד ומעסיק)" value={fmtHours((total.categories.candidate + total.categories.employer) / 60)} info={PURPOSE} />
+              <StatCard label="בקשת קורות חיים" value={fmtHours(total.categories.cv_request / 60)} info={`לאן הלך הזמן: ${PURPOSE}`} />
+              <StatCard label="תיקון וראיון (מועמד ומעסיק)" value={fmtHours((total.categories.candidate + total.categories.employer) / 60)} info={`לאן הלך הזמן: ${PURPOSE}`} />
             </div>
           </section>
 
-          <Explained label="מודל השיוך" text={`${MODEL} ${PURPOSE}`}>
-            <Card title="איך נמדד הזמן">
-              <ul className="flex list-disc flex-col gap-2 ps-5 pe-8 text-sm">
-                <li>{MODEL}</li>
-                <li>{PURPOSE}</li>
-                <li>{SUBMISSION}</li>
-                <li>{BY_TYPE}</li>
-                <li>מיילים = משימות מסוג Email (Salesforce רושם משימה על כל מייל שנשלח ממנו), שיחות = Call, וכל השאר משימות אחרות, כמו במסך החודשי.</li>
-              </ul>
-            </Card>
-          </Explained>
+          <Methodology />
 
           <Card title="לפי עובד">
             {!shown.length ? (
@@ -166,7 +206,7 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
           </Card>
 
           <Card title="לאן הלך הזמן">
-            <p className="mb-6 text-sm text-muted">{PURPOSE}</p>
+            <p className="mb-6 text-sm text-muted">לאן הלך הזמן, {PURPOSE}</p>
             {!withHours.length ? (
               <p className="text-sm text-muted">אין לאף עובד שעות בטווח.</p>
             ) : (
@@ -208,45 +248,7 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
 
           <Positions employees={withHours} positions={data.positions} />
 
-          <Card title="ציר זמן יומי">
-            {!withHours.length ? (
-              <p className="text-sm text-muted">אין חלונות עבודה בטווח.</p>
-            ) : (
-              <div className="flex flex-col gap-4">
-                {withHours.map((e) => (
-                  <details key={e.id} className="text-sm" open={withHours.length === 1}>
-                    <summary className="cursor-pointer font-medium text-accent-dark underline-offset-4 hover:underline">
-                      {e.name} · {fmtCount(e.summary.windows.length)} חלונות
-                    </summary>
-                    <div className="mt-3">
-                      <Table caption={`חלונות העבודה של ${e.name}`} head={["תאריך", "חלון", "שעות", "פעולות", "שויך", "לא משויך"]}>
-                        {[...e.summary.windows].reverse().map((w) => (
-                          <tr key={w.start.toISOString()}>
-                            <td className="px-3 py-2 whitespace-nowrap">
-                              {dayLabel(w.workDate)}
-                              {w.demo ? (
-                                <>
-                                  {" "}
-                                  <Badge tone="warning">דמו</Badge>
-                                </>
-                              ) : null}
-                            </td>
-                            <td className="px-3 py-2 whitespace-nowrap tabular-nums" dir="ltr">
-                              {TIME.format(w.start)}–{TIME.format(w.end)}
-                            </td>
-                            <td className="px-3 py-2 tabular-nums">{fmtHours(w.minutes / 60)}</td>
-                            <td className="px-3 py-2 tabular-nums">{fmtCount(w.actions)}</td>
-                            <td className="px-3 py-2 tabular-nums">{fmtMin(w.attributed)}</td>
-                            <td className="px-3 py-2 tabular-nums">{fmtMin(w.unassigned)}</td>
-                          </tr>
-                        ))}
-                      </Table>
-                    </div>
-                  </details>
-                ))}
-              </div>
-            )}
-          </Card>
+          <DetailedTimesheets employees={shown} recordTypes={data.recordTypes} openWho={openWho} />
 
           <Card title="דוחות שעות" tone="accent-light">
             <div className="flex flex-col gap-8">
@@ -272,12 +274,13 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
 }
 
 function totals(list: EmployeeWindows[]) {
-  const t = { hours: 0, inWindow: 0, outside: 0, attributedMinutes: 0, submissions: 0, submissionMinutes: 0, categories: { cv_request: 0, employer: 0, candidate: 0, other: 0 } as Record<ActionCategory, number> };
+  const t = { hours: 0, inWindow: 0, outside: 0, afterBreak: 0, attributedMinutes: 0, submissions: 0, submissionMinutes: 0, categories: { cv_request: 0, employer: 0, candidate: 0, other: 0 } as Record<ActionCategory, number> };
   for (const e of list) {
     const s = e.summary;
     t.hours += s.hours;
     t.inWindow += s.inWindow.total;
     t.outside += s.outside.total;
+    t.afterBreak += s.afterBreak;
     t.attributedMinutes += s.minutesByKind.total;
     t.submissions += s.submissions;
     t.submissionMinutes += s.submissionMinutes;
@@ -297,10 +300,199 @@ function Bars({ title, items }: { title: string; items: BarItem[] }) {
 
 type RecordTypeRow = { key: string; label: string; active: boolean };
 
+/** The label of an action's record-type key: a Case RecordType, an Account, or nothing. */
+function targetLabel(recordTypes: RecordTypeRow[]) {
+  const labels = new Map(recordTypes.map((r) => [r.key, r.active ? r.label : `${r.label} (לא פעיל)`]));
+  return (key: string) => (key === ON_ACCOUNT ? "חשבון (מעסיק)" : key === ON_NOTHING ? "בלי מקרה" : (labels.get(key) ?? key));
+}
+
+/** How every figure on the page is made. Always on screen: the numbers mean little without it. */
+function Methodology() {
+  return (
+    <div id="methodology">
+      <Card title="מתודולוגיה: איך מחושבים המספרים">
+        <p className="mb-6 text-sm">
+          המסך מעריך כמה זמן עבודה הלך לכל פעולה ב-Salesforce, משני מקורות: דוח השעות (מתי העובד עבד) והמשימות שהעובד תיעד ב-Salesforce (מה עשה ומתי). כל מספר במסך נגזר מהכללים
+          הבאים, והפרמטרים שלהם מופיעים כאן במספרים.
+        </p>
+        <ol className="flex list-decimal flex-col gap-6 ps-6 text-sm leading-relaxed">
+          <li>
+            <h3 className="mb-1 text-base font-bold">שעות העבודה מגיעות מדוח השעות</h3>
+            <p>
+              דוח שעות הוא רשימה של חלונות עבודה: תאריך, משעה ועד שעה. עובד יכול לעבוד כמה חלונות באותו יום, למשל כמה שעות בבוקר, הפסקה וכמה שעות אחר הצהריים, וכל חלון נשמר בנפרד.
+              שעות העבודה הן סכום אורכי החלונות; חלונות חופפים של אותו עובד נספרים פעם אחת.
+            </p>
+            <p className="mt-2">
+              לכל חלון יש מקור: דוח שהוגש (קובץ או הדבקה), מערכת שעות, הזנה ידנית, דמו, או <strong>שחזור</strong>. שחזור נבנה בדיעבד כשלא הוגש דוח: מהשעות שבהן לעובד הייתה פעילות
+              ב-Salesforce, מותאם לסך השעות החודשי שנמסר. הוא מסומן במסך ואינו דיווח של העובד.
+            </p>
+          </li>
+          <li>
+            <h3 className="mb-1 text-base font-bold">התאמת שחזור לפעולות, עם פיצול חלונות</h3>
+            <p>
+              שחזור נבנה מהפעילות, ולכן כל פעולה צריכה להיות בתוך חלון. פעולה שנשארה בחוץ מרחיבה את החלון הקרוב באותו יום (אם הוא במרחק של עד {FIT_JOIN_MIN} דקות) עד רבע השעה שמכילה
+              אותה, עם {FIT_KEEP_MIN} דקות מרווח; רחוקה יותר, היא מקבלת חלון משלה. את הזמן שנוסף ההתאמה לוקחת מההפסקות הארוכות ביותר: קטע של יותר מ-{ATTRIBUTION_CAP_MIN} דקות בלי
+              פעולה, בתוך חלון שיש בו פעולות, תוך שמירת {FIT_KEEP_MIN} דקות אחרי הפעולה שלפניו ולפני הפעולה שאחריו. הפסקה באמצע חלון מפצלת אותו לשני חלונות. חלון שאין בו משימות לא
+              משתנה, כי הוא נשען על פעילות אחרת (כניסות, עריכות). סך השעות נשמר, ואם אין מספיק הפסקות הוא גדל, והמסך אומר בכמה. ההתאמה לא נוגעת בדוח שהוגש.
+            </p>
+          </li>
+          <li>
+            <h3 className="mb-1 text-base font-bold">מהי פעולה</h3>
+            <p>
+              פעולה היא משימת Salesforce (Task) שהעובד הוא הבעלים שלה, לפי זמן היצירה שלה. Salesforce רושם משימה על כל מייל שנשלח ממנו, ולכן מייל = משימה מסוג Email, שיחה = Call, וכל
+              השאר משימות אחרות. פעולה בתוך שעות העבודה היא פעולה שזמן היצירה שלה נופל בתוך אחד החלונות; פעולה מחוץ לכל חלון נספרת בנפרד ולא מקבלת זמן.
+            </p>
+          </li>
+          <li>
+            <h3 className="mb-1 text-base font-bold">כמה זמן מקבלת כל פעולה</h3>
+            <p>
+              בתוך כל חלון הפעולות ממוינות לפי הזמן. כל פעולה מקבלת את הדקות שעברו מהפעולה שלפניה, והראשונה את הדקות מתחילת החלון, כל עוד עברו עד {ATTRIBUTION_CAP_MIN} דקות. פער ארוך
+              יותר נחשב הפסקה, ולא עבודה על הפעולה הבאה: הפעולה מקבלת {BREAK_CREDIT_MIN} דקות, ושאר הפער נשאר &quot;לא משויך&quot;. כל מה שנשאר מהחלון אחרי השיוך הוא &quot;לא משויך&quot;.
+            </p>
+            <p className="mt-2 text-muted">
+              דוגמה: חלון 10:15–13:30 ופעולות ב-10:37, 10:41 ו-12:10. הראשונה מקבלת 22 דקות, השנייה 4, והשלישית באה אחרי 89 דקות בלי פעולה ולכן מקבלת {BREAK_CREDIT_MIN}. שויכו{" "}
+              {22 + 4 + BREAK_CREDIT_MIN} דקות, ו-{195 - 22 - 4 - BREAK_CREDIT_MIN} מתוך 195 לא משויכות.
+            </p>
+          </li>
+          <li>
+            <h3 className="mb-1 text-base font-bold">לאן הלך הזמן</h3>
+            <p>{PURPOSE}</p>
+          </li>
+          <li>
+            <h3 className="mb-1 text-base font-bold">המדדים</h3>
+            <ul className="flex list-disc flex-col gap-1 ps-5">
+              <li>פעולות לשעה = פעולות בתוך החלונות חלקי שעות העבודה. הצפי &quot;בעוד N שעות&quot; הוא אותו קצב כפול N.</li>
+              <li>זמן ממוצע לפעולה = הדקות ששויכו חלקי מספר הפעולות בתוך החלונות, בסך הכול ולפי סוג (מייל, שיחה).</li>
+              <li>זמן ממוצע להגשה = {SUBMISSION}</li>
+              <li>זמן לפי סוג מקרה: {BY_TYPE}</li>
+              <li>זמן לפי משרה = הזמן של פעולות על הגשות, לפי המשרה שההגשה שייכת לה.</li>
+            </ul>
+          </li>
+          <li>
+            <h3 className="mb-1 text-base font-bold">מה המודל לא יודע</h3>
+            <ul className="flex list-disc flex-col gap-1 ps-5">
+              <li>הוא מניח שהזמן שלפני פעולה הוקדש לה. עבודה שלא נרשמה ב-Salesforce (קריאת קורות חיים, שיחה שלא תועדה) נכנסת ל&quot;לא משויך&quot; או לפעולה שאחריה.</li>
+              <li>
+                בשחזור, השעות עצמן נגזרו מהפעילות, ולכן &quot;פעולות לשעה&quot; משקף בעיקר את סך השעות שנמסר. השוואה בין עובדים אמינה יותר כשלשניהם דוח שהוגש.
+              </li>
+              <li>
+                פעולות לא שוות זו לזו: מייל בתבנית לוקח דקות, שיחה עם מועמד יותר. עובדים עם תמהיל עבודה שונה משווים לפי מטרה (&quot;לאן הלך הזמן&quot;) ולא לפי מספר הפעולות לשעה.
+              </li>
+            </ul>
+          </li>
+        </ol>
+      </Card>
+    </div>
+  );
+}
+
+/**
+ * The detailed timesheet of each employee: every work window (with its source, actions and time), then every
+ * action with the window it fell in and the minutes it was credited. Case numbers, never subjects (they name candidates).
+ */
+function DetailedTimesheets({ employees, recordTypes, openWho }: { employees: EmployeeWindows[]; recordTypes: RecordTypeRow[]; openWho: string | null }) {
+  const label = targetLabel(recordTypes);
+  const source = (e: EmployeeWindows, w: WindowResult) =>
+    w.demo ? "דמו" : e.reconstructed && (w.sources ?? []).includes("manual") ? "שחזור" : (w.sources ?? []).map((x) => SOURCE_LABEL[x] ?? x).join(", ") || "—";
+  return (
+    <Card title="דוח שעות מפורט">
+      <p className="mb-4 text-sm text-muted">
+        לכל עובד, כל חלון עבודה בטווח: מתי, כמה זמן, מאיזה מקור, כמה פעולות היו בו וכמה מהזמן שויך להן. מתחת, כל פעולה: באיזה חלון נפלה, מה סוגה ומטרתה, וכמה דקות קיבלה לפי המודל (סעיף 4
+        במתודולוגיה).
+      </p>
+      {!employees.length ? (
+        <p className="text-sm text-muted">אין חלונות עבודה בטווח.</p>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {employees.map((e) => {
+            const s = e.summary;
+            const days = new Set(s.windows.map((w) => w.workDate)).size;
+            const span = (i: number | null) => (i == null ? null : s.windows[i]);
+            return (
+              <details key={e.id} id={`emp-${e.id}`} className="text-sm" open={openWho === e.id || employees.length === 1}>
+                <summary className="cursor-pointer font-medium text-accent-dark underline-offset-4 hover:underline">
+                  {e.name} · {fmtCount(s.windows.length)} חלונות ב-{fmtCount(days)} ימים · {fmtHours(s.hours)}
+                  {e.reconstructed ? " · שחזור" : ""}
+                </summary>
+                <div className="mt-3 flex flex-col gap-6">
+                  <p>
+                    {fmtCount(s.inWindow.total)} פעולות בתוך שעות העבודה ו-{fmtCount(s.outside.total)} מחוץ להן. שויכו {fmtHours(s.attributedHours)}, לא שויכו {fmtHours(s.unassignedHours)}.
+                    {s.afterBreak ? ` ${fmtCount(s.afterBreak)} פעולות באו אחרי הפסקה וקיבלו ${BREAK_CREDIT_MIN} דקות.` : ""}
+                  </p>
+                  <Table caption={`חלונות העבודה של ${e.name}`} head={["תאריך", "חלון", "שעות", "פעולות", "מיילים", "שיחות", "שויך", "לא משויך", "מקור"]}>
+                    {s.windows.map((w, i) => {
+                      const mine = s.actions.filter((a) => a.window === i);
+                      return (
+                        <tr key={w.start.toISOString()}>
+                          <td className="px-3 py-2 whitespace-nowrap">{DAY_TIME.format(w.start)}</td>
+                          <td className="px-3 py-2 whitespace-nowrap tabular-nums" dir="ltr">
+                            {TIME.format(w.start)}–{TIME.format(w.end)}
+                          </td>
+                          <td className="px-3 py-2 tabular-nums">{fmtHours(w.minutes / 60)}</td>
+                          <td className="px-3 py-2 tabular-nums">{fmtCount(w.actions)}</td>
+                          <td className="px-3 py-2 tabular-nums">{fmtCount(mine.filter((a) => a.kind === "email").length)}</td>
+                          <td className="px-3 py-2 tabular-nums">{fmtCount(mine.filter((a) => a.kind === "call").length)}</td>
+                          <td className="px-3 py-2 tabular-nums">{fmtMin(w.attributed)}</td>
+                          <td className="px-3 py-2 tabular-nums">{fmtMin(w.unassigned)}</td>
+                          <td className="px-3 py-2">{source(e, w) === "שחזור" || source(e, w) === "דמו" ? <Badge tone="warning">{source(e, w)}</Badge> : source(e, w)}</td>
+                        </tr>
+                      );
+                    })}
+                  </Table>
+                  {s.actions.length ? (
+                    <Table caption={`הפעולות של ${e.name}`} head={["מתי", "חלון", "סוג", "מטרה", "סוג מקרה", "מקרה", "דקות"]}>
+                      {s.actions.map((a) => {
+                        const w = span(a.window);
+                        const target = a.caseId ? (a.caseType ?? ON_NOTHING) : a.accountId ? ON_ACCOUNT : ON_NOTHING;
+                        const path = a.caseId ? casePath({ id: a.caseId, recordType: a.caseType }) : null;
+                        return (
+                          <tr key={a.id} className={w ? "" : "bg-panel"}>
+                            <td className="px-3 py-2 whitespace-nowrap tabular-nums">
+                              {DAY_TIME.format(a.at)} {TIME.format(a.at)}
+                            </td>
+                            <td className="px-3 py-2 whitespace-nowrap tabular-nums">
+                              {w ? (
+                                <span dir="ltr">
+                                  {TIME.format(w.start)}–{TIME.format(w.end)}
+                                </span>
+                              ) : (
+                                <Badge tone="warning">מחוץ לשעות</Badge>
+                              )}
+                            </td>
+                            <td className="px-3 py-2">{KIND_LABEL[a.kind]}</td>
+                            <td className="px-3 py-2">{CATEGORY_LABELS[a.category]}</td>
+                            <td className="px-3 py-2">{label(target)}</td>
+                            <td className="px-3 py-2">
+                              {path ? (
+                                <Link href={path} className="text-accent-dark underline underline-offset-4">
+                                  {a.caseNumber ?? "מקרה"}
+                                </Link>
+                              ) : (
+                                (a.caseNumber ?? "—")
+                              )}
+                            </td>
+                            <td className="px-3 py-2 tabular-nums">
+                              {w ? fmtMin(a.minutes) : "—"}
+                              {a.afterBreak ? <span className="block text-xs text-muted">אחרי הפסקה</span> : null}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </Table>
+                  ) : null}
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 /** Time per record type of what the actions sit on: every Case RecordType in the mirror (even with no time), Accounts, nothing. */
 function CaseTypes({ employees, recordTypes }: { employees: EmployeeWindows[]; recordTypes: RecordTypeRow[] }) {
-  const labels = new Map(recordTypes.map((r) => [r.key, r.active ? r.label : `${r.label} (לא פעיל)`]));
-  const label = (key: string) => (key === ON_ACCOUNT ? "חשבון (מעסיק)" : key === ON_NOTHING ? "בלי מקרה" : (labels.get(key) ?? key));
+  const label = targetLabel(recordTypes);
   const sum = new Map<string, Omit<TargetTime, "avgPerRecord">>();
   for (const e of employees) {
     for (const t of e.summary.targets) {
@@ -330,7 +522,7 @@ function CaseTypes({ employees, recordTypes }: { employees: EmployeeWindows[]; r
   );
   return (
     <Card title="זמן לפי סוג מקרה">
-      <p className="mb-6 text-sm text-muted">{BY_TYPE} סוג בלי פעולות בטווח מוצג באפור.</p>
+      <p className="mb-6 text-sm text-muted">זמן לפי סוג מקרה: {BY_TYPE} סוג בלי פעולות בטווח מוצג באפור.</p>
       {!used.length ? (
         <p className="text-sm text-muted">אין פעולות בתוך שעות העבודה בטווח.</p>
       ) : (

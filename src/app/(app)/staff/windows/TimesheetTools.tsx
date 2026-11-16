@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { buttonClass } from "@/components/ui";
-import { deleteDemo, importSheet, loadDemo, type TimesheetActionState } from "./actions";
+import { deleteDemo, fitTimesheet, importSheet, loadDemo, type TimesheetActionState } from "./actions";
 
 /** Always mounted, so the result is announced when it arrives. */
 function Status({ state }: { state: TimesheetActionState }) {
@@ -78,6 +78,31 @@ export function SheetImport() {
       <div>
         <button type="submit" disabled={pending} className={buttonClass("primary", "sm")}>
           {pending ? "קולט…" : "קליטת הדוח"}
+        </button>
+      </div>
+      <Status state={state} />
+    </form>
+  );
+}
+
+/** Fits one employee's reconstructed timesheet in the shown range to their actions, after a confirmation. */
+export function FitButton({ userId, name, from, to }: { userId: string; name: string; from: string; to: string }) {
+  const [state, action, pending] = useActionState<TimesheetActionState, FormData>(fitTimesheet, null);
+  return (
+    <form
+      action={action}
+      className="flex flex-col gap-2"
+      onSubmit={(e) => {
+        if (!window.confirm(`להתאים את דוח השעות המשוחזר של ${name} בטווח הזה לפעולות שלו? החלונות הנוכחיים יוחלפו.`)) e.preventDefault();
+      }}
+    >
+      <input type="hidden" name="userId" value={userId} />
+      <input type="hidden" name="from" value={from} />
+      <input type="hidden" name="to" value={to} />
+      <div>
+        <button type="submit" disabled={pending} className={buttonClass("primary", "sm")}>
+          {pending ? "מתאים…" : "התאמת הדוח לפעולות"}
+          <span className="sr-only"> · {name}</span>
         </button>
       </div>
       <Status state={state} />

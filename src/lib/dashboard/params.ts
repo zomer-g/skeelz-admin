@@ -65,7 +65,9 @@ const first = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v
 export function parseDashboardParams(search: SearchParams, now = new Date(), fallback: PresetKey = "30d"): DashboardParams {
   const today = israelDay(now);
   const requested = first(search.range);
-  const preset: PresetKey = PRESETS.some((p) => p.key === requested) ? (requested as PresetKey) : fallback;
+  // A link that gives dates but no range means those dates; without this it silently showed the default.
+  const datesOnly = !requested && [first(search.from), first(search.to)].some((d) => d && DAY_RE.test(d));
+  const preset: PresetKey = PRESETS.some((p) => p.key === requested) ? (requested as PresetKey) : datesOnly ? "custom" : fallback;
   const basis: Basis = first(search.basis) === "event" ? "event" : "application";
   const scope = parseScope(first(search.scope));
 

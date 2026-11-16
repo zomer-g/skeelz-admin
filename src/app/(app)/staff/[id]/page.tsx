@@ -4,7 +4,8 @@ import { notFound } from "next/navigation";
 import { BarList } from "@/components/dashboard/BarList";
 import { Badge, Card, formatDateTime, PageHeader, Table } from "@/components/ui";
 import { pageAuthStaff } from "@/lib/auth/guard";
-import { loadEmployeeHours, loadOwnedCases, loadSfActivity } from "@/lib/staff/data";
+import { loadEmployeeHours, loadEmployeeTimesheet, loadOwnedCases, loadSfActivity } from "@/lib/staff/data";
+import { RECONSTRUCTED_NOTE } from "@/lib/staff/timesheet";
 import { dayLabel, fmtCount, fmtHours, monthLabel } from "../format";
 
 export const metadata: Metadata = { title: "שעות עובד" };
@@ -12,6 +13,14 @@ export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f-]{36}$/i;
 const SF_KIND = { email: "מייל", call: "שיחה", task: "משימה" } as const;
+const SOURCE_LABEL: Record<string, string> = { sheet: "דוח שהוגש", api: "מערכת שעות", manual: "הזנה ידנית", demo: "דמו" };
+const TIME = new Intl.DateTimeFormat("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" });
+
+/** The last Israel day of a month, "2026-10" → "2026-10-31". */
+const lastDay = (month: string) => {
+  const [y, m] = month.split("-").map(Number) as [number, number];
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+};
 
 /** One employee's hours: staff managers only (docs/staff.md). The audit log records the view, never the hours. */
 export default async function EmployeeHoursPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ month?: string }> }) {
@@ -24,10 +33,17 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
   if (!data) notFound();
   const { person, byMonth, months, summary, tasks } = data;
   const sf = data.month ? byMonth.find((m) => m.month === data.month) : null;
-  const [activity, owned] = person.sfUserId
-    ? await Promise.all([loadSfActivity(person.sfUserId, data.month), loadOwnedCases([person], data.month).then((m) => m.get(person.id) ?? [])])
-    : [null, null];
-  const title = person.name ?? person.email;
+  const [[activity, owned], sheet] = await Promise.all([
+    person.sfUserId
+      ? Promise.all([loadSfActivity(person.sfUserId, data.month), loadOwnedCases([person], data.month).then((m) => m.get(person.id) ?? [])])
+      : Promise.resolve([null, null] as const),
+    loadEmployeeTimesheet(person.id, data.month, RECONSTRUCTED_NOTE),
+  ]);
+  const sheetMonth = data.month ? sheet.byMonth.get(data.month) : undefined;
+  const sheetAll = [...sheet.byMonth.values()].reduce((t, m) => t + m.hours, 0);
+  const sheetHours = data.month ? (sheetMonth?.hours ?? 0) : sheetAll;
+  const sheetReconstructed = data.month ? Boolean(sheetMonth?.reconstructed) : [...sheet.byMonth.values()].some((m) => m.reconstructed);
+  const title = person.name ?? person.sfName ?? person.email;
   const period = data.month ? monthLabel(data.month) : "כל התקופה";
 
   return (
@@ -39,12 +55,12 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
         </Link>
       </p>
 
-      {!person.mondayUserId || !person.sfUserId ? (
+      {(!person.mondayUserId && !sheet.byMonth.size) || !person.sfUserId ? (
         <p className="mb-6 rounded-card bg-panel px-4 py-3 text-sm" role="status">
           {!person.mondayUserId && !person.sfUserId
             ? "העובד לא מקושר למאנדיי ולא ל-Salesforce."
             : !person.mondayUserId
-              ? "העובד לא מקושר למשתמש מאנדיי, ולכן אין לו שעות."
+              ? "העובד לא מקושר למשתמש מאנדיי ואין לו דוח שעות, ולכן אין לו שעות."
               : "העובד לא מקושר למשתמש Salesforce, ולכן אין לו מיילים ושיחות."}{" "}
           את הקישור מגדירים בניהול › קישור עובדים.
         </p>
@@ -69,10 +85,18 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
       <div className="flex flex-col gap-8">
         <Card title={`סיכום · ${period}`}>
           <dl className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            <div>
-              <dt className="text-sm text-muted">שעות</dt>
-              <dd className="text-3xl font-bold">{fmtHours(summary.hours)}</dd>
-            </div>
+            {person.mondayUserId || !sheetHours ? (
+              <div>
+                <dt className="text-sm text-muted">שעות (מאנדיי)</dt>
+                <dd className="text-3xl font-bold">{fmtHours(summary.hours)}</dd>
+              </div>
+            ) : null}
+            {sheetHours ? (
+              <div>
+                <dt className="text-sm text-muted">שעות (דוח שעות){sheetReconstructed ? " · שחזור" : ""}</dt>
+                <dd className="text-3xl font-bold">{fmtHours(sheetHours)}</dd>
+              </div>
+            ) : null}
             <div>
               <dt className="text-sm text-muted">משימות מאנדיי</dt>
               <dd className="text-3xl font-bold">{summary.tasks}</dd>
@@ -107,7 +131,7 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
         </Card>
 
         <Card title="לפי חודש" level={2}>
-          <Table head={["חודש", "שעות", "משימות מאנדיי", "משימות Salesforce", "מיילים", "שיחות", "סה״כ משימות"]}>
+          <Table head={["חודש", "שעות (מאנדיי)", "שעות (דוח שעות)", "משימות מאנדיי", "משימות Salesforce", "מיילים", "שיחות", "סה״כ משימות"]}>
             {byMonth.map((m) => (
               <tr key={m.month}>
                 <td className="px-3 py-2">
@@ -116,6 +140,9 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
                   </Link>
                 </td>
                 <td className="px-3 py-2 tabular-nums">{person.mondayUserId ? fmtHours(m.hours) : "—"}</td>
+                <td className="px-3 py-2 tabular-nums">
+                  {sheet.byMonth.get(m.month) ? `${fmtHours(sheet.byMonth.get(m.month)!.hours)}${sheet.byMonth.get(m.month)!.reconstructed ? " (שחזור)" : ""}` : "—"}
+                </td>
                 <td className="px-3 py-2 tabular-nums">{person.mondayUserId ? fmtCount(m.mondayTasks) : "—"}</td>
                 <td className="px-3 py-2 tabular-nums">{person.sfUserId ? fmtCount(m.sfTasks) : "—"}</td>
                 <td className="px-3 py-2 tabular-nums">{person.sfUserId ? fmtCount(m.sfEmails) : "—"}</td>
@@ -125,6 +152,32 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
             ))}
           </Table>
         </Card>
+
+        {data.month && sheet.windows.length ? (
+          <Card title={`דוח שעות · ${period}`} level={2}>
+            <p className="mb-4 text-sm text-muted">
+              חלונות העבודה של החודש כפי שנשמרו{sheetReconstructed ? ". הדוח משוחזר: נבנה בדיעבד מהפעילות ב-Salesforce, ולא הוגש בידי העובד" : ""}. לכל חלון, הפעולות שבוצעו בו והזמן ששויך להן, ב
+              <Link
+                href={`/staff/windows?range=custom&from=${data.month}-01&to=${lastDay(data.month)}&who=${person.id}#emp-${person.id}`}
+                className="font-medium text-accent-dark underline underline-offset-4"
+              >
+                דוח השעות המפורט
+              </Link>
+              .
+            </p>
+            <Table head={["תאריך", "משעה", "עד שעה", "שעות", "מקור"]}>
+              {sheet.windows.map((w) => (
+                <tr key={`${w.source}-${w.start.toISOString()}`}>
+                  <td className="px-3 py-2 whitespace-nowrap">{dayLabel(w.workDate)}</td>
+                  <td className="px-3 py-2 tabular-nums">{TIME.format(w.start)}</td>
+                  <td className="px-3 py-2 tabular-nums">{TIME.format(w.end)}</td>
+                  <td className="px-3 py-2 tabular-nums">{fmtHours((w.end.getTime() - w.start.getTime()) / 3_600_000)}</td>
+                  <td className="px-3 py-2">{w.reconstructed ? <Badge tone="warning">שחזור</Badge> : (SOURCE_LABEL[w.source] ?? w.source)}</td>
+                </tr>
+              ))}
+            </Table>
+          </Card>
+        ) : null}
 
         {summary.byWeek.length ? (
           <Card title="לפי שבוע" level={2}>
@@ -142,7 +195,9 @@ export default async function EmployeeHoursPage({ params, searchParams }: { para
 
         {owned ? (
           <Card title={`מקרים שנפתחו בבעלותו · ${period}`}>
-            <p className="mb-4 text-sm text-muted">מקרים (Cases) שנפתחו בתקופה ושהעובד הוא הבעלים הנוכחי שלהם ב-Salesforce, לפי סוג.</p>
+            <p className="mb-4 text-sm text-muted">
+              מקרים (Cases) שנפתחו בתקופה ושהעובד הוא הבעלים הנוכחי שלהם ב-Salesforce, לפי סוג. זה מדד של שיוך, לא של עבודה: מקרה יכול להיות בבעלותו בלי שנגע בו.
+            </p>
             <BarList
               items={owned.map((c) => ({ label: c.caseType, value: c.count }))}
               caption={`מקרים שנפתחו בבעלות ${title}, לפי סוג`}

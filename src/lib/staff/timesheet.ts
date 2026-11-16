@@ -1,11 +1,12 @@
 import { and, asc, desc, eq, gte, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "@/lib/db/client";
-import { staffTimeEntries, users } from "@/lib/db/schema";
+import { sfUser, staffTimeEntries, users } from "@/lib/db/schema";
 import { run } from "@/lib/entities/search";
 import {
   actionCategory,
   actionKind,
   demoWindows,
+  fitWindows,
   mergeWindows,
   parseTimesheet,
   preferReal,
@@ -147,7 +148,76 @@ export async function importTimesheet(text: string, { reconstructed = false }: {
   return { rows: stored, people: perUser.size, days, errors: errors.sort((a, b) => a.line - b.line) };
 }
 
+/**
+ * One employee's rows in a range when all of them are a reconstruction (manual + RECONSTRUCTED_NOTE), else
+ * null: fitting rewrites the rows, and must never touch a report somebody handed in.
+ */
+function reconstructedRows<T extends { source: string; note: string | null }>(rows: readonly T[]): T[] | null {
+  if (!rows.length || rows.some((r) => r.source !== "manual" || r.note !== RECONSTRUCTED_NOTE)) return null;
+  return [...rows];
+}
+
+export interface FitApplied {
+  name: string;
+  covered: number;
+  addedMinutes: number;
+  freedMinutes: number;
+  splits: number;
+  windowsBefore: number;
+  windowsAfter: number;
+}
+
+/**
+ * Fits one employee's reconstructed timesheet in the Israel-day range to their Salesforce tasks
+ * (fitWindows: every task inside a window, the time taken from breaks, windows split where needed) and
+ * stores the result in place of those days' rows, still marked as a reconstruction. Refuses when the
+ * range holds any row that is not a reconstruction. null when there is nothing to fit.
+ */
+export async function fitReconstructedTimesheet(userId: string, fromDay: string, toDay: string, from: Date, to: Date): Promise<FitApplied | { error: string } | null> {
+  const db = getDb();
+  const [person] = await db
+    .select({ id: users.id, name: users.name, email: users.email, sfUserId: users.sfUserId, sfName: sfUser.name })
+    .from(users)
+    .leftJoin(sfUser, eq(sfUser.id, users.sfUserId))
+    .where(eq(users.id, userId))
+    .limit(1);
+  if (!person) return { error: "אין עובד כזה" };
+  if (!person.sfUserId) return { error: "העובד לא מקושר למשתמש Salesforce, ואין פעולות להתאים אליהן" };
+  const rows = await db
+    .select({ workDate: staffTimeEntries.workDate, start: staffTimeEntries.startAt, end: staffTimeEntries.endAt, source: staffTimeEntries.source, note: staffTimeEntries.note })
+    .from(staffTimeEntries)
+    .where(and(eq(staffTimeEntries.userId, userId), gte(staffTimeEntries.workDate, fromDay), lte(staffTimeEntries.workDate, toDay), sql`${staffTimeEntries.source} <> 'demo'`));
+  const mine = reconstructedRows(rows);
+  if (!mine) return rows.length ? { error: "בטווח יש שורות שאינן שחזור (דוח שהוגש או הזנה ידנית). ההתאמה פועלת רק על דוח משוחזר" } : null;
+  const tasks = await run<{ created_date: Date | string }>(sql`
+    SELECT created_date FROM sf_task
+     WHERE owner_id = ${person.sfUserId} AND NOT is_deleted AND created_date >= ${from} AND created_date < ${to}`);
+  const r = fitWindows(mine, tasks.map((t) => new Date(t.created_date)));
+  if (!r.covered) return null;
+  const days = [...new Set([...mine.map((m) => m.workDate), ...r.windows.map((w) => w.workDate)])];
+  await replaceTimeEntries(userId, "manual", r.windows.map((w) => ({ ...w, note: RECONSTRUCTED_NOTE })), days);
+  return {
+    name: person.name ?? person.sfName ?? person.email,
+    covered: r.covered,
+    addedMinutes: r.addedMinutes,
+    freedMinutes: r.freedMinutes,
+    splits: r.splits,
+    windowsBefore: mergeWindows(mine).length,
+    windowsAfter: r.windows.length,
+  };
+}
+
 /* ------------------------------------------------------------ dashboard */
+
+/** What fitting a reconstructed timesheet to the actions (fitWindows) would do, shown before it is applied. */
+export interface FitPreview {
+  covered: number;
+  addedMinutes: number;
+  freedMinutes: number;
+  splits: number;
+  windowsBefore: number;
+  windowsAfter: number;
+}
 
 export interface EmployeeWindows {
   id: string;
@@ -159,6 +229,8 @@ export interface EmployeeWindows {
   /** Some windows shown were reconstructed after the fact (RECONSTRUCTED_NOTE), not reported. */
   reconstructed: boolean;
   summary: WindowsSummary;
+  /** Only for a reconstructed timesheet with actions outside its windows in the range. */
+  fit: FitPreview | null;
 }
 
 export interface WindowsDashboard {
@@ -196,8 +268,9 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
   const withEntries = [...new Set(used.map((e) => e.userId))];
 
   const people = await db
-    .select({ id: users.id, name: users.name, email: users.email, active: users.active, sfUserId: users.sfUserId })
+    .select({ id: users.id, name: users.name, email: users.email, active: users.active, sfUserId: users.sfUserId, sfName: sfUser.name })
     .from(users)
+    .leftJoin(sfUser, eq(sfUser.id, users.sfUserId))
     .where(or(isNotNull(users.sfUserId), withEntries.length ? inArray(users.id, withEntries) : undefined))
     .orderBy(desc(users.active), asc(users.name));
 
@@ -220,8 +293,10 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
         developer_name: string | null;
         parent_id: string | null;
         what_id: string | null;
+        case_number: string | null;
       }>(sql`
-        SELECT t.id, t.owner_id, t.created_date, t.task_subtype, t.type, t.subject, c.id AS case_id, rt.developer_name, c.parent_id, t.what_id
+        SELECT t.id, t.owner_id, t.created_date, t.task_subtype, t.type, t.subject, c.id AS case_id, rt.developer_name, c.parent_id, t.what_id,
+               c.data->>'CaseNumber' AS case_number
           FROM sf_task t
           LEFT JOIN sf_case c ON c.id = t.what_id
           LEFT JOIN sf_record_type rt ON rt.id = c.record_type_id
@@ -240,6 +315,7 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
       caseType: t.developer_name,
       positionId: t.parent_id,
       accountId: !t.case_id && t.what_id?.startsWith(ACCOUNT_ID_PREFIX) ? t.what_id : null,
+      caseNumber: t.case_number,
     });
     actionsBySf.set(t.owner_id, list);
   }
@@ -251,14 +327,25 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
     const actions = (p.sfUserId ? (actionsBySf.get(p.sfUserId) ?? []) : []).filter(
       (a) => inRange(a.at) || windows.some((w) => w.start.getTime() <= a.at.getTime() && a.at.getTime() <= w.end.getTime()),
     );
+    const reconstructed = used.some((e) => e.userId === p.id && e.source === "manual" && e.note === RECONSTRUCTED_NOTE);
+    const summary = summarizeWindows(windows, actions);
+    let fit: FitPreview | null = null;
+    if (reconstructed && summary.outside.total > 0) {
+      const mine = reconstructedRows(used.filter((e) => e.userId === p.id));
+      if (mine) {
+        const r = fitWindows(mine, actions.filter((a) => inRange(a.at)).map((a) => a.at));
+        if (r.covered) fit = { covered: r.covered, addedMinutes: r.addedMinutes, freedMinutes: r.freedMinutes, splits: r.splits, windowsBefore: mergeWindows(mine).length, windowsAfter: r.windows.length };
+      }
+    }
     return {
       id: p.id,
-      name: p.name ?? p.email,
+      name: p.name ?? p.sfName ?? p.email,
       active: p.active,
       sfLinked: Boolean(p.sfUserId),
       demo: windows.some((w) => w.demo),
-      reconstructed: used.some((e) => e.userId === p.id && e.source === "manual" && e.note === RECONSTRUCTED_NOTE),
-      summary: summarizeWindows(windows, actions),
+      reconstructed,
+      summary,
+      fit,
     };
   });
 

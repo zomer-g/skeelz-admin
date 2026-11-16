@@ -5,6 +5,7 @@ import {
   actionKind,
   attribute,
   demoWindows,
+  fitWindows,
   israelInstant,
   mergeWindows,
   parseTimesheet,
@@ -112,18 +113,23 @@ describe("preferReal and mergeWindows", () => {
 });
 
 describe("attribute", () => {
-  it("each action gets the minutes since the previous one (the first: since the window opened), at most 45; the rest is unassigned", () => {
+  it("each action gets the minutes since the previous one (the first: since the window opened); after a break of more than 45 it gets 15; the rest is unassigned", () => {
     const w = [win("2026-10-29", "10:15", "13:30")];
     const r = attribute(w, [act("c", "2026-10-29", "12:10"), act("a", "2026-10-29", "10:37"), act("b", "2026-10-29", "10:41")]);
     assert.deepEqual(
-      r.actions.map((a) => [a.id, a.minutes]),
+      r.actions.map((a) => [a.id, a.minutes, a.afterBreak]),
       [
-        ["a", 22],
-        ["b", 4],
-        ["c", 45],
+        ["a", 22, false],
+        ["b", 4, false],
+        ["c", 15, true],
       ],
     );
-    assert.deepEqual([r.windows[0]!.minutes, r.windows[0]!.actions, r.windows[0]!.attributed, r.windows[0]!.unassigned], [195, 3, 71, 124]);
+    assert.deepEqual([r.windows[0]!.minutes, r.windows[0]!.actions, r.windows[0]!.attributed, r.windows[0]!.unassigned], [195, 3, 41, 154]);
+  });
+
+  it("exactly 45 minutes is still work on the action; the first action after a long opening is a break too", () => {
+    const r = attribute([win("2026-10-29", "09:00", "12:00")], [act("a", "2026-10-29", "10:00"), act("b", "2026-10-29", "10:45")]);
+    assert.deepEqual(r.actions.map((a) => [a.id, a.minutes]), [["a", 15], ["b", 45]]);
   });
 
   it("an action outside every window gets no time; each window counts from its own start", () => {
@@ -170,6 +176,62 @@ describe("actionKind and actionCategory", () => {
     assert.equal(actionCategory("WEHAVE", "דואר אלקטרוני: קיבלנו את מועמדותך למשרת x"), "other");
     assert.equal(actionCategory(null, "קורות חיים"), "other");
   });
+
+  it("אסתי's templates (October 2026)", () => {
+    const sub = "RecordType2";
+    // Sending a candidate to the employer, in her wording, and the reminder on the same thread.
+    assert.equal(actionCategory(sub, "דואר אלקטרוני: הגשת מועמדות למשרה: מנהל.ת פרויקטים יוזמות עסקיות- פלונית"), "employer");
+    assert.equal(actionCategory(sub, "דואר אלקטרוני: RE: הגשת מועמדות למשרה: מודדת סוקרת לצרכי ארנונה- פלונית -תזכורת לעדכון סטטוס"), "employer");
+    assert.equal(actionCategory(sub, "דואר אלקטרוני: הגשה למשרות: סגנ.ית שיקום - פלונית"), "employer");
+    // A CV sent on to the employer is not a CV request.
+    assert.equal(actionCategory(sub, "דואר אלקטרוני: הגשה למשרה: רכז/ת לידים ודאטה- קורות חיים של פלוני"), "employer");
+    // Asking the candidate for a CV, even under "הגשה למשרה".
+    assert.equal(actionCategory(sub, "דואר אלקטרוני: הגשה למשרה: אחראית חנות: סיפור חוזר 50%- בבקשה שלחי קורות חיים בהקדם"), "cv_request");
+    assert.equal(actionCategory(sub, "דואר אלקטרוני: FW: קיבלתי את בקשתך להגיש מועמדות למשרת מנהלת אזור- בבקשה שלחי קורות חיים עדכניים- תזכורת!!!"), "cv_request");
+    assert.equal(actionCategory(sub, "דואר אלקטרוני: קורות חיים"), "cv_request");
+  });
+});
+
+describe("fitWindows", () => {
+  it("covers every action and pays for it from the day's breaks, splitting windows (שרית, 29.10.2026)", () => {
+    // The reconstruction cut each hour to :15–:45 and left 09:59 and 11:11 outside.
+    const w = [win("2026-10-29", "09:15", "09:45"), win("2026-10-29", "11:15", "13:45")];
+    const times = ["09:20", "09:30", "09:44", "09:59", "11:11", "12:08", "12:12", "12:14", "12:20", "13:32", "13:39"].map((t) => at("2026-10-29", t));
+    const r = fitWindows(w, times);
+    const span = r.windows.map((x) => `${hm(x.start)}-${hm(x.end)}`);
+    for (const t of times) assert.ok(r.windows.some((x) => x.start <= t && t <= x.end), `${hm(t)} is inside`);
+    const minutes = r.windows.reduce((s, x) => s + (x.end.getTime() - x.start.getTime()) / 60_000, 0);
+    // 09:59 and 11:11 add half an hour each; the breaks 11:26–11:53 and 12:35–13:17 give back 15 and 30.
+    assert.deepEqual(span, ["09:15-10:15", "10:45-11:30", "11:45-12:45", "13:15-13:45"]);
+    assert.equal(minutes, 195);
+    assert.deepEqual([r.covered, r.addedMinutes, r.freedMinutes, r.splits], [2, 60, 45, 2]);
+  });
+
+  it("the time can come from another day's break, so the month's total stays", () => {
+    const w = [win("2026-10-29", "09:15", "09:45"), win("2026-10-28", "09:00", "13:00")];
+    const times = [at("2026-10-29", "09:30"), at("2026-10-29", "09:59"), at("2026-10-28", "09:10"), at("2026-10-28", "12:50")];
+    const r = fitWindows(w, times);
+    const minutes = r.windows.reduce((s, x) => s + (x.end.getTime() - x.start.getTime()) / 60_000, 0);
+    assert.equal(minutes, 30 + 240);
+    for (const t of times) assert.ok(r.windows.some((x) => x.start <= t && t <= x.end));
+    assert.equal(r.splits, 1);
+  });
+
+  it("an action far from every window gets a window of its own; nothing to free leaves the total larger, never an action outside", () => {
+    const w = [win("2026-10-20", "09:00", "09:30")];
+    const times = [at("2026-10-20", "09:10"), at("2026-10-20", "16:40")];
+    const r = fitWindows(w, times);
+    assert.deepEqual(r.windows.map((x) => `${hm(x.start)}-${hm(x.end)}`), ["09:00-09:30", "16:15-17:00"]);
+    assert.equal(r.addedMinutes, 45);
+    assert.equal(r.freedMinutes, 0);
+  });
+
+  it("windows with no action are left alone, and nothing changes when every action is inside", () => {
+    const w = [win("2026-10-18", "09:00", "11:45"), win("2026-10-18", "20:00", "21:45")];
+    const r = fitWindows(w, [at("2026-10-18", "20:03"), at("2026-10-18", "21:03")]);
+    assert.deepEqual(r.windows.map((x) => `${hm(x.start)}-${hm(x.end)}`), ["09:00-11:45", "20:00-21:45"]);
+    assert.deepEqual([r.covered, r.addedMinutes, r.freedMinutes, r.splits], [0, 0, 0, 0]);
+  });
 });
 
 describe("summarizeWindows", () => {
@@ -188,11 +250,12 @@ describe("summarizeWindows", () => {
     assert.equal(s.hours, 2);
     assert.deepEqual(s.inWindow, { total: 4, email: 2, call: 1, task: 1 });
     assert.deepEqual(s.outside, { total: 1, email: 1, call: 0, task: 0 });
-    // 10 + 20 + 10 + 45 = 85 minutes credited, 35 unassigned.
-    assert.equal(s.attributedHours * 60, 85);
-    assert.equal(s.unassignedHours * 60, 35);
+    // 10 + 20 + 10 + 15 (after an hour's break) = 55 minutes credited, 65 unassigned.
+    assert.equal(s.attributedHours * 60, 55);
+    assert.equal(s.unassignedHours * 60, 65);
+    assert.equal(s.afterBreak, 1);
     assert.deepEqual(s.perHour, { total: 2, email: 1, call: 0.5, task: 0.5 });
-    assert.equal(s.avgMinutes.total, 85 / 4);
+    assert.equal(s.avgMinutes.total, 55 / 4);
     assert.equal(s.avgMinutes.email, 10);
     assert.equal(s.avgMinutes.call, 20);
     assert.equal(s.submissions, 2);
@@ -201,7 +264,7 @@ describe("summarizeWindows", () => {
     assert.deepEqual(s.categories.cv_request, { actions: 1, minutes: 10 });
     assert.deepEqual(s.categories.candidate, { actions: 1, minutes: 20 });
     assert.deepEqual(s.categories.employer, { actions: 1, minutes: 10 });
-    assert.deepEqual(s.categories.other, { actions: 1, minutes: 45 });
+    assert.deepEqual(s.categories.other, { actions: 1, minutes: 15 });
     assert.deepEqual(s.positions, [
       { positionId: "P1", minutes: 30, actions: 2, submissions: 1 },
       { positionId: "P2", minutes: 10, actions: 1, submissions: 1 },

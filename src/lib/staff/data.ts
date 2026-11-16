@@ -5,7 +5,7 @@ import { sfTask, sfUser, staffTimeEntries, staffWorkItems, users } from "@/lib/d
 import { casePath } from "@/lib/entities/emails";
 import { run } from "@/lib/entities/search";
 import { summarize, type HoursSummary } from "./hours";
-import { mergeWindows } from "./windows";
+import { mergeWindows, preferReal } from "./windows";
 
 /**
  * What the staff screens show (docs/staff.md). Every caller is a page or action that already passed
@@ -202,7 +202,8 @@ export async function loadStaffMonth(month: string): Promise<StaffMonthRow[]> {
   const [counts, cases, sheet] = await Promise.all([monthCounts(people, [month]), loadOwnedCases(people, month), timesheetHours(month)]);
   return people.map((p) => ({
     id: p.id,
-    name: p.name,
+    // A user who never signed in has no name yet: their Salesforce user's name, before the email.
+    name: p.name ?? p.sfName ?? null,
     email: p.email,
     active: p.active,
     mondayLinked: Boolean(p.mondayUserId),
@@ -236,11 +237,12 @@ export interface StaffTrend {
 export async function loadStaffTrend(months: string[]): Promise<StaffTrend> {
   const people = (
     await getDb()
-      .select({ id: users.id, name: users.name, email: users.email, sfUserId: users.sfUserId })
+      .select({ id: users.id, name: users.name, email: users.email, sfUserId: users.sfUserId, sfName: sfUser.name })
       .from(users)
+      .leftJoin(sfUser, eq(sfUser.id, users.sfUserId))
       .where(isNotNull(users.sfUserId))
       .orderBy(desc(users.active), asc(users.name))
-  ).map((p) => ({ ...p, name: p.name ?? p.email }));
+  ).map((p) => ({ ...p, name: p.name ?? p.sfName ?? p.email }));
   if (!people.length || !months.length) return { months, people: [], caseTypes: [] };
   const bySf = new Map(people.map((p) => [p.sfUserId!, p.id]));
   const [counts, caseRows] = await Promise.all([
@@ -340,6 +342,42 @@ export async function loadEmployeeHours(userId: string, month: string): Promise<
     .orderBy(sql`${staffWorkItems.doneOn} DESC NULLS FIRST`, asc(staffWorkItems.title));
 
   return { person, byMonth, months, month: picked, summary: summarize(tasks), tasks: tasks.map((t) => ({ ...t, hours: t.hours == null ? null : Number(t.hours) })) };
+}
+
+export interface EmployeeTimesheet {
+  /** Timesheet hours by Israel month (never the demo), overlaps counted once. */
+  byMonth: Map<string, { hours: number; reconstructed: boolean }>;
+  /** The picked month's windows, as stored (a real day hides that day's demo rows), oldest first. */
+  windows: { workDate: string; start: Date; end: Date; source: string; reconstructed: boolean }[];
+}
+
+/**
+ * One employee's timesheet (staff_time_entries): hours per month, as /staff counts them (timesheetHours), and
+ * the picked month's windows for the employee page. `reconstructedNote` marks rows rebuilt after the fact.
+ */
+export async function loadEmployeeTimesheet(userId: string, month: string | null, reconstructedNote: string): Promise<EmployeeTimesheet> {
+  const rows = await getDb()
+    .select({ workDate: staffTimeEntries.workDate, start: staffTimeEntries.startAt, end: staffTimeEntries.endAt, source: staffTimeEntries.source, note: staffTimeEntries.note })
+    .from(staffTimeEntries)
+    .where(eq(staffTimeEntries.userId, userId))
+    .orderBy(asc(staffTimeEntries.startAt));
+  const real = rows.filter((r) => r.source !== "demo");
+  const byMonthRows = new Map<string, typeof real>();
+  for (const r of real) byMonthRows.set(r.workDate.slice(0, 7), [...(byMonthRows.get(r.workDate.slice(0, 7)) ?? []), r]);
+  const byMonth = new Map<string, { hours: number; reconstructed: boolean }>();
+  for (const [m, list] of byMonthRows) {
+    const ms = mergeWindows(list).reduce((t, w) => t + (w.end.getTime() - w.start.getTime()), 0);
+    byMonth.set(m, { hours: ms / 3_600_000, reconstructed: list.some((r) => r.source === "manual" && r.note === reconstructedNote) });
+  }
+  const picked = month ? rows.filter((r) => r.workDate.startsWith(month)) : [];
+  const windows = preferReal(picked.map((r) => ({ ...r, userId }))).map((r) => ({
+    workDate: r.workDate,
+    start: r.start,
+    end: r.end,
+    source: r.source,
+    reconstructed: r.source === "manual" && r.note === reconstructedNote,
+  }));
+  return { byMonth, windows };
 }
 
 function nextMonthStart(month: string): string {
