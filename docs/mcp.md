@@ -72,8 +72,10 @@ settings, admins also manage. Nothing writes to Salesforce. Candidate files are 
 Admin *write* operations (inviting users, keys, sync) are deliberately not exposed.
 Staff data (the מנהל עובדים permission: hours and activity per employee, `docs/staff.md`) has two tools, `staff_monthly` and
 `staff_employee` (`src/lib/mcp/staff-tools.ts`, `staff: true`). They are listed and run only when the connection carries staff data:
-the person is a staff manager right now (read on every call) and turned it on for that connection at `/connectors`
-(`mcp_grants.staff_data`, off by default). Without it they are "unknown". `src/lib/auth/permissions.test.ts` fails if any other
+the person is a staff manager right now (read on every call) and turned it on for that connection
+(`mcp_grants.staff_data`): the consent page shows staff managers a pre-ticked "גם נתוני עובדים" box (`offersStaffData`; not
+while viewing as a lower role), the code carries it (`mcp_codes.staff_data`) and the grant takes it only if the person is still a
+staff manager on redemption; it can be switched at `/connectors` any time. Without it they are "unknown". `src/lib/auth/permissions.test.ts` fails if any other
 MCP file reads staff data or the gate changes.
 
 ## 2. OAuth 2.1 (what the clients see)

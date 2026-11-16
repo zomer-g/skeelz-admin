@@ -11,7 +11,18 @@ import { decideConnection, type DecisionState } from "./actions";
  * browser goes there itself: a redirect straight out of a form post to the client's
  * address would be blocked by this site's `form-action 'self'` policy.
  */
-export function ConsentForm({ params, roles, defaultRole }: { params: Record<string, string>; roles: Role[]; defaultRole: Role }) {
+export function ConsentForm({
+  params,
+  roles,
+  defaultRole,
+  staffOffer,
+}: {
+  params: Record<string, string>;
+  roles: Role[];
+  defaultRole: Role;
+  /** Offer the staff tools (docs/staff.md): only for a staff manager. Ticked, since that is why they connect. */
+  staffOffer: boolean;
+}) {
   const [state, action, pending] = useActionState<DecisionState, FormData>(decideConnection, null);
 
   useEffect(() => {
@@ -41,6 +52,19 @@ export function ConsentForm({ params, roles, defaultRole }: { params: Record<str
           </label>
         ))}
       </fieldset>
+
+      {staffOffer ? (
+        <label className="flex cursor-pointer items-start gap-3 rounded-card border border-field bg-white p-4">
+          <input type="checkbox" name="staff_data" defaultChecked disabled={pending || done} className="mt-1 size-4" />
+          <span>
+            <span className="block font-medium">גם נתוני עובדים</span>
+            <span className="block text-sm text-muted">
+              שעות ומשימות לפי עובד ממאנדיי, מדוחות השעות ומ-Salesforce (<span dir="ltr">staff_monthly</span>, <span dir="ltr">staff_employee</span>). פועל רק כל עוד
+              ההרשאה שלך כמנהל/ת עובדים בתוקף, ואפשר לכבות בכל עת בעמוד &quot;חיבור ל-Claude&quot;.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       <div className="flex flex-wrap gap-3">
         <button name="decision" value="approve" className={buttonClass("primary")} disabled={pending || done}>

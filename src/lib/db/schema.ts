@@ -891,6 +891,8 @@ export const mcpCodes = pgTable(
     redirectUri: text("redirect_uri").notNull(),
     codeChallenge: text("code_challenge").notNull(),
     maxRole: text("max_role").$type<Role>().notNull(),
+    /** Staff data asked for on the consent screen (docs/staff.md); the grant takes it only if the person is still a staff manager. */
+    staffData: boolean("staff_data").notNull().default(false),
     expiresAt: ts("expires_at").notNull(),
   },
   (t) => [check("mcp_codes_role_check", sql`${t.maxRole} in ('viewer', 'editor', 'admin')`)],

@@ -6,7 +6,7 @@ import { pageAuth } from "@/lib/auth/guard";
 import { hasRole, ROLE_LABELS, ROLES } from "@/lib/auth/roles";
 import type { SearchParams } from "@/lib/entities/search";
 import { publicOrigin } from "@/lib/mcp/config";
-import { checkAuthorizeRequest } from "@/lib/mcp/oauth";
+import { checkAuthorizeRequest, offersStaffData } from "@/lib/mcp/oauth";
 import { ConsentForm } from "./ConsentForm";
 
 export const metadata: Metadata = { title: "אישור חיבור ל-MCP" };
@@ -92,7 +92,7 @@ export default async function AuthorizePage({ searchParams }: { searchParams: Pr
         פעולה של החיבור נרשמת ביומן הפעילות. אפשר לנתק אותו בכל עת בעמוד &quot;חיבור ל-Claude&quot;.
       </p>
       {/* The least access is the default: a wider role is a choice, not a click-through. */}
-      <ConsentForm params={params} roles={roles} defaultRole="viewer" />
+      <ConsentForm params={params} roles={roles} defaultRole="viewer" staffOffer={offersStaffData(user)} />
     </Frame>
   );
 }

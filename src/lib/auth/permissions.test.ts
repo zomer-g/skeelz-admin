@@ -77,6 +77,10 @@ describe("staff data reaches the API and MCP only behind their gates", () => {
   it("the gate needs both the connection's switch and a staff manager right now", () => {
     const oauth = readFileSync(join(root, "lib", "mcp", "oauth.ts"), "utf8");
     assert.match(oauth, /staffData: row\.grant\.staffData && person\.staffManager/);
+    // Asked for on the consent screen: offered only to a staff manager, and the grant re-checks it.
+    assert.match(oauth, /staffData: row\.staffData && person\.staffManager/);
+    const consent = readFileSync(join(root, "app", "mcp", "oauth", "authorize", "actions.ts"), "utf8");
+    assert.match(consent, /offersStaffData\(user\) && form\.get\("staff_data"\) === "on"/);
     assert.match(oauth, /effectiveStaffManager\(\{ stored: row\.staffManager, envAdmin, previewing: false \}\)/);
   });
 

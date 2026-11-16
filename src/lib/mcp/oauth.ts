@@ -98,7 +98,15 @@ export function redirectBack(req: AuthorizeRequest, origin: string, result: { co
   return url.toString();
 }
 
-export async function issueCode(req: AuthorizeRequest, userId: string, maxRole: Role): Promise<string> {
+/**
+ * Whether the consent screen offers staff data (docs/staff.md) to this signed-in person: a staff manager
+ * as the session sees them now, so never while an admin is viewing as a lower role.
+ */
+export function offersStaffData(user: { staffManager: boolean }): boolean {
+  return user.staffManager;
+}
+
+export async function issueCode(req: AuthorizeRequest, userId: string, maxRole: Role, staffData = false): Promise<string> {
   const code = token("skm_code_");
   const db = getDb();
   // Expired codes are cleared on the way; there are never many.
@@ -110,6 +118,7 @@ export async function issueCode(req: AuthorizeRequest, userId: string, maxRole: 
     redirectUri: req.redirectUri,
     codeChallenge: req.codeChallenge,
     maxRole,
+    staffData,
     expiresAt: new Date(Date.now() + MCP_LIMITS.codeTtlMin * 60_000),
   });
   return code;
@@ -223,7 +232,7 @@ export async function redeemCode(p: { code: string; clientId: string; redirectUr
   const pair = newPair();
   const [grant] = await db
     .insert(mcpGrants)
-    .values({ userId: row.userId, clientId: row.clientId, maxRole: row.maxRole, codeHash, ...pair.columns })
+    .values({ userId: row.userId, clientId: row.clientId, maxRole: row.maxRole, staffData: row.staffData && person.staffManager, codeHash, ...pair.columns })
     .returning({ id: mcpGrants.id });
   return { ok: true, body: response(pair.access, pair.refresh, lowerRole(person.siteRole, row.maxRole)), grantId: grant!.id, person, created: true };
 }

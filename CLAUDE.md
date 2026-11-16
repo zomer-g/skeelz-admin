@@ -75,7 +75,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   by configuration), invites never grant it, "view as" drops it (`user.staffManager` false), `/api` only as `staff:read` (`/api/v1/staff/*`, a key a staff-manager admin issued, re-checked on every call by
   `staffKeyAllowed` in `src/lib/api/staff.ts`, never env keys, counts not candidate names, not in the public openapi.json), and MCP only
   through `src/lib/mcp/staff-tools.ts` (`staff_monthly`, `staff_employee`, `staff: true`) when `McpPrincipal.staffData`: a staff manager
-  now AND staff data turned on for that connection at `/connectors` (`mcp_grants.staff_data`) — `permissions.test.ts` fails otherwise. Pages use `pageAuthStaff`, actions `requireStaffManager`, never `hasRole`.
+  now AND staff data turned on for that connection (`mcp_grants.staff_data`: a pre-ticked box on the consent page, shown to staff managers only via `offersStaffData`, re-checked when the code is redeemed; switchable at `/connectors`) — `permissions.test.ts` fails otherwise. Pages use `pageAuthStaff`, actions `requireStaffManager`, never `hasRole`.
   Who is which Salesforce User / monday user (`users.sf_user_id`, `users.monday_user_id`, both unique) is set at `/admin/staff-links`
   (not on `/admin/users`); changing a link takes admin + staff manager. Follow the checklist in docs/staff.md for every step.
   `/staff` (one month, every linked employee) and `/staff/[id]` (month by month), code in `src/lib/staff/`: hours and done tasks of

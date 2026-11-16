@@ -204,6 +204,13 @@
       "when": 1794223910446,
       "tag": "0028_naive_gabe_jones",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794838490502,
+      "tag": "0029_daffy_frank_castle",
+      "breakpoints": true
     }
   ]
 }

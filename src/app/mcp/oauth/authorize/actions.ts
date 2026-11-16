@@ -5,7 +5,7 @@ import { writeAudit } from "@/lib/audit";
 import { hasRole, isRole } from "@/lib/auth/roles";
 import { requireUser } from "@/lib/auth/session";
 import { publicOrigin } from "@/lib/mcp/config";
-import { checkAuthorizeRequest, issueCode, redirectBack } from "@/lib/mcp/oauth";
+import { checkAuthorizeRequest, issueCode, offersStaffData, redirectBack } from "@/lib/mcp/oauth";
 
 /** `redirect` is where the browser goes next: back to the client, with a code or with access_denied. */
 export type DecisionState = { message: string; redirect?: string } | null;
@@ -31,10 +31,13 @@ export async function decideConnection(_prev: DecisionState, form: FormData): Pr
 
   const role = form.get("role");
   if (!isRole(role) || !hasRole(user.role, role)) return { message: "יש לבחור הרשאה שאינה גבוהה מההרשאה שלך במערכת." };
-  const code = await issueCode(req, user.id, role);
+  // Staff data only when the screen offered it to this person and they left it ticked.
+  const staffData = offersStaffData(user) && form.get("staff_data") === "on";
+  const code = await issueCode(req, user.id, role, staffData);
   await writeAudit(user.email, "mcp.authorized", req.clientName, {
     clientId: req.clientId,
     maxRole: role,
+    staffData,
     redirectHost: new URL(req.redirectUri).host,
   });
   return { message: "החיבור אושר. חוזרים לאפליקציה…", redirect: redirectBack(req, origin, { code }) };

@@ -1,0 +1,1 @@
+ALTER TABLE "mcp_codes" ADD COLUMN "staff_data" boolean DEFAULT false NOT NULL;
