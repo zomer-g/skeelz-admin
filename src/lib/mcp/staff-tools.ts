@@ -33,7 +33,7 @@ export const STAFF_TOOLS: Tool[] = [
     name: "staff_monthly",
     title: "Staff hours and tasks by month",
     description:
-      "Per employee linked to monday.com or Salesforce, for one month: hours and done tasks from the monday board(s), the Salesforce tasks they own (of them emails sent and calls logged), and the Cases opened that month that they own, by type (applications, inquiries…). Staff data: only for staff managers who turned it on for this connection.",
+      "Per employee linked to monday.com or Salesforce or with a timesheet, for one month: hours and done tasks from the monday board(s), timesheet hours, the Salesforce tasks they own (of them emails sent and calls logged), and the Cases opened that month that they own, by type (applications, inquiries…). Staff data: only for staff managers who turned it on for this connection.",
     minRole: "viewer",
     staff: true,
     people: (r) => (r as { employees?: unknown[] }).employees?.length ?? 0,
@@ -54,6 +54,8 @@ export const STAFF_TOOLS: Tool[] = [
           monday_linked: r.mondayLinked,
           salesforce_user: r.sfName,
           hours: r.mondayLinked ? round(r.hours) : null,
+          timesheet_hours: r.sheetHours ? round(r.sheetHours) : null,
+          timesheet_reconstructed: r.sheetHours ? r.sheetReconstructed : null,
           monday_tasks: r.mondayLinked ? r.mondayTasks : null,
           monday_tasks_without_hours: r.mondayLinked ? r.withoutHours : null,
           salesforce_tasks: r.sfName ? r.sfTasks : null,
@@ -64,7 +66,7 @@ export const STAFF_TOOLS: Tool[] = [
           admin_url: link(ctx, `/staff/${r.id}?month=${month}`),
         })),
         definitions:
-          "monday: tasks in status Done on the board, by their 'תאריך ביצוע'; hours = the task's hours label. Salesforce: Tasks owned by the employee's Salesforce user, by creation date; emails = TaskSubtype Email (one per email sent from Salesforce), calls = TaskSubtype Call. cases_opened: Salesforce Cases opened in the month whose current owner is the employee's Salesforce user, by record type.",
+          "monday: tasks in status Done on the board, by their 'תאריך ביצוע'; hours = the task's hours label. timesheet_hours: the employee's uploaded timesheet (sheet / api / manual, never the demo) for work days in the month, overlapping windows counted once; timesheet_reconstructed = some of it was rebuilt after the fact (no report handed in), not reported. Salesforce: Tasks owned by the employee's Salesforce user, by creation date; emails = TaskSubtype Email (one per email sent from Salesforce), calls = TaskSubtype Call. cases_opened: Salesforce Cases opened in the month whose current owner is the employee's Salesforce user, by record type.",
         admin_url: link(ctx, `/staff?month=${month}`),
       };
     },
