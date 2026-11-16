@@ -163,11 +163,10 @@ export function fitWindows(windows: readonly TimeWindow[], actions: readonly Dat
   const times = actions.map((a) => a.getTime()).filter((t) => !Number.isNaN(t)).sort((a, b) => a - b);
   const inside = (t: number) => ws.some((w) => w.start <= t && t <= w.end);
 
-  // 1. Cover.
-  let covered = 0;
+  // 1. Cover. Every action outside counts, also one that an earlier extension already took in.
+  const covered = times.filter((t) => !inside(t)).length;
   for (const t of times) {
     if (inside(t)) continue;
-    covered += 1;
     const day = israelDayOf(new Date(t));
     const near = ws
       .filter((w) => w.workDate === day)
