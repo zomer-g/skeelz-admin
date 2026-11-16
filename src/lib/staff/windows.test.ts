@@ -267,7 +267,11 @@ describe("summarizeWindows", () => {
     assert.equal(s.attributedHours * 60, 55);
     assert.equal(s.unassignedHours * 60, 65);
     assert.equal(s.afterBreak, 1);
-    assert.deepEqual(s.perHour, { total: 2, email: 1, call: 0.5, task: 0.5 });
+    // Every action in the range counts, the one at 15:00 outside the window too: 5 actions in 2 hours.
+    assert.deepEqual(s.perHour, { total: 2.5, email: 1.5, call: 0.5, task: 0.5 });
+    assert.equal(s.minutesPerAction, 24);
+    assert.equal(s.minutesPerAction! * s.perHour!.total, 60);
+    // The attribution model stays for the per-kind figures: credited minutes per action in a window.
     assert.equal(s.avgMinutes.total, 55 / 4);
     assert.equal(s.avgMinutes.email, 10);
     assert.equal(s.avgMinutes.call, 20);
@@ -310,10 +314,26 @@ describe("summarizeWindows", () => {
     assert.equal(s.submissions, 1);
   });
 
+  it("minutes per action = hours / every action, the reciprocal of actions per hour", () => {
+    const day = "2026-10-01";
+    // October-like: 64 hours, 163 actions, one of them outside the windows.
+    const windows = Array.from({ length: 8 }, (_, i) => win(`2026-10-${String(i + 1).padStart(2, "0")}`, "09:00", "17:00"));
+    const actions = Array.from({ length: 162 }, (_, i) => act(String(i), `2026-10-${String((i % 8) + 1).padStart(2, "0")}`, `${String(9 + Math.floor(i / 8) % 8).padStart(2, "0")}:${String((i * 7) % 60).padStart(2, "0")}`));
+    actions.push(act("out", day, "20:00"));
+    const s = summarizeWindows(windows, actions);
+    assert.equal(s.hours, 64);
+    assert.equal(s.outside.total, 1);
+    assert.equal(s.minutesPerAction, (64 * 60) / 163);
+    assert.ok(Math.abs(s.minutesPerAction! * s.perHour!.total - 60) < 1e-9);
+    assert.equal(Math.round(s.minutesPerAction! * 10) / 10, 23.6);
+    assert.equal(Math.round(s.perHour!.total * 10) / 10, 2.5);
+  });
+
   it("no windows: every action is outside and there are no rates", () => {
     const s = summarizeWindows([], [act("1", "2026-10-29", "10:10")]);
     assert.equal(s.hours, 0);
     assert.equal(s.perHour, null);
+    assert.equal(s.minutesPerAction, null);
     assert.equal(s.avgMinutes.total, null);
     assert.equal(s.outside.total, 1);
   });
