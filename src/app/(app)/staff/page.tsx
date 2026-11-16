@@ -38,6 +38,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
     }),
     { hours: 0, mondayTasks: 0, withoutHours: 0, sfEmails: 0, sfCalls: 0, sfTasks: 0 },
   );
+  const sheetTotal = rows.reduce((t, r) => t + r.sheetHours, 0);
 
   return (
     <>
@@ -63,6 +64,9 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
         <Card title={`פעילות לפי עובד · ${monthLabel(picked)}`}>
           <div className="grid gap-x-10 gap-y-8 lg:grid-cols-2">
             <Bars title="שעות (מאנדיי)" items={bars(rows.filter((r) => r.mondayLinked), (r) => r.hours, (r) => fmtHours(r.hours))} />
+            {sheetTotal ? (
+              <Bars title="שעות (דוח שעות)" items={bars(rows.filter((r) => r.sheetHours > 0), (r) => r.sheetHours, (r) => fmtHours(r.sheetHours))} />
+            ) : null}
             <Bars title="משימות מאנדיי" items={bars(rows.filter((r) => r.mondayLinked), (r) => r.mondayTasks)} />
             <Bars title="משימות Salesforce" items={bars(rows.filter((r) => r.sfName), (r) => r.sfTasks)} />
             <Bars title="מיילים שנשלחו" items={bars(rows.filter((r) => r.sfName), (r) => r.sfEmails)} />
@@ -75,7 +79,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
 
         <Card title={`משימות ושעות · ${monthLabel(picked)}`}>
           <p className="mb-4 text-sm text-muted">
-            מאנדיי: המשימות ותת-המשימות שהעובד סגר (Done) בכל לוח שיש בו עמודת &quot;שעות (בחירה)&quot;, לפי &quot;תאריך ביצוע&quot;, והשעות שסומנו בהן. Salesforce: המשימות שהעובד תיעד לפי
+            שעות: מה שסומן במשימות מאנדיי, ולעובדים שהועלה להם דוח שעות גם סך החלונות בדוח באותו חודש (דוח משוחזר מסומן). מאנדיי: המשימות ותת-המשימות שהעובד סגר (Done) בכל לוח שיש בו עמודת &quot;שעות (בחירה)&quot;, לפי &quot;תאריך ביצוע&quot;, והשעות שסומנו בהן. Salesforce: המשימות שהעובד תיעד לפי
             תאריך היצירה, ומתוכן המיילים שנשלחו והשיחות. עובד מופיע כאן כשהוא מקושר לאחד המקורות ב
             <Link href="/admin/staff-links" className="font-medium text-accent-dark underline underline-offset-4">
               ניהול › קישור עובדים
@@ -100,8 +104,7 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
                   )}
                 </td>
                 <td className="px-3 py-3 tabular-nums">
-                  {r.mondayLinked ? fmtHours(r.hours) : "—"}
-                  {r.withoutHours ? <p className="text-xs text-muted">{r.withoutHours} משימות בלי שעות</p> : null}
+                  <HoursCell row={r} />
                 </td>
                 <td className="px-3 py-3 tabular-nums">{r.mondayLinked ? fmtCount(r.mondayTasks) : <NotLinked />}</td>
                 <td className="px-3 py-3 tabular-nums">{r.sfName ? fmtCount(r.sfTasks) : <NotLinked />}</td>
@@ -114,7 +117,14 @@ export default async function StaffPage({ searchParams }: { searchParams: Promis
             {rows.length > 1 ? (
               <tr className="border-t-2 border-line font-medium">
                 <td className="px-3 py-3">סה״כ</td>
-                <td className="px-3 py-3 tabular-nums">{fmtHours(total.hours)}</td>
+                <td className="px-3 py-3 tabular-nums">
+                  {fmtHours(total.hours + sheetTotal)}
+                  {total.hours && sheetTotal ? (
+                    <p className="text-xs font-normal text-muted">
+                      {fmtHours(total.hours)} במאנדיי · {fmtHours(sheetTotal)} בדוחות שעות
+                    </p>
+                  ) : null}
+                </td>
                 <td className="px-3 py-3 tabular-nums">{fmtCount(total.mondayTasks)}</td>
                 <td className="px-3 py-3 tabular-nums">{fmtCount(total.sfTasks)}</td>
                 <td className="px-3 py-3 tabular-nums">{fmtCount(total.sfEmails)}</td>
@@ -241,6 +251,33 @@ function Trends({ trend }: { trend: StaffTrend }) {
         people={trend.people.map((p) => ({ id: p.id, name: p.name, emails: p.emails, calls: p.calls, casesByType: p.casesByType }))}
       />
     </Card>
+  );
+}
+
+/**
+ * An employee's hours for the month: what they marked on monday tasks, and the hours in their
+ * timesheet (the CSV import at /staff/windows). Each source is named when both are there; a
+ * reconstructed timesheet says so, so it is never read as a report the employee handed in.
+ */
+function HoursCell({ row: r }: { row: StaffMonthRow }) {
+  const sheet = r.sheetHours > 0;
+  if (!r.mondayLinked && !sheet) return <>—</>;
+  return (
+    <>
+      {r.mondayLinked && (r.hours > 0 || !sheet) ? (
+        <p>
+          {fmtHours(r.hours)}
+          {sheet ? <span className="text-xs text-muted"> במאנדיי</span> : null}
+        </p>
+      ) : null}
+      {sheet ? (
+        <p>
+          {fmtHours(r.sheetHours)}
+          <span className="text-xs text-muted"> {r.sheetReconstructed ? "בדוח שעות (כולל שחזור)" : "בדוח שעות"}</span>
+        </p>
+      ) : null}
+      {r.withoutHours ? <p className="text-xs text-muted">{r.withoutHours} משימות בלי שעות</p> : null}
+    </>
   );
 }
 

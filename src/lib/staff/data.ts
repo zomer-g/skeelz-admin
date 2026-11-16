@@ -1,10 +1,11 @@
-import { and, asc, desc, eq, gte, inArray, isNotNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, lt, ne, or, sql } from "drizzle-orm";
 import { israelDay } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
-import { sfTask, sfUser, staffWorkItems, users } from "@/lib/db/schema";
+import { sfTask, sfUser, staffTimeEntries, staffWorkItems, users } from "@/lib/db/schema";
 import { casePath } from "@/lib/entities/emails";
 import { run } from "@/lib/entities/search";
 import { summarize, type HoursSummary } from "./hours";
+import { mergeWindows } from "./windows";
 
 /**
  * What the staff screens show (docs/staff.md). Every caller is a page or action that already passed
@@ -150,9 +151,33 @@ export interface StaffMonthRow extends MonthCounts {
   sfName: string | null;
   /** Cases opened in the month that the employee owns, by type, most first; empty when not linked to Salesforce. */
   cases: OwnedCases[];
+  /** Hours in the employee's timesheet that month (sheet, api or manual rows; never the demo), overlaps counted once. */
+  sheetHours: number;
+  /** Some of those hours come from a timesheet rebuilt after the fact (RECONSTRUCTED_NOTE), not a report handed in. */
+  sheetReconstructed: boolean;
 }
 
-/** Every employee linked to monday or Salesforce, with their counts for one month. */
+/**
+ * Timesheet hours per employee for one month, by the window's Israel work day. Only real rows
+ * (sheet / api / manual): the demo timesheet is made up from Salesforce activity and is never hours
+ * worked. Windows that overlap (two imports of the same day) are merged so no minute counts twice.
+ */
+async function timesheetHours(month: string): Promise<Map<string, { hours: number; reconstructed: boolean }>> {
+  const rows = await getDb()
+    .select({ userId: staffTimeEntries.userId, workDate: staffTimeEntries.workDate, start: staffTimeEntries.startAt, end: staffTimeEntries.endAt, source: staffTimeEntries.source })
+    .from(staffTimeEntries)
+    .where(and(ne(staffTimeEntries.source, "demo"), gte(staffTimeEntries.workDate, `${month}-01`), lt(staffTimeEntries.workDate, nextMonthStart(month))));
+  const byUser = new Map<string, typeof rows>();
+  for (const r of rows) byUser.set(r.userId, [...(byUser.get(r.userId) ?? []), r]);
+  const out = new Map<string, { hours: number; reconstructed: boolean }>();
+  for (const [userId, list] of byUser) {
+    const ms = mergeWindows(list).reduce((t, w) => t + (w.end.getTime() - w.start.getTime()), 0);
+    out.set(userId, { hours: ms / 3_600_000, reconstructed: list.some((r) => r.source === "manual") });
+  }
+  return out;
+}
+
+/** Every employee linked to monday or Salesforce (or with a timesheet), with their counts for one month. */
 export async function loadStaffMonth(month: string): Promise<StaffMonthRow[]> {
   const people = await getDb()
     .select({
@@ -166,9 +191,15 @@ export async function loadStaffMonth(month: string): Promise<StaffMonthRow[]> {
     })
     .from(users)
     .leftJoin(sfUser, eq(sfUser.id, users.sfUserId))
-    .where(or(isNotNull(users.mondayUserId), isNotNull(users.sfUserId)))
+    .where(
+      or(
+        isNotNull(users.mondayUserId),
+        isNotNull(users.sfUserId),
+        sql`EXISTS (SELECT 1 FROM ${staffTimeEntries} WHERE ${staffTimeEntries.userId} = ${users.id} AND ${staffTimeEntries.source} <> 'demo')`,
+      ),
+    )
     .orderBy(desc(users.active), asc(users.name));
-  const [counts, cases] = await Promise.all([monthCounts(people, [month]), loadOwnedCases(people, month)]);
+  const [counts, cases, sheet] = await Promise.all([monthCounts(people, [month]), loadOwnedCases(people, month), timesheetHours(month)]);
   return people.map((p) => ({
     id: p.id,
     name: p.name,
@@ -178,6 +209,8 @@ export async function loadStaffMonth(month: string): Promise<StaffMonthRow[]> {
     sfName: p.sfName ?? (p.sfUserId ? p.sfUserId : null),
     ...(counts.get(`${p.id}|${month}`) ?? EMPTY),
     cases: cases.get(p.id) ?? [],
+    sheetHours: sheet.get(p.id)?.hours ?? 0,
+    sheetReconstructed: sheet.get(p.id)?.reconstructed ?? false,
   }));
 }
 
