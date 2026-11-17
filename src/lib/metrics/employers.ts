@@ -96,6 +96,10 @@ export interface LeadFacts {
   createdAt: Date;
   /** The first time the lead reached each stage. */
   reached: Record<LeadStage, Date | null>;
+  /**
+   * The contract signing: the first move into "נחתם חוזה" from an earlier, non-empty stage. Not
+   * `reached.signed`, which also counts a status set straight to a later stage (an existing customer).
+   */
   signedAt: Date | null;
   /** Where "days from first lead to signing" starts: the same as createdAt. */
   firstLeadAt: Date;
@@ -125,7 +129,12 @@ async function queryLeadFacts(): Promise<LeadFacts[]> {
              ${sql.join(
                STAGES.map((k) => sql`${reached(k)} AS ${sql.raw(`"${k}"`)}`),
                sql`, `,
-             )}
+             )},
+             -- The signing itself: the first move into "נחתם חוזה" from an earlier stage. A move straight into a
+             -- later stage, or from an empty status, is the status catching up with an existing customer.
+             min(h.created_date) FILTER (WHERE ${norm("h.new_value")} = ${LEAD_STATUS.signed}
+                                           AND nullif(${norm("h.old_value")}, '') IS NOT NULL
+                                           AND ${norm("h.old_value")} NOT IN ${AFTER_SIGNING}) AS signed_contract
         FROM sf_account l
         LEFT JOIN sf_account_history h ON h.account_id = l.id AND h.field = ${LEAD_STATUS_FIELD}
        WHERE NOT l.is_deleted AND nullif(l.data->>${LEAD_STATUS_FIELD}, '') IS NOT NULL
@@ -134,10 +143,10 @@ async function queryLeadFacts(): Promise<LeadFacts[]> {
     SELECT lf.*, u.name AS owner_name,
            (SELECT count(*) FROM sf_email_message e
              WHERE e.parent_id = lf.id AND NOT e.incoming AND NOT e.is_deleted
-               AND e.message_date <= coalesce(lf.signed, now()))::int AS emails,
+               AND e.message_date <= coalesce(lf.signed_contract, now()))::int AS emails,
            (SELECT count(*) FROM sf_task t
              WHERE t.what_id = lf.id AND NOT t.is_deleted AND ${isCall}
-               AND coalesce(t.completed_at, t.created_date) <= coalesce(lf.signed, now()))::int AS calls
+               AND coalesce(t.completed_at, t.created_date) <= coalesce(lf.signed_contract, now()))::int AS calls
       FROM lf
       LEFT JOIN sf_user u ON u.id = lf.owner_id`);
 
@@ -152,7 +161,7 @@ async function queryLeadFacts(): Promise<LeadFacts[]> {
       status: normStatus(str(r.status)),
       createdAt: startAt,
       reached: reachedAt,
-      signedAt: reachedAt.signed,
+      signedAt: asDate(r.signed_contract),
       firstLeadAt: startAt,
       emails: num(r.emails),
       calls: num(r.calls),
@@ -166,10 +175,13 @@ export interface LeadMetrics {
   stages: Record<LeadStage, number>;
   /** Every lead by its status now, whenever it entered the pipeline. */
   currentStatus: { status: string; count: number }[];
-  /** Leads whose contract was signed in the range. */
+  /** Leads whose contract was signed in the range (a move into "נחתם חוזה" from an earlier stage). */
   signed: LeadFacts[];
-  /** Of those, how many entered the pipeline already signed (no earlier stage): left out of the time and touches to signing. */
-  signedOnEntry: number;
+  /**
+   * Employers whose status first reached a signed stage in the range without a signing: set from empty, or
+   * straight to a later stage (אין משרות פתוחות, פורסמו משרות, חוזה נסגר). Shown apart, never as contracts.
+   */
+  statusCatchUp: number;
   touchesToSign: Stats;
   touchMix: { emails: number | null; calls: number | null };
   daysToSign: Stats;
@@ -188,8 +200,7 @@ export function computeLeadMetrics(leads: LeadFacts[], from: Date, to: Date): Le
   for (const l of leads) current.set(l.status ?? "ללא סטטוס", (current.get(l.status ?? "ללא סטטוס") ?? 0) + 1);
 
   const signed = leads.filter((l) => inRange(l.signedAt, from, to));
-  // An Account entered straight into a signed stage (an existing customer when the field was introduced)
-  // has no road to signing to measure.
+  const statusCatchUp = leads.filter((l) => inRange(l.reached.signed, from, to) && !inRange(l.signedAt, from, to)).length;
   const worked = signed.filter((l) => l.signedAt!.getTime() > l.firstLeadAt.getTime());
   return {
     newLeads: cohort.length,
@@ -198,7 +209,7 @@ export function computeLeadMetrics(leads: LeadFacts[], from: Date, to: Date): Le
       .map(([status, count]) => ({ status, count }))
       .sort((a, b) => (order.get(a.status) ?? 99) - (order.get(b.status) ?? 99)),
     signed,
-    signedOnEntry: signed.length - worked.length,
+    statusCatchUp,
     touchesToSign: stats(worked.map((l) => l.emails + l.calls)),
     touchMix: { emails: mean(worked.map((l) => l.emails)), calls: mean(worked.map((l) => l.calls)) },
     daysToSign: stats(worked.map((l) => (l.signedAt!.getTime() - l.firstLeadAt.getTime()) / DAY)),

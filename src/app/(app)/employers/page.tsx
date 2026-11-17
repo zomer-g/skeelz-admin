@@ -120,7 +120,7 @@ export default async function EmployersPage({ searchParams }: { searchParams: Pr
         <SectionTitle hint="לידים שנכנסו וחוזים שנחתמו בטווח">לידים וחוזים</SectionTitle>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard label="לידים חדשים" value={fmtInt(m.newLeads)} hint="Accounts שקיבלו סטטוס מעסיק לראשונה בטווח" info={EXPLAIN.newLeads} />
-          <StatCard label="חוזים שנחתמו" value={fmtInt(m.signed.length)} hint={m.signedOnEntry ? `${fmtInt(m.signedOnEntry)} מהם נכנסו לתהליך כבר בשלב חתום` : 'סטטוס המעסיק עבר ל"נחתם חוזה" בטווח'} info={EXPLAIN.signedContracts} />
+          <StatCard label="חוזים שנחתמו" value={fmtInt(m.signed.length)} hint={m.statusCatchUp ? `לא כולל ${fmtInt(m.statusCatchUp)} שהסטטוס שלהם עודכן ישר לשלב שאחרי חתימה` : 'סטטוס המעסיק עבר ל"נחתם חוזה" בטווח'} info={EXPLAIN.signedContracts} />
           <StatCard
             label="מגעים עד חתימה"
             value={fmtDecimal(m.touchesToSign.avg)}
