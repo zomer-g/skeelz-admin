@@ -277,13 +277,18 @@ const CV_ASK = /קיבלנו את מועמדותך|קיבלתי את בקשתך|
 const TO_EMPLOYER = /SKEELZ\s*\|\s*מועמד|הגש(?:ה|ת\s+מועמדות)\s+למשר|עדכון סטטוס:\s*מועמדים|קורות\s*חיים\s+של\s/i;
 const CV_ANY = /קורות\s*חיים/;
 
+/** Case types that are work with the employer: an employer lead, a job, and a job-ad form (17.11.2026). */
+export const EMPLOYER_CASE_TYPES: readonly string[] = ["lead_employer", "Position", "position_form"];
+
 /**
- * What an action was for, by the type of Case it sits on and its subject. Every action on a
- * `cv_message` Case is a CV request; on a submission (RecordType2) the subject decides between a CV
- * request, the employer and the candidate; actions anywhere else are "other".
+ * What an action was for, by what it sits on and its subject. Every action on a `cv_message` Case is a
+ * CV request; on an Account (an employer) or an employer Case (`EMPLOYER_CASE_TYPES`) it is with the
+ * employer; on a submission (RecordType2) the subject decides between a CV request, the employer and the
+ * candidate; actions anywhere else are "other". The same for every employee.
  */
-export function actionCategory(caseType: string | null, subject: string | null): ActionCategory {
+export function actionCategory(caseType: string | null, subject: string | null, onAccount = false): ActionCategory {
   if (caseType === CV_CASE_TYPE) return "cv_request";
+  if ((!caseType && onAccount) || (caseType && EMPLOYER_CASE_TYPES.includes(caseType))) return "employer";
   if (caseType !== SUBMISSION_TYPE) return "other";
   const s = subject ?? "";
   if (CV_ASK.test(s)) return "cv_request";
@@ -305,6 +310,8 @@ export interface Action {
   accountId?: string | null;
   /** The Case's number, for the detailed timesheet (never the subject: it names candidates). */
   caseNumber?: string | null;
+  /** Not a Salesforce Task but a record the employee created: an Account (counted as one action, kind "task"). */
+  created?: "account";
 }
 
 /** Where an action sits, for the time per record type: a Case's RecordType DeveloperName, or one of these. */

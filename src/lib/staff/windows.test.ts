@@ -175,6 +175,12 @@ describe("actionKind and actionCategory", () => {
     assert.equal(actionCategory("cv_message", "שיחה"), "cv_request");
     assert.equal(actionCategory("WEHAVE", "דואר אלקטרוני: קיבלנו את מועמדותך למשרת x"), "other");
     assert.equal(actionCategory(null, "קורות חיים"), "other");
+    // Employer work, for everyone (17.11.2026): an Account, an employer lead, a job, a job-ad form.
+    assert.equal(actionCategory(null, "שיחה", true), "employer");
+    assert.equal(actionCategory("lead_employer", "דואר אלקטרוני: הצעת שיתוף פעולה"), "employer");
+    assert.equal(actionCategory("Position", "עדכון משרה"), "employer");
+    assert.equal(actionCategory("position_form", null), "employer");
+    assert.equal(actionCategory("cv_message", "x", true), "cv_request");
   });
 
   it("אסתי's templates (October 2026)", () => {

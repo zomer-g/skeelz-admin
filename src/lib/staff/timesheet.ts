@@ -310,7 +310,7 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
       id: t.id,
       at: new Date(t.created_date),
       kind: actionKind(t.task_subtype, t.type),
-      category: actionCategory(t.developer_name, t.subject),
+      category: actionCategory(t.developer_name, t.subject, Boolean(t.what_id?.startsWith(ACCOUNT_ID_PREFIX))),
       caseId: t.case_id,
       caseType: t.developer_name,
       positionId: t.parent_id,
@@ -319,6 +319,32 @@ export async function loadWindowsDashboard(fromDay: string, toDay: string, from:
     });
     actionsBySf.set(t.owner_id, list);
   }
+
+  // Creating an Account (an employer) is an action too, for everyone: one "task" with the employer.
+  const accounts = sfIds.length
+    ? await run<{ id: string; created_by: string; created_date: Date | string }>(sql`
+        SELECT a.id, a.data->>'CreatedById' AS created_by, a.created_date
+          FROM sf_account a
+         WHERE a.data->>'CreatedById' IN ${sfIds} AND NOT a.is_deleted
+           AND a.created_date >= ${new Date(lo)} AND a.created_date < ${new Date(hi)}`)
+    : [];
+  for (const a of accounts) {
+    const list = actionsBySf.get(a.created_by) ?? [];
+    list.push({
+      id: a.id,
+      at: new Date(a.created_date),
+      kind: "task",
+      category: "employer",
+      caseId: null,
+      caseType: null,
+      positionId: null,
+      accountId: a.id,
+      caseNumber: null,
+      created: "account",
+    });
+    actionsBySf.set(a.created_by, list);
+  }
+  for (const list of actionsBySf.values()) list.sort((x, y) => x.at.getTime() - y.at.getTime());
 
   const inRange = (d: Date) => d.getTime() >= from.getTime() && d.getTime() < to.getTime();
   const employees: EmployeeWindows[] = people.map((p) => {
