@@ -602,3 +602,74 @@ export function parseTimesheet(text: string): { rows: SheetRow[]; errors: { line
   });
   return { rows, errors };
 }
+
+/* ------------------------------------------------------------- Google Sheets tabs */
+
+/** A tab that only shows how to fill the sheet. */
+const EXAMPLE_TAB = /^\s*דוגמ[אה]/;
+
+/**
+ * Who a timesheet tab belongs to: its first word ("שרית נובמבר 26" → "שרית"), compared with the first word
+ * of the employee's names. null for an example tab.
+ */
+export function tabEmployeeKey(title: string): string | null {
+  if (EXAMPLE_TAB.test(title)) return null;
+  const first = title.trim().split(/\s+/)[0] ?? "";
+  return first ? first.toLowerCase() : null;
+}
+
+export interface TabParse {
+  rows: { workDate: string; start: Date; end: Date }[];
+  /** Every day the tab lists, filled or not: their earlier rows are replaced (an emptied day is cleared). */
+  days: string[];
+  errors: string[];
+}
+
+/**
+ * One employee's tab, as the team fills it: a header row with "תאריך" and pairs of "שעת כניסה" / "שעת
+ * יציאה" (a second pair for a split day), then a row per day (01.11.26). Columns are found by their
+ * headings; without them, date in A and the pairs in C–D and E–F. Totals and empty pairs are ignored.
+ */
+export function parseHoursTab(values: readonly (readonly string[])[]): TabParse {
+  const cell = (r: readonly string[], i: number) => String(r[i] ?? "").trim();
+  const headerAt = values.findIndex((r) => r.some((c) => String(c).trim() === "תאריך"));
+  let dateCol = 0;
+  let pairs: [number, number][] = [
+    [2, 3],
+    [4, 5],
+  ];
+  if (headerAt >= 0) {
+    const h = values[headerAt]!.map((c) => String(c).trim());
+    dateCol = h.indexOf("תאריך");
+    const ins = h.flatMap((c, i) => (c.startsWith("שעת כניסה") ? [i] : []));
+    const outs = h.flatMap((c, i) => (c.startsWith("שעת יציאה") ? [i] : []));
+    if (ins.length && ins.length === outs.length) pairs = ins.map((c, k) => [c, outs[k]!]);
+  }
+  const rows: TabParse["rows"] = [];
+  const days = new Set<string>();
+  const errors: string[] = [];
+  for (const r of values.slice(headerAt + 1)) {
+    const workDate = parseDay(cell(r, dateCol));
+    if (!workDate) continue;
+    days.add(workDate);
+    for (const [a, b] of pairs) {
+      const fromText = cell(r, a);
+      const toText = cell(r, b);
+      if (!fromText && !toText) continue;
+      const from = parseTime(fromText);
+      const to = parseTime(toText);
+      if (!from || !to) {
+        errors.push(`${cell(r, dateCol)}: שעה לא מובנת או חסרה`);
+        continue;
+      }
+      const start = israelInstant(workDate, from[0], from[1]);
+      const end = israelInstant(workDate, to[0], to[1]);
+      if (end.getTime() <= start.getTime()) {
+        errors.push(`${cell(r, dateCol)}: שעת היציאה לא אחרי שעת הכניסה`);
+        continue;
+      }
+      rows.push({ workDate, start, end });
+    }
+  }
+  return { rows, days: [...days].sort(), errors };
+}

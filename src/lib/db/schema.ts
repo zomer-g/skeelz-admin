@@ -110,6 +110,30 @@ export const staffTimeEntries = pgTable(
   ],
 );
 
+/**
+ * Google Sheets the timesheets are pulled from (docs/staff.md, "משיכה מגוגל שיטס"): a tab per employee,
+ * read every few minutes by the worker. `lastHash` skips rewriting when nothing changed.
+ */
+export const staffSheetSources = pgTable("staff_sheet_sources", {
+  spreadsheetId: text("spreadsheet_id").primaryKey(),
+  title: text("title"),
+  addedBy: text("added_by").notNull(),
+  addedAt: ts("added_at").notNull().defaultNow(),
+  lastSyncedAt: ts("last_synced_at"),
+  lastError: text("last_error"),
+  lastHash: text("last_hash"),
+  /** Per tab: the employee it was matched to and how many windows, or why it was skipped. Never hours. */
+  lastResult: jsonb("last_result").$type<SheetTabResult[]>(),
+});
+
+export interface SheetTabResult {
+  tab: string;
+  employee: string | null;
+  windows: number;
+  days: number;
+  error: string | null;
+}
+
 /** When each staff source last synced. Kept apart from sync_runs / sync_state, which admins and MCP read. */
 export const staffSourceState = pgTable("staff_source_state", {
   source: text("source").primaryKey(),

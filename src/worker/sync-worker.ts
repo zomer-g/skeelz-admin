@@ -22,6 +22,7 @@ import { isMarketingGroup, marketingConfigured, runMarketingSync, type Marketing
 import { salesforceConfigured } from "@/lib/sf/client";
 import { runSync, type SyncMode } from "@/lib/sf/sync";
 import { safeErrorMessage } from "@/lib/log";
+import { GSHEET_SOURCE, syncTimesheetSheets } from "@/lib/staff/gsheet";
 import { mondayConfigured, staffSourceStatus, syncMonday } from "@/lib/staff/monday";
 
 /** "marketing:SMOOV" and the like: one source's refresh button on /admin/sync. */
@@ -31,6 +32,8 @@ const INTERVAL_MIN = Number(process.env.SYNC_INTERVAL_MIN ?? 10);
 const MARKETING_INTERVAL_MIN = Number(process.env.MARKETING_SYNC_INTERVAL_MIN ?? 360);
 const FAILED_RETRY_MIN = 30;
 const STAFF_INTERVAL_MIN = Number(process.env.STAFF_SYNC_INTERVAL_MIN ?? 60);
+/** Timesheets in Google Sheets (src/lib/staff/gsheet.ts): close to live, a rewrite only when a tab changed. */
+const SHEETS_INTERVAL_MIN = Number(process.env.STAFF_SHEETS_INTERVAL_MIN ?? 10);
 const RECONCILE_HOUR_UTC = Number(process.env.SYNC_RECONCILE_HOUR_UTC ?? 0); // 02:00–03:00 Israel time
 const MODES = new Set<string>(["incremental", "full", "reconcile", "marketing"]);
 const isJobMode = (mode: string): mode is JobMode =>
@@ -171,6 +174,13 @@ async function tick(): Promise<void> {
       if (Date.now() - (state?.lastStartedAt?.getTime() ?? 0) < STAFF_INTERVAL_MIN * 60_000) return;
       const r = await syncMonday("schedule");
       log(r.error ? `staff hours (monday) failed: ${r.error}` : `staff hours (monday): ${r.rows} rows`);
+    });
+
+    await safely("staff timesheets (Google Sheets)", async () => {
+      const state = await staffSourceStatus(GSHEET_SOURCE);
+      if (Date.now() - (state?.lastStartedAt?.getTime() ?? 0) < SHEETS_INTERVAL_MIN * 60_000) return;
+      const r = await syncTimesheetSheets();
+      if (r.sources) log(r.error ? `staff timesheets (sheets) failed: ${r.error}` : `staff timesheets (sheets): ${r.changed}/${r.sources} changed`);
     });
 
     await safely("webhook delivery", async () => {

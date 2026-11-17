@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { buttonClass } from "@/components/ui";
-import { deleteDemo, fitTimesheet, importSheet, loadDemo, type TimesheetActionState } from "./actions";
+import { addSheet, deleteDemo, fitTimesheet, importSheet, loadDemo, pullSheets, removeSheet, type TimesheetActionState } from "./actions";
 
 /** Always mounted, so the result is announced when it arrives. */
 function Status({ state }: { state: TimesheetActionState }) {
@@ -105,6 +105,60 @@ export function FitButton({ userId, name, from, to }: { userId: string; name: st
           <span className="sr-only"> · {name}</span>
         </button>
       </div>
+      <Status state={state} />
+    </form>
+  );
+}
+
+/** Adds a Google Sheet by its link, and pulls every listed sheet now. */
+export function SheetSources() {
+  const [addState, addAction, adding] = useActionState<TimesheetActionState, FormData>(addSheet, null);
+  const [pullState, pullAction, pulling] = useActionState<TimesheetActionState, FormData>(pullSheets, null);
+  return (
+    <div className="flex flex-col gap-4">
+      <form action={addAction} className="flex flex-col gap-2">
+        <label className="flex flex-col gap-1 text-sm">
+          <span className="font-medium">קישור לגיליון</span>
+          <input
+            name="sheet"
+            dir="ltr"
+            required
+            placeholder="https://docs.google.com/spreadsheets/d/…"
+            className="rounded-pill border border-field bg-white px-4 py-2 text-sm text-ink focus:outline-hidden focus:ring-2 focus:ring-accent"
+          />
+        </label>
+        <div>
+          <button type="submit" disabled={adding} className={buttonClass("primary", "sm")}>
+            {adding ? "מוסיף ומושך…" : "הוספה"}
+          </button>
+        </div>
+        <Status state={addState} />
+      </form>
+      <form action={pullAction} className="flex flex-col gap-2">
+        <div>
+          <button type="submit" disabled={pulling} className={buttonClass("secondary", "sm")}>
+            {pulling ? "מושך…" : "משיכה עכשיו"}
+          </button>
+        </div>
+        <Status state={pullState} />
+      </form>
+    </div>
+  );
+}
+
+export function RemoveSheetButton({ id, title }: { id: string; title: string }) {
+  const [state, action, pending] = useActionState<TimesheetActionState, FormData>(removeSheet, null);
+  return (
+    <form
+      action={action}
+      onSubmit={(e) => {
+        if (!window.confirm(`להפסיק למשוך את "${title}"? מה שכבר נקלט נשאר.`)) e.preventDefault();
+      }}
+    >
+      <input type="hidden" name="sheet" value={id} />
+      <button type="submit" disabled={pending} className={buttonClass("quiet", "sm")}>
+        הפסקת משיכה<span className="sr-only"> · {title}</span>
+      </button>
       <Status state={state} />
     </form>
   );

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { writeAudit } from "@/lib/audit";
 import { requireStaffManager } from "@/lib/auth/session";
 import { parseDashboardParams } from "@/lib/dashboard/params";
+import { addSheetSource, removeSheetSource, spreadsheetIdFrom, syncTimesheetSheets } from "@/lib/staff/gsheet";
 import { deleteTimeEntries, fitReconstructedTimesheet, importTimesheet, loadDemoTimesheet } from "@/lib/staff/timesheet";
 
 // Timesheets (docs/staff.md): every action checks for a staff manager itself, whatever the page showed.
@@ -90,4 +91,33 @@ export async function fitTimesheet(_prev: TimesheetActionState, form: FormData):
       short > 0 ? `לא היו מספיק הפסקות, ולכן סך השעות גדל ב-${short} דקות.` : "סך השעות לא השתנה."
     }`,
   };
+}
+
+/** Adds a Google Sheet to pull timesheets from, and pulls at once so the result shows. */
+export async function addSheet(_prev: TimesheetActionState, form: FormData): Promise<TimesheetActionState> {
+  const manager = await requireStaffManager();
+  const id = spreadsheetIdFrom(String(form.get("sheet") ?? ""));
+  if (!id) return { ok: false, message: "זה לא נראה כמו קישור ל-Google Sheet" };
+  await addSheetSource(id, manager.email);
+  await writeAudit(manager.email, "staff.sheet_source_added", id);
+  const r = await syncTimesheetSheets(manager.email);
+  revalidatePath("/staff/windows");
+  return r.error ? { ok: false, message: `הגיליון נוסף, אבל המשיכה נכשלה: ${r.error}` } : { ok: true, message: "הגיליון נוסף ונמשך" };
+}
+
+export async function removeSheet(_prev: TimesheetActionState, form: FormData): Promise<TimesheetActionState> {
+  const manager = await requireStaffManager();
+  const id = spreadsheetIdFrom(String(form.get("sheet") ?? ""));
+  if (!id || !(await removeSheetSource(id))) return { ok: false, message: "הגיליון לא נמצא" };
+  await writeAudit(manager.email, "staff.sheet_source_removed", id);
+  revalidatePath("/staff/windows");
+  return { ok: true, message: "המשיכה מהגיליון הופסקה. מה שכבר נקלט נשאר" };
+}
+
+export async function pullSheets(_prev: TimesheetActionState): Promise<TimesheetActionState> {
+  const manager = await requireStaffManager();
+  const r = await syncTimesheetSheets(manager.email);
+  revalidatePath("/staff/windows");
+  if (r.error) return { ok: false, message: `המשיכה נכשלה: ${r.error}` };
+  return { ok: true, message: r.changed ? `עודכנו ${r.changed} גיליונות` : "אין שינוי מאז המשיכה הקודמת" };
 }

@@ -11,6 +11,8 @@ import { JWT } from "google-auth-library";
 const SCOPES = [
   "https://www.googleapis.com/auth/analytics.readonly",
   "https://www.googleapis.com/auth/tagmanager.readonly",
+  // Timesheets in Google Sheets shared with the service account (src/lib/staff/gsheet.ts): read only.
+  "https://www.googleapis.com/auth/spreadsheets.readonly",
 ];
 
 export class GoogleError extends Error {

@@ -8,9 +8,11 @@ import {
   fitWindows,
   israelInstant,
   mergeWindows,
+  parseHoursTab,
   parseTimesheet,
   preferReal,
   summarizeWindows,
+  tabEmployeeKey,
   type Action,
   type WorkWindow,
 } from "./windows";
@@ -367,5 +369,33 @@ describe("parseTimesheet", () => {
       errors.map((e) => e.line),
       [2, 3, 4, 5],
     );
+  });
+});
+
+describe("Google Sheets timesheet tabs", () => {
+  const header = ["תאריך", "יום", "שעת כניסה", "שעת יציאה", "שעת כניסה-2", "שעת יציאה- 2", "סהכ שעות", "שעות לשכר"];
+  it("reads the team's layout: a row per day, one or two pairs, empty days listed so they clear", () => {
+    const r = parseHoursTab([
+      header,
+      ["01.11.26", "ראשון", "12:30", "15:30", "", "", "3:00", "3.00"],
+      ["02.11.26", "שני", "8:30", "10:30", "12:15", "14:45", "4:30", "4.50"],
+      ["18.11.26", "רביעי", "", "", "", "", "0:00", "0.00"],
+      ["", "", "", "", "", "", "0:00", "0.00"],
+      ["סהכ", "", "", "", "", "", "13:00", "37.00"],
+    ]);
+    assert.deepEqual(r.days, ["2026-11-01", "2026-11-02", "2026-11-18"]);
+    assert.equal(r.rows.length, 3);
+    assert.equal(r.rows[0]!.start.toISOString(), "2026-11-01T10:30:00.000Z");
+    assert.equal(r.rows[2]!.end.toISOString(), "2026-11-02T12:45:00.000Z");
+    assert.deepEqual(r.errors, []);
+  });
+  it("reports a half-filled pair instead of guessing", () => {
+    const r = parseHoursTab([header, ["03.11.26", "שלישי", "10:15", "", "", "", "", ""]]);
+    assert.equal(r.rows.length, 0);
+    assert.equal(r.errors.length, 1);
+  });
+  it("matches a tab by its first word and skips the example", () => {
+    assert.equal(tabEmployeeKey("שרית נובמבר 26"), "שרית");
+    assert.equal(tabEmployeeKey("דוגמא איך ממלאים"), null);
   });
 });

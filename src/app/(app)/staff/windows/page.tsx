@@ -24,7 +24,9 @@ import {
 import { dayLabel, fmtCount, fmtHours } from "../format";
 import { StaffNav } from "../StaffNav";
 import { ExpectedRates } from "./ExpectedRates";
-import { DemoButtons, FitButton, SheetImport } from "./TimesheetTools";
+import { DemoButtons, FitButton, RemoveSheetButton, SheetImport, SheetSources } from "./TimesheetTools";
+import { serviceAccountEmail } from "@/lib/google/auth";
+import { listSheetSources } from "@/lib/staff/gsheet";
 
 export const metadata: Metadata = { title: "פעולות ביחידת זמן" };
 export const dynamic = "force-dynamic";
@@ -60,7 +62,8 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
 
   const p = parseDashboardParams(search, new Date(), "30d");
   const openWho = typeof search.who === "string" ? search.who : null;
-  const data = await loadWindowsDashboard(p.fromDay, p.toDay, p.from, p.to);
+  const [data, sheets] = await Promise.all([loadWindowsDashboard(p.fromDay, p.toDay, p.from, p.to), listSheetSources()]);
+  const saEmail = serviceAccountEmail();
   const withHours = data.employees.filter((e) => e.summary.hours > 0);
   const shown = data.employees.filter((e) => e.summary.hours > 0 || e.summary.outside.total > 0);
   const total = totals(shown);
@@ -268,6 +271,53 @@ export default async function StaffWindowsPage({ searchParams }: { searchParams:
                 <h3 className="mb-2 font-bold">דמו</h3>
                 <p className="mb-4 text-sm text-muted">{DEMO_TEXT} טעינה מחדש מחליפה את הדמו הקודם, והמחיקה מוחקת את כל שורות הדמו ולא נוגעת בדוחות אמיתיים.</p>
                 <DemoButtons />
+              </div>
+              <div>
+                <h3 className="mb-2 font-bold">משיכה אוטומטית מגוגל שיטס</h3>
+                <p className="mb-4 text-sm text-muted">
+                  גיליון עם לשונית לכל עובד (&quot;שרית נובמבר 26&quot;: המילה הראשונה היא שם העובד), ובה שורה לכל יום: תאריך (01.11.26), שעת כניסה ושעת יציאה, ואפשר זוג
+                  שני. לשונית שמתחילה ב&quot;דוגמא&quot; מדולגת. המערכת קוראת את הגיליונות כל 10 דקות, ולכל עובד הימים שבלשונית מחליפים את מה שנקלט קודם מדוח לאותם ימים (יום
+                  שרוקן נמחק). כדי שהמערכת תוכל לקרוא, משתפים את הגיליון לצפייה עם{" "}
+                  {saEmail ? (
+                    <span dir="ltr" className="font-medium text-ink">
+                      {saEmail}
+                    </span>
+                  ) : (
+                    "חשבון השירות של Google (לא מוגדר כרגע)"
+                  )}
+                  . לכל חודש גיליון חדש מוסיפים כאן.
+                </p>
+                {sheets.length ? (
+                  <ul className="mb-4 flex flex-col gap-3">
+                    {sheets.map((s) => (
+                      <li key={s.spreadsheetId} className="rounded-card border border-line bg-white p-4 text-sm">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <a href={`https://docs.google.com/spreadsheets/d/${s.spreadsheetId}/edit`} target="_blank" rel="noreferrer" className="font-medium underline">
+                            {s.title ?? s.spreadsheetId}
+                            <span className="sr-only"> (נפתח בלשונית חדשה)</span>
+                          </a>
+                          <RemoveSheetButton id={s.spreadsheetId} title={s.title ?? s.spreadsheetId} />
+                        </div>
+                        <p className="mt-1 text-muted">
+                          {s.lastSyncedAt ? `נמשך לאחרונה ${DAY_TIME.format(s.lastSyncedAt)} ${s.lastSyncedAt.toLocaleTimeString("he-IL", { timeZone: "Asia/Jerusalem", hour: "2-digit", minute: "2-digit" })}` : "עוד לא נמשך"}
+                        </p>
+                        {s.lastError ? <p className="mt-1 text-danger">{s.lastError}</p> : null}
+                        {s.lastResult?.length ? (
+                          <ul className="mt-2 flex flex-col gap-1">
+                            {s.lastResult.map((t) => (
+                              <li key={t.tab}>
+                                <span className="font-medium">{t.tab}</span>
+                                {t.employee ? ` · ${t.employee} · ${fmtCount(t.windows)} חלונות ב-${fmtCount(t.days)} ימים` : ""}
+                                {t.error ? <span className="text-danger"> · {t.error}</span> : null}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+                <SheetSources />
               </div>
               <div>
                 <h3 className="mb-2 font-bold">קליטת דוח אמיתי</h3>
