@@ -86,6 +86,7 @@ Every app implements the same five parts. Copy this file into each repo as `docs
   candidate_id, status, scope, fast; page paging), /api/v1/applications/:id (with its status history), /api/v1/candidates
   (filters from, to, area, napa, skill, cv, fast, applied). No names, emails or phones, never files (`src/lib/api/records.ts`).
   Each application carries `site_source` (channel, source, medium, campaign, device, applicant type, ambiguous) or null.
+  and `reject_reasons`: the rejection reasons (`Field21__c`, חוסר התאמה) as Salesforce's labels, empty when none was recorded.
 - `people:read` — adds candidates' name, email and phone to the `records:read` endpoints, only when a call asks
   (`?include=people`), and only together with `records:read` on the key. Never on an env key; every call checks that the
   key's issuer is still an active admin, and the people count against the issuer's daily export budget

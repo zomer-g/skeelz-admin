@@ -203,6 +203,17 @@ export function SiteSourceCell({ source }: { source: ApplicationSiteSource | nul
   );
 }
 
+/** סיבת הדחייה under an application's status (`Field21__c`, lib/metrics/reject-reasons.ts); nothing when none was recorded. */
+export function RejectReasons({ reasons }: { reasons: readonly string[] }) {
+  if (!reasons.length) return null;
+  return (
+    <p className="mt-0.5 text-xs text-ink">
+      <span className="text-muted">סיבת דחייה: </span>
+      {reasons.join(" · ")}
+    </p>
+  );
+}
+
 export function ApplicationsTable({
   rows,
   hide = [],
@@ -285,7 +296,10 @@ export function ApplicationsTable({
               <p className="text-xs text-muted">{a.company ?? "—"}</p>
             </td>
           ) : null}
-          <td className="px-3 py-2">{a.status ?? "—"}</td>
+          <td className="px-3 py-2">
+            {a.status ?? "—"}
+            <RejectReasons reasons={a.rejectReasons} />
+          </td>
           <td className="whitespace-nowrap px-3 py-2 tabular-nums">{a.acceptedAt ? fmtDate(a.acceptedAt) : "—"}</td>
           <td className="whitespace-nowrap px-3 py-2 tabular-nums">{a.startDate ? `${Number(a.startDate.slice(8, 10))}.${Number(a.startDate.slice(5, 7))}.${a.startDate.slice(0, 4)}` : "—"}</td>
           <td className="px-3 py-2">{a.ownerName ?? "—"}</td>

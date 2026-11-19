@@ -3,6 +3,7 @@ import { cached } from "@/lib/cache";
 import { getDb } from "@/lib/db/client";
 import { sfCase, sfRecordType, syncState } from "@/lib/db/schema";
 import { jobPaidSql } from "./paid";
+import { rejectReasonLabels } from "./reject-reasons";
 
 /**
  * Candidates tab. Definitions live in docs/candidates-tab-metrics.md.
@@ -321,12 +322,7 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
     jobTitle: r.job_title,
     company: r.company,
     ownerName: r.owner_name,
-    rejectReasons: r.reject_reasons
-      ? r.reject_reasons
-          .split(";")
-          .map((s) => normStatus(s)!)
-          .filter(Boolean)
-      : [],
+    rejectReasons: rejectReasonLabels(r.reject_reasons),
     firstTouchAt: asDate(r.first_touch_at),
     requestedCvAt: asDate(r.requested_cv_at),
     cvReceivedAt: asDate(r.cv_received_at),

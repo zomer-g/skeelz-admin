@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SectionTitle } from "@/components/dashboard/ApplicationPipeline";
 import { DashboardTabs } from "@/components/dashboard/DashboardTabs";
+import { RejectReasons } from "@/components/entities/EntityParts";
 import { Badge, Card, smallFieldClass, Table } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { peopleScreen } from "@/lib/security/people-screen";
@@ -213,7 +214,10 @@ export default async function ActivePage({ searchParams }: { searchParams: Promi
               <td className="px-3 py-2">
                 <Badge tone={a.level >= 2 ? "success" : "accent"}>{STAGES.find((s) => s.key === SF_STAGES[a.level])!.short}</Badge>
               </td>
-              <td className="px-3 py-2">{a.status ?? "—"}</td>
+              <td className="px-3 py-2">
+                {a.status ?? "—"}
+                <RejectReasons reasons={a.fact.rejectReasons} />
+              </td>
               {showChange ? (
                 <td className="whitespace-nowrap px-3 py-2 tabular-nums">
                   {shown ? (
