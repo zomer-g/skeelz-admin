@@ -186,6 +186,11 @@ const SCHEMAS: Record<string, Schema> = {
     company: strOrNull,
     candidate_id: { type: ["string", "null"], description: "The candidate's Salesforce Contact id" },
     status: strOrNull,
+    reject_reasons: {
+      type: "array",
+      items: str,
+      description: "סיבת הדחייה (חוסר התאמה in Salesforce), as the labels Salesforce shows; empty when none was recorded",
+    },
     paid: bool,
     fast_applied: { type: "boolean", description: "הגשה מהירה (the site's one-click apply)" },
     candidate_has_cv: { type: ["boolean", "null"], description: "The candidate's קו\"ח checkbox; null with no Contact" },

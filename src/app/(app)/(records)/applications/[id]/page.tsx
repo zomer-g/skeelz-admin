@@ -64,7 +64,7 @@ export default async function ApplicationPage({ params }: { params: Promise<{ id
               ["סטטוס", app.status],
               ["סטטוס השמה", app.placementStatus],
               ["מטפל (Case Owner)", app.ownerName],
-              ["חוסר התאמה", app.rejectReasons.length ? app.rejectReasons.join(" · ") : null],
+              ["סיבת דחייה (חוסר התאמה)", app.rejectReasons.length ? app.rejectReasons.join(" · ") : null],
               ["הגשה מהירה", yesNo(app.fastApplied)],
               ["הגשה למשרה בתשלום (שדה)", yesNo(app.paidApplicationFlag)],
               ["משרה של זהר", yesNo(app.zohar)],

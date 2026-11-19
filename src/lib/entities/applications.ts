@@ -3,6 +3,7 @@ import { sql, type SQL } from "drizzle-orm";
 import { normStatus, normStatusSql, RECORD_TYPES, STATUS } from "@/lib/metrics/candidates";
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { applicationPaidSql } from "@/lib/metrics/paid";
+import { rejectReasonLabels, rejectReasonSql } from "@/lib/metrics/reject-reasons";
 import { ageInDays, asDate, containsPattern, dayOf, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
 import { orderBy, type Sort, type SortColumn } from "./sort";
 
@@ -36,6 +37,8 @@ export interface ApplicationFilters {
   channel?: string;
   /** The device GA saw: mobile / desktop / tablet. */
   device?: string;
+  /** סיבת דחייה (`Field21__c`, lib/metrics/reject-reasons.ts): a reason's label, or "none" = no reason recorded. */
+  rejectReason?: string;
 }
 
 /** Where a site application came from, by Google Analytics (application_source); null = no matching event. */
@@ -73,6 +76,8 @@ export interface ApplicationRow {
   startDate: string | null;
   /** Where it came from on the site, by GA; null when no application event matched it. */
   siteSource: ApplicationSiteSource | null;
+  /** סיבת הדחייה (`Field21__c`, "חוסר התאמה" in Salesforce) as labels; empty when none was recorded. */
+  rejectReasons: string[];
 }
 
 const NORM_STATUS = normStatusSql("a.status");
@@ -115,6 +120,7 @@ const COLUMNS = sql`
   CASE WHEN a.contact_id IS NULL THEN NULL ELSE ${HAS_CV} END AS candidate_has_cv,
   ${ACCEPTED_AT} AS accepted_at,
   nullif(a.data->>'Placement_Date__c', '') AS start_date,
+  a.data->>'Field21__c' AS reject_reasons,
   src.channel_group AS src_channel, src.source AS src_source, src.medium AS src_medium, src.campaign AS src_campaign,
   src.device_category AS src_device, src.ambiguous AS src_ambiguous`;
 
@@ -150,6 +156,7 @@ function whereOf(f: ApplicationFilters): SQL {
   if (f.channel === "none") parts.push(sql`src.case_id IS NULL`);
   else if (f.channel) parts.push(sql`src.channel_group = ${f.channel}`);
   if (f.device) parts.push(sql`src.device_category = ${f.device}`);
+  if (f.rejectReason) parts.push(rejectReasonSql("a", f.rejectReason));
   if (f.jobId && isSfId(f.jobId)) parts.push(sql`a.parent_id = ${f.jobId}`);
   if (f.contactId && isSfId(f.contactId)) parts.push(sql`a.contact_id = ${f.contactId}`);
   // Never widened to every application when the id is malformed.
@@ -193,6 +200,7 @@ function toRow(r: Record<string, unknown>): ApplicationRow {
             device: String(r.src_device),
             ambiguous: isTrue(r.src_ambiguous),
           },
+    rejectReasons: rejectReasonLabels(str(r.reject_reasons)),
   };
 }
 
@@ -260,23 +268,37 @@ export async function loadApplicationStatusRows(f: ApplicationFilters): Promise<
   }));
 }
 
-/** Statuses and owners in use, most common first, for the filter menus. */
-export async function loadApplicationFilterOptions(): Promise<{ statuses: string[]; owners: string[]; channels: string[]; devices: string[] }> {
-  const [statuses, owners, channels, devices] = await Promise.all([
+/** Statuses, owners and reject reasons in use, most common first, for the filter menus. */
+export async function loadApplicationFilterOptions(): Promise<{
+  statuses: string[];
+  owners: string[];
+  channels: string[];
+  devices: string[];
+  rejectReasons: string[];
+}> {
+  const [statuses, owners, channels, devices, reasons] = await Promise.all([
     run(sql`SELECT ${NORM_STATUS} AS v, count(*) AS n ${FROM} WHERE ${IS_APPLICATION} AND a.status IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`),
     run(sql`SELECT u.name AS v, count(*) AS n ${FROM} WHERE ${IS_APPLICATION} AND u.name IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`),
     run(sql`SELECT channel_group AS v, count(*) AS n FROM application_source GROUP BY 1 ORDER BY 2 DESC`),
     run(sql`SELECT device_category AS v, count(*) AS n FROM application_source GROUP BY 1 ORDER BY 2 DESC`),
+    run(sql`SELECT rr.v, count(*) AS n
+              FROM sf_case a JOIN sf_record_type rt ON rt.id = a.record_type_id,
+                   unnest(string_to_array(a.data->>'Field21__c', ';')) AS rr(v)
+             WHERE ${IS_APPLICATION} GROUP BY 1`),
   ]);
   const list = (rows: Record<string, unknown>[]) => rows.map((r) => String(r.v));
-  return { statuses: list(statuses), owners: list(owners), channels: list(channels), devices: list(devices) };
+  // Old and new values may share a label: counted together by label.
+  const byLabel = new Map<string, number>();
+  for (const r of reasons) {
+    for (const label of rejectReasonLabels(String(r.v))) byLabel.set(label, (byLabel.get(label) ?? 0) + num(r.n));
+  }
+  const rejectReasons = [...byLabel].sort((x, y) => y[1] - x[1]).map(([label]) => label);
+  return { statuses: list(statuses), owners: list(owners), channels: list(channels), devices: list(devices), rejectReasons };
 }
 
 export interface ApplicationDetail extends ApplicationRow {
   subject: string | null;
   description: string | null;
-  /** חוסר התאמה (`Field21__c`) */
-  rejectReasons: string[];
   /** הגשה למשרה בתשלום (`A_Money__c`) as Salesforce has it; `paid` also counts a paid job (lib/metrics/paid.ts). */
   paidApplicationFlag: boolean;
   /** משרה של זהר */
@@ -326,7 +348,7 @@ export async function loadApplication(id: string): Promise<ApplicationDetail | n
   if (!isSfId(id)) return null;
   const [r] = await run(sql`
     SELECT ${COLUMNS},
-           a.data->>'Subject' AS subject, a.data->>'Description' AS description, a.data->>'Field21__c' AS reject_reasons,
+           a.data->>'Subject' AS subject, a.data->>'Description' AS description,
            a.data->>'A_Money__c' AS a_money, a.data->>'zohar_position__c' AS zohar,
            a.data->>'follow_up__c' AS follow_up, a.data->>'interested_satatus__c' AS placement_status,
            a.data->>'Candidate_Status__c' AS candidate_status, a.data->>'Field49__c' AS placement_date,
@@ -348,10 +370,6 @@ export async function loadApplication(id: string): Promise<ApplicationDetail | n
     ...row,
     subject: str(r.subject),
     description: str(r.description),
-    rejectReasons: (str(r.reject_reasons) ?? "")
-      .split(";")
-      .map((s) => normStatus(s)!)
-      .filter(Boolean),
     paidApplicationFlag: isTrue(r.a_money),
     zohar: isTrue(r.zohar),
     followUp: dayOf(str(r.follow_up)),

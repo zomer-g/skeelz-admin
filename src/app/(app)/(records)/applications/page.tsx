@@ -19,7 +19,7 @@ export const metadata: Metadata = { title: "הגשות" };
 export const dynamic = "force-dynamic";
 
 const ACTION = "/applications";
-const KEYS = ["q", "status", "paid", "fast", "cv", "owner", "channel", "device", "from", "to", "job", "candidate", "company", "sort", "dir", "page"];
+const KEYS = ["q", "status", "paid", "fast", "cv", "owner", "channel", "device", "reason", "from", "to", "job", "candidate", "company", "sort", "dir", "page"];
 
 export default async function ApplicationsPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
   const search = await searchParams;
@@ -41,6 +41,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     owner: param(search, "owner"),
     channel: param(search, "channel", 100),
     device: param(search, "device", 50),
+    rejectReason: param(search, "reason", 100),
     fromDay: dayParam(search, "from"),
     toDay: dayParam(search, "to"),
     jobId,
@@ -69,6 +70,7 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
     owner: filters.owner,
     channel: filters.channel ?? "",
     device: filters.device ?? "",
+    reason: filters.rejectReason ?? "",
     from: filters.fromDay,
     to: filters.toDay,
   };
@@ -103,6 +105,12 @@ export default async function ApplicationsPage({ searchParams }: { searchParams:
             options: [...options.channels.map((c) => ({ value: c, label: CHANNEL_LABELS[c] ?? c })), { value: "none", label: "לא זוהה מקור" }],
           },
           { kind: "select", name: "device", label: "מכשיר", options: options.devices.map((d) => ({ value: d, label: DEVICE_LABELS[d] ?? d })) },
+          {
+            kind: "select",
+            name: "reason",
+            label: "סיבת דחייה",
+            options: [...options.rejectReasons, { value: "none", label: "לא צוינה סיבה" }],
+          },
           { kind: "date", name: "from", label: "הוגשה מתאריך" },
           { kind: "date", name: "to", label: "עד תאריך" },
         ]}

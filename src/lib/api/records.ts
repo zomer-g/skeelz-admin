@@ -23,6 +23,7 @@ export function applicationJson(r: ApplicationRow, people: boolean) {
     company: r.company,
     candidate_id: r.candidateId,
     status: r.status,
+    reject_reasons: r.rejectReasons,
     paid: r.paid,
     fast_applied: r.fastApplied,
     candidate_has_cv: r.candidateHasCv,

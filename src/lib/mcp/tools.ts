@@ -459,7 +459,7 @@ const TOOLS: Tool[] = [
     name: "search_applications",
     title: "Search applications",
     description:
-      "Applications to jobs, newest first, with the candidate, job, company, status, owner, whether it was a הגשה מהירה (quick apply), whether the candidate's קו\"ח checkbox is set, and site_source: where a site application came from by Google Analytics (channel, source, medium, campaign, device; null when unknown). Free text matches candidate name, email, phone or case number.",
+      "Applications to jobs, newest first, with the candidate, job, company, status, owner, whether it was a הגשה מהירה (quick apply), whether the candidate's קו\"ח checkbox is set, rejectReasons (סיבת הדחייה, the labels of Salesforce's חוסר התאמה; empty when none was recorded), and site_source: where a site application came from by Google Analytics (channel, source, medium, campaign, device; null when unknown). Free text matches candidate name, email, phone or case number.",
     minRole: "viewer",
     fields: {
       q: { type: "string", description: "Free text.", maxLength: 100 },
@@ -472,6 +472,11 @@ const TOOLS: Tool[] = [
       fast: { type: "string", enum: ["fast", "regular"], description: "הגשה מהירה (the site's one-click apply) only, or only ordinary applications." },
       cv: { type: "string", enum: ["yes", "no"], description: "Only candidates whose קו\"ח checkbox (CV__c) is set, or only those without it." },
       owner: { type: "string", description: "Owner's full name, as in Salesforce.", maxLength: 100 },
+      reject_reason: {
+        type: "string",
+        maxLength: 100,
+        description: "A rejection reason as its label (e.g. ניסיון, שכר, הסיר/ה מועמדות לאחר שיחה), or none = no reason recorded.",
+      },
       job_id: sfIdField("job"),
       candidate_id: sfIdField("candidate (Contact)"),
       company_key: { type: "string", description: "A company key from search_companies.", maxLength: 300 },
@@ -491,6 +496,7 @@ const TOOLS: Tool[] = [
           fast: (s(a.fast) as "fast" | "regular" | "") || "",
           cv: (s(a.cv) as "yes" | "no" | "") || "",
           owner: s(a.owner),
+          rejectReason: s(a.reject_reason) || undefined,
           fromDay: s(a.from),
           toDay: s(a.to),
           jobId: s(a.job_id) || undefined,
@@ -572,7 +578,7 @@ const TOOLS: Tool[] = [
     name: "get_application",
     title: "Application details",
     description:
-      "One application with every field of its Salesforce card — candidate and contact details, job and parent case, owner, status, placement status (סטטוס השמה), mismatch reasons (חוסר התאמה), fast apply, paid-application flag, zohar (משרה של זהר), follow-up, record type, Account, type/origin/reason/priority, web email, created/modified by, case age in days, and the placement finance fields (start date, placement date, salary %, collection before VAT, commission, invoice and payment dates, project and candidate status), and site_source (where a site application came from, by Google Analytics; null when unknown) — with its timeline: status and owner changes, emails (metadata only) and logged calls and tasks.",
+      "One application with every field of its Salesforce card — candidate and contact details, job and parent case, owner, status, placement status (סטטוס השמה), rejection reasons (rejectReasons: סיבת הדחייה, the labels of Salesforce's חוסר התאמה), fast apply, paid-application flag, zohar (משרה של זהר), follow-up, record type, Account, type/origin/reason/priority, web email, created/modified by, case age in days, and the placement finance fields (start date, placement date, salary %, collection before VAT, commission, invoice and payment dates, project and candidate status), and site_source (where a site application came from, by Google Analytics; null when unknown) — with its timeline: status and owner changes, emails (metadata only) and logged calls and tasks.",
     minRole: "viewer",
     fields: { id: sfIdField("application") },
     required: ["id"],
