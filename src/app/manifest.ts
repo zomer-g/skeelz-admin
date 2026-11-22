@@ -3,8 +3,8 @@ import type { MetadataRoute } from "next";
 /**
  * Lets Chrome (and Android) install the admin as an app: its own window, icon and name.
  * Icons in public/icons are rendered from app/icon.svg (192/512, plus a full-bleed maskable one
- * for Android's round and squircle masks). The service worker (public/sw.js) handles push notices
- * only: no fetch handler, no Cache Storage — the data is live and personal, nothing is kept offline.
+ * for Android's round and squircle masks). No service worker: the data is live and personal,
+ * so nothing is cached offline. The install button is InstallApp, in the footer (docs/pwa.md).
  *
  * Shortcuts (long-press on the icon) open screens every role may see, since the manifest is the
  * same for everyone; a screen still checks the role itself. No screenshots: real ones would show

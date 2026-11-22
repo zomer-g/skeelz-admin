@@ -4,13 +4,11 @@ import { setPreviewRole } from "@/app/(app)/preview-actions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import type { SessionUser } from "@/lib/auth/session";
 import { logoutUrl } from "@/lib/auth/urls";
-import { pushConfigured } from "@/lib/push/webpush";
 import { AdminAlerts } from "./AdminAlerts";
 import { NavLinks } from "./NavLinks";
 import { PreviewSwitcher } from "./PreviewSwitcher";
 import { PublicDocLinks } from "./PublicDoc";
 import { InstallApp } from "./pwa/InstallApp";
-import { ServiceWorker } from "./pwa/ServiceWorker";
 import { Badge, buttonClass } from "./ui";
 
 // A red deep enough for white text to stay readable (AA) at banner size.
@@ -19,8 +17,6 @@ const PREVIEW_RED = "#b42318";
 export function AppShell({ user, children }: { user: SessionUser; children: ReactNode }) {
   return (
     <div className="flex min-h-dvh flex-col">
-      {/* Signed-in only: the push-only service worker (no fetch handler, nothing cached; docs/pwa.md). */}
-      <ServiceWorker enabled={pushConfigured()} />
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:fixed focus:start-4 focus:top-4 focus:z-50 focus:rounded-full focus:bg-ink focus:px-5 focus:py-3 focus:font-medium focus:text-white"
@@ -94,9 +90,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
             <Link href="/connectors" className="font-medium text-white underline underline-offset-4 focus-visible:outline-white">
               חיבור ל-Claude
             </Link>
-            <Link href="/notifications" className="font-medium text-white underline underline-offset-4 focus-visible:outline-white">
-              התראות ואפליקציה
-            </Link>
+            {/* Shown only when the browser offers installation, or on iPhone/iPad (steps); hidden in the installed app. */}
             <InstallApp className="font-medium text-white underline underline-offset-4 focus-visible:outline-white" />
           </span>
         </div>

@@ -14,8 +14,7 @@ import { isBlockedAddress } from "./public-address";
 export interface PinnedInit {
   method?: string;
   headers?: Headers | Record<string, string>;
-  /** Text, or bytes (an encrypted push message). */
-  body?: string | Uint8Array;
+  body?: string;
   signal?: AbortSignal;
 }
 
