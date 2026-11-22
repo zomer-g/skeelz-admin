@@ -962,3 +962,36 @@ export const mcpGrants = pgTable(
     index("mcp_grants_code_idx").on(t.codeHash),
   ],
 );
+
+/* ------------------------------------------------------------------ push notifications */
+
+/**
+ * A browser or installed app that asked for push notices (docs/pwa.md). Only what the push service
+ * needs to deliver a content-free notice: its endpoint and the keys the notice is encrypted to.
+ * Removed when the person turns it off, when the push service says it is gone (404/410), and once
+ * the user is no longer active.
+ */
+export const pushSubscriptions = pgTable(
+  "push_subscriptions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    userAgent: text("user_agent"),
+    createdAt: ts("created_at").notNull().defaultNow(),
+    lastSuccessAt: ts("last_success_at"),
+    failures: integer("failures").notNull().default(0),
+  },
+  (t) => [uniqueIndex("push_subscriptions_endpoint_idx").on(t.endpoint), index("push_subscriptions_user_idx").on(t.userId)],
+);
+
+/** Each event a notice went out for, once (lib/push/events.ts): `alert:<id>`, `review:<user>:<state>:<until>`, … */
+export const pushNotices = pgTable("push_notices", {
+  key: text("key").primaryKey(),
+  kind: text("kind").notNull(),
+  sentAt: ts("sent_at").notNull().defaultNow(),
+});
