@@ -22,6 +22,8 @@ import { isMarketingGroup, marketingConfigured, runMarketingSync, type Marketing
 import { salesforceConfigured } from "@/lib/sf/client";
 import { runSync, type SyncMode } from "@/lib/sf/sync";
 import { safeErrorMessage } from "@/lib/log";
+import { runPushPass } from "@/lib/push/send";
+import { pushConfigured } from "@/lib/push/webpush";
 import { GSHEET_SOURCE, syncTimesheetSheets } from "@/lib/staff/gsheet";
 import { mondayConfigured, staffSourceStatus, syncMonday } from "@/lib/staff/monday";
 
@@ -181,6 +183,14 @@ async function tick(): Promise<void> {
       if (Date.now() - (state?.lastStartedAt?.getTime() ?? 0) < SHEETS_INTERVAL_MIN * 60_000) return;
       const r = await syncTimesheetSheets();
       if (r.sources) log(r.error ? `staff timesheets (sheets) failed: ${r.error}` : `staff timesheets (sheets): ${r.changed}/${r.sources} changed`);
+    });
+
+    // Content-free push notices to admins' phones: new security alerts and access reviews (docs/pwa.md).
+    await safely("push notices", async () => {
+      if (!pushConfigured()) return;
+      const r = await runPushPass();
+      if (r.notices.length) log(`push: sent ${r.notices.join(", ")}`);
+      if (r.removed) log(`push: removed ${r.removed} subscriptions (inactive users or failing)`);
     });
 
     await safely("webhook delivery", async () => {

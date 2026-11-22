@@ -19,6 +19,8 @@ function noteFailure(action: string, err: unknown): void {
   failures.count++;
   failures.last = new Date();
   console.error(`[audit] write failed: ${errorCode(err)}`, { action });
+  // Tell the admins' phones too (content-free, at most every six hours). Loaded lazily: push imports this module.
+  void import("@/lib/push/send").then((m) => m.noticeAuditFailure()).catch(() => {});
 }
 
 /**
@@ -89,5 +91,6 @@ export async function purgeOldLogs(): Promise<number> {
   await db.execute(sql`DELETE FROM export_quota_grants WHERE granted_at < ${cutoff}`);
   await db.execute(sql`DELETE FROM access_reviews WHERE reviewed_at < ${cutoff}`);
   await db.execute(sql`DELETE FROM api_calls WHERE at < ${cutoff}`);
+  await db.execute(sql`DELETE FROM push_notices WHERE sent_at < ${cutoff}`);
   return removed.rowCount ?? 0;
 }

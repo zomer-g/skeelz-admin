@@ -19,7 +19,7 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `withApiKey` instead). Never rely on the layout.
   The only pages without it hold no data: `/accessibility` and `/privacy` (public by law, framed by `PublicDoc`) and `not-found.tsx`.
 - **Security headers:** CSP and friends in `next.config.ts`. The browser loads nothing cross-origin (fonts self-hosted,
-  GA/SMOOV/SF server-side only) — keep it that way or extend the CSP. The candidate file route sends its own sandboxing
+  GA/SMOOV/SF server-side only; push goes server → push service) — keep it that way or extend the CSP (`worker-src 'self'` for `sw.js`). The candidate file route sends its own sandboxing
   CSP and is limited per Israel day (`src/lib/security/files.ts`): 40 files a user, an admin alert at the 20th, and an admin
   grants 40 more at a time at `/admin/security`; counted from the audit log.
 - **Security & privacy duties** (`docs/cv-security.md`, `docs/security-review-2026-11-07.md`): every candidate-file open and every search inside CVs (with its
@@ -208,7 +208,14 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   safe format (paragraphs, `##`, `- `, `**`, `[text](https|mailto|/path)`), never raw HTML.
 - **Mobile:** installable as an app (Chrome/Android "Install", iPhone "Add to Home Screen"): `app/manifest.ts`, icons in
   `public/icons` rendered from `app/icon.svg` (192/512 + maskable), `app/apple-icon.png`, theme colour in the root layout's `viewport`.
-  No service worker on purpose: the data is live and personal, nothing is cached offline. Every page must work at 320–375px with no sideways page scroll. Wide tables scroll inside `Table`; the main
+  The service worker `public/sw.js` handles push and notification clicks only — no `fetch` handler, no Cache Storage,
+  nothing cached on the device (`push.test.ts` pins it). Install button `InstallApp` (footer + `/notifications`), manifest
+  `shortcuts` to viewer screens only. **Push notices** (`docs/pwa.md`, `src/lib/push/`): opt-in per device on
+  `/notifications`, table `push_subscriptions` (removed on off, 404/410, inactive user), hand-written Web Push (VAPID keys
+  `VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`/`VAPID_SUBJECT`, off when unset), sent by the sync worker once per event
+  (`push_notices`) to users whose role, read from `users` at send time, allows the linked screen. Payload = `buildPayload(kind)`
+  only: a fixed title, body and path — never names, emails, phones, CV words, staff figures or counts; endpoints only on the
+  known push hosts, through `pinnedFetch`. Every page must work at 320–375px with no sideways page scroll. Wide tables scroll inside `Table`; the main
   nav and dashboard tabs are one sideways-scrolling row on phones (`useActiveInStrip` keeps the current item visible).
 - **SMOOV writes one thing only:** the twice-daily push of candidates with an email into the job-seekers list
   (`src/lib/smoov/push.ts`, list id `SMOOV_PUSH_LIST_ID`, off when unset; `docs/setup-smoov.md`). The client allows GET plus

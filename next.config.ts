@@ -20,6 +20,9 @@ const contentSecurityPolicy = [
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
   `connect-src 'self'${isDev ? " ws:" : ""}`,
+  // The push-only service worker (public/sw.js) and the manifest, both same-origin.
+  "worker-src 'self'",
+  "manifest-src 'self'",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
@@ -40,6 +43,14 @@ const nextConfig: NextConfig = {
       // handler's header of the same name, so those routes are left out here rather than silently
       // overridden (`serve-file.ts` is what sets their policy).
       { source: "/((?!api/candidates/|api/emails/).*)", headers: [{ key: "Content-Security-Policy", value: contentSecurityPolicy }] },
+      // The service worker is always fetched fresh, so a fix reaches every device at once (docs/pwa.md).
+      {
+        source: "/sw.js",
+        headers: [
+          { key: "Content-Type", value: "application/javascript; charset=utf-8" },
+          { key: "Cache-Control", value: "no-cache, no-store, must-revalidate" },
+        ],
+      },
     ];
   },
 };
