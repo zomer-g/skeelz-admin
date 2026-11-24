@@ -49,3 +49,10 @@ describe("title keywords", () => {
     assert.deepEqual(titleKeywords("אחראי.ת חנות: סיפור חוזר 50%"), ["חנות", "סיפור", "חוזר"]);
   });
 });
+
+describe("group phrases", () => {
+  it("a title naming only the profession finds its group, ahead of skill hints", () => {
+    const topics = jobTopics({ title: "מהנדס.ת /טכנולוג.י. מזון", description: "", skills: ["שירותיות", "ניתוח והצגת נתונים"] });
+    assert.deepEqual(suggestedTopics(topics), ["eng", "eng.food"]);
+  });
+});
