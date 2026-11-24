@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ApplicationsTable, EntityHeader, FieldList } from "@/components/entities/EntityParts";
-import { Badge, Card } from "@/components/ui";
+import { Badge, buttonClass, Card } from "@/components/ui";
 import { pageAuth } from "@/lib/auth/guard";
 import { searchApplications } from "@/lib/entities/applications";
 import { loadCandidate, loadCandidateFiles } from "@/lib/entities/candidates";
@@ -54,6 +54,13 @@ export default async function CandidatePage({ params }: { params: Promise<{ id: 
           { href: candidate.email ? emailPath(candidate.email) : null, label: "כל הפניות לפי המייל" },
         ]}
       />
+
+      <p className="mb-4">
+        <Link href={`/candidates/${candidate.id}/jobs`} className={buttonClass("primary", "sm")}>
+          משרות מתאימות למועמד/ת
+        </Link>
+        <span className="ms-3 text-xs text-muted">המשרות הפעילות באתר שהכי מתאימות לקורות החיים ולמקום המגורים</span>
+      </p>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card title="פרטים" className="lg:col-span-2">

@@ -168,6 +168,11 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   the job + recent file; people who applied are hidden unless asked. Every search writes `cvs.text_search` with its results. `CopyContacts` under the list hands over the
   emails or phones of every ranked person through `/api/outreach/[id]/contacts` (`outreachFilters()` shared with the page, 5,000 max, logged as
   `cvs.contacts_copied` with the job, in the daily export budget).
+  **Jobs for a candidate** ("משרות מתאימות", `/candidates/[id]/jobs`, button on the candidate card, `src/lib/entities/job-match.ts`):
+  outreach turned around — the topics of all the person's CV files (`cv_topics`, by Contact or email as on `/cvs`) against the
+  suggested topics of every job live on the site (`PStatus__c` = Active), ranked by outreach's own `weights` + same sub-district /
+  district + job freshness (`rankJobs`, pure, `job-match.test.ts`); applied jobs hidden unless asked. Lists jobs, not people (no
+  `records.shown`), but reads a person's files: every search writes `cvs.text_search` with `jobMatch` and the jobs shown.
   **Employer lead Cases** (`/leads`, `src/lib/entities/leads.ts`): Cases of type `lead_employer`, listed as records (the
   employers tab still counts leads by the Account's employer status).
   `/emails` treats one address as one person: every Contact with that email, and every Case on them plus Contact-less
