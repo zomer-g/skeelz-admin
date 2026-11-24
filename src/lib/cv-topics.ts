@@ -196,6 +196,12 @@ export const TOPICS: Topic[] = [
     phrases: ["הנדסת מחשבים", "תואר במערכות מידע", "הנדסת מערכות מידע", "Information Systems", "Computer Engineer*"],
   },
   {
+    id: "eng.food",
+    group: "eng",
+    label: "מזון",
+    phrases: ["הנדסת מזון", "טכנולוגיית מזון", "טכנולוג* מזון", "מדעי המזון", "Food Engineer*", "Food Technolog*", "Food Science"],
+  },
+  {
     id: "eng.practical",
     group: "eng",
     label: "הנדסאים",

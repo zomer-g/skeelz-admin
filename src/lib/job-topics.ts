@@ -47,7 +47,11 @@ export function phraseRegExp(phrase: string): RegExp {
   return new RegExp(`(?<!${LETTER})${prefix}${body}(?!${LETTER})`, "iu");
 }
 
-const MATCHERS: { topic: Topic; phrases: { phrase: string; re: RegExp }[] }[] = TOPICS.map((topic) => ({
+/**
+ * Every topic, and every group with phrases of its own ("מהנדס*" is the group הנדסה: the title names the
+ * profession without saying which branch), as the CVs are tagged (cv-topics.ts phraseIndex).
+ */
+const MATCHERS: { topic: Pick<Topic, "id" | "phrases">; phrases: { phrase: string; re: RegExp }[] }[] = [...TOPICS, ...TOPIC_GROUPS].map((topic) => ({
   topic,
   phrases: topic.phrases.map((phrase) => ({ phrase, re: phraseRegExp(phrase) })),
 }));
@@ -72,11 +76,11 @@ export interface JobText {
 const FINAL: Record<string, string> = { כ: "ך", מ: "ם", נ: "ן", פ: "ף", צ: "ץ" };
 
 /**
- * Job titles address both genders ("עובד/ת סוציאלי/ת", "מנהל.ת", "מנהל(ת)", "סוכנ/ת"); the phrases are
+ * Job titles address both genders ("עובד/ת סוציאלי/ת", "מנהל.ת", "טכנולוג.י.", "מנהל(ת)", "סוכנ/ת"); the phrases are
  * written in one, so the second form is dropped and a letter left at the word's end takes its final form.
  */
 export const dropGenderForms = (s: string) =>
-  s.replace(/([א-ת])\s*(?:[/\\.]\s*|\()(?:ת|ה|ית|יה|ים|ות|יות|י)\)?(?![א-ת])/gu, (_, last: string) => FINAL[last] ?? last);
+  s.replace(/([א-ת])\s*(?:[/\\.]\s*|\()(?:ת|ה|ית|יה|ים|ות|יות|י)(?:\)|\.(?=\s|$))?(?![א-ת])/gu, (_, last: string) => FINAL[last] ?? last);
 
 /** Every topic the job's text points at, strongest first. */
 export function jobTopics(job: JobText): JobTopic[] {
