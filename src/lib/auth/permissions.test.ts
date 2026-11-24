@@ -90,11 +90,12 @@ describe("staff data reaches the API and MCP only behind their gates", () => {
     assert.ok(names.length > 0);
     assert.equal([...tools.matchAll(/staff: true,/g)].length, names.length);
     const registry = readFileSync(join(root, "lib", "mcp", "tools.ts"), "utf8");
-    assert.match(registry, /hasRole\(role, t\.minRole\) && \(!t\.staff \|\| staffData\)/);
-    assert.match(registry, /if \(tool\.staff && !staffData\) return \{ ok: false, reason: "unknown" \}/);
+    assert.match(registry, /const reachable = \(t: Tool, access: ToolAccess\) => \(!t\.staff \|\| Boolean\(access\.staffData\)\)/);
+    assert.match(registry, /hasRole\(role, t\.minRole\) && reachable\(t, access\)/);
+    assert.match(registry, /if \(!reachable\(tool, access\)\) return \{ ok: false, reason: "unknown" \}/);
     const server = readFileSync(join(root, "lib", "mcp", "server.ts"), "utf8");
-    assert.match(server, /toolsFor\(ctx\.principal\.role, ctx\.principal\.staffData\)/);
-    assert.match(server, /findTool\(name, principal\.role, principal\.staffData\)/);
+    assert.match(server, /toolsFor\(ctx\.principal\.role, ctx\.principal\)/);
+    assert.match(server, /findTool\(name, principal\.role, principal\)/);
   });
 
   it("the dashboard's shared modules (which MCP reads too) never load the staff hours", () => {

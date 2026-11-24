@@ -917,6 +917,8 @@ export const mcpCodes = pgTable(
     maxRole: text("max_role").$type<Role>().notNull(),
     /** Staff data asked for on the consent screen (docs/staff.md); the grant takes it only if the person is still a staff manager. */
     staffData: boolean("staff_data").notNull().default(false),
+    /** CV text (the cv_text tool) asked for on the consent screen: an unticked box, off unless the person ticks it. */
+    cvText: boolean("cv_text").notNull().default(false),
     expiresAt: ts("expires_at").notNull(),
   },
   (t) => [check("mcp_codes_role_check", sql`${t.maxRole} in ('viewer', 'editor', 'admin')`)],
@@ -936,6 +938,8 @@ export const mcpGrants = pgTable(
     maxRole: text("max_role").$type<Role>().notNull(),
     /** Staff tools (hours and activity per employee) for this connection; off until a staff manager turns it on (docs/staff.md). */
     staffData: boolean("staff_data").notNull().default(false),
+    /** The cv_text tool (the full text of one candidate file) for this connection; off until the person turns it on (docs/mcp.md). */
+    cvText: boolean("cv_text").notNull().default(false),
     accessHash: text("access_hash").notNull(),
     accessExpiresAt: ts("access_expires_at").notNull(),
     refreshHash: text("refresh_hash").notNull(),

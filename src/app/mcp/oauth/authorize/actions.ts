@@ -33,11 +33,14 @@ export async function decideConnection(_prev: DecisionState, form: FormData): Pr
   if (!isRole(role) || !hasRole(user.role, role)) return { message: "יש לבחור הרשאה שאינה גבוהה מההרשאה שלך במערכת." };
   // Staff data only when the screen offered it to this person and they left it ticked.
   const staffData = offersStaffData(user) && form.get("staff_data") === "on";
-  const code = await issueCode(req, user.id, role, staffData);
+  // Reading CVs only when the person ticked it; the box starts unticked.
+  const cvText = form.get("cv_text") === "on";
+  const code = await issueCode(req, user.id, role, staffData, cvText);
   await writeAudit(user.email, "mcp.authorized", req.clientName, {
     clientId: req.clientId,
     maxRole: role,
     staffData,
+    cvText,
     redirectHost: new URL(req.redirectUri).host,
   });
   return { message: "החיבור אושר. חוזרים לאפליקציה…", redirect: redirectBack(req, origin, { code }) };

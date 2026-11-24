@@ -23,6 +23,8 @@ export interface GrantRow {
   revokedBy: string | null;
   /** Staff tools turned on for this connection (they work only while the person is also a staff manager). */
   staffData: boolean;
+  /** Reading CVs (cv_text) turned on for this connection. */
+  cvText: boolean;
 }
 
 /** Connections, newest first: one person's, or everyone's for the admin screen. */
@@ -55,6 +57,7 @@ export async function listGrants(userId?: string): Promise<GrantRow[]> {
       revokedAt: g.revokedAt,
       revokedBy: g.revokedBy,
       staffData: g.staffData,
+      cvText: g.cvText,
     };
   });
 }

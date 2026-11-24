@@ -44,6 +44,7 @@ export default async function ConnectorsPage() {
                 <td className="px-3 py-2 text-sm" dir="auto">
                   {t.title}
                   {t.writes ? <span className="ms-2 text-xs text-muted">(עריכה)</span> : null}
+                  {t.cvText ? <span className="ms-2 text-xs text-muted">(רק בחיבור שהופעלה בו קריאת קורות חיים)</span> : null}
                 </td>
                 <td className="px-3 py-2 text-sm">{ROLE_LABELS[t.minRole]}</td>
                 <td className="px-3 py-2">{hasRole(user.role, t.minRole) ? <Badge tone="success">זמין</Badge> : <Badge>לא זמין</Badge>}</td>
@@ -60,13 +61,17 @@ export default async function ConnectorsPage() {
         </Card>
 
         <Card title="החיבורים שלך">
+          <p className="mb-4 text-sm text-muted">
+            קריאת קורות חיים (<span dir="ltr">cv_text</span>) נותנת לחיבור את הטקסט המלא של קובץ מועמד, קובץ אחד בכל פעם. היא כבויה עד שמסמנים אותה במסך אישור החיבור או
+            מפעילים אותה כאן. כל קריאה נרשמת ביומן כפתיחת קובץ ונספרת במגבלת הקבצים היומית שלך, כמו פתיחה באתר.
+          </p>
           {user.staffManager ? (
             <p className="mb-4 text-sm text-muted">
               כמנהל/ת עובדים אפשר להפעיל בכל חיבור גם את כלי העובדים (<span dir="ltr">staff_monthly</span>, <span dir="ltr">staff_employee</span>): שעות ומשימות לפי עובד
               ממאנדיי ומ-Salesforce. בחיבור חדש בוחרים אותם כבר במסך אישור החיבור, ואפשר להפעיל או לכבות אותם כאן בכל חיבור. הם פועלים רק כל עוד ההרשאה שלך כמנהל/ת עובדים בתוקף.
             </p>
           ) : null}
-          <McpGrantsTable grants={grants} staffToggle={user.staffManager} />
+          <McpGrantsTable grants={grants} staffToggle={user.staffManager} cvToggle />
         </Card>
       </div>
     </>

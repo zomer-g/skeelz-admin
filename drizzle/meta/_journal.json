@@ -232,6 +232,13 @@
       "when": 1795349457368,
       "tag": "0032_drop_push",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1795555881066,
+      "tag": "0033_orange_celestials",
+      "breakpoints": true
     }
   ]
 }
