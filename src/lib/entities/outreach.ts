@@ -32,11 +32,11 @@ import { asDate, choice, htmlToText, isSfId, isTrue, num, PAGE_SIZE, param, run,
  * asked for. Every search is logged like a search inside the CVs (cvs.text_search), with its results.
  */
 
-const TOPIC_WEIGHT = 3;
-const GROUP_WEIGHT = 2;
-const FIELD_WEIGHT = 1;
-const PLACE_NAPA = 3;
-const PLACE_DISTRICT = 1.5;
+export const TOPIC_WEIGHT = 3;
+export const GROUP_WEIGHT = 2;
+export const FIELD_WEIGHT = 1;
+export const PLACE_NAPA = 3;
+export const PLACE_DISTRICT = 1.5;
 const FRESH_RECENT = 1;
 const FRESH_YEAR = 0.5;
 /** Each chosen word found in the CV. */
@@ -72,7 +72,8 @@ export interface OutreachJob {
 const PLACE = jobPlaceSql("p");
 const COMPANY_NAME = companyNameOf();
 
-const JOBS = sql`
+/** Every job (Position Case) with its place and text; also read by ./job-match.ts. */
+export const JOBS = sql`
   WITH ${GEO_CTES}
   SELECT p.id, p.created_date, p.data->>'CaseNumber' AS case_number,
          coalesce(nullif(p.data->>'Position_cambium__c', ''), nullif(p.data->>'Position_Name__c', ''), nullif(p.data->>'Subject', '')) AS title,
@@ -86,7 +87,7 @@ const JOBS = sql`
     ${PLACE.joins}
    WHERE rt.developer_name = ${RECORD_TYPES.position} AND NOT p.is_deleted`;
 
-function toJob(r: Record<string, unknown>): OutreachJob {
+export function toJob(r: Record<string, unknown>): OutreachJob {
   const title = str(r.title);
   const skills = skillNames(str(r.skill_ids));
   const topics = jobTopics({ title, description: htmlToText(str(r.description)), skills });
@@ -193,8 +194,8 @@ export interface OutreachRow {
   openPath: string | null;
 }
 
-/** The weight each topic or group counts for, from the chosen ids. */
-function weights(chosen: string[]): [string, number][] {
+/** The weight each topic or group counts for, from the chosen ids (also ./job-match.ts). */
+export function weights(chosen: string[]): [string, number][] {
   const w = new Map<string, number>();
   const raise = (id: string, n: number) => w.set(id, Math.max(w.get(id) ?? 0, n));
   for (const id of chosen) {
