@@ -66,6 +66,17 @@ export function ConsentForm({
         </label>
       ) : null}
 
+      <label className="flex cursor-pointer items-start gap-3 rounded-card border border-field bg-white p-4">
+        <input type="checkbox" name="cv_text" disabled={pending || done} className="mt-1 size-4" />
+        <span>
+          <span className="block font-medium">גם קריאת קורות חיים</span>
+          <span className="block text-sm text-muted">
+            הטקסט המלא של קובץ מועמד (<span dir="ltr">cv_text</span>), קובץ אחד בכל פעם. כל קריאה נרשמת ביומן כפתיחת קובץ ונספרת במגבלת הקבצים
+            היומית שלך, והטקסט עובר לאפליקציה שמתחברת. אפשר לכבות בכל עת בעמוד &quot;חיבור ל-Claude&quot;.
+          </span>
+        </span>
+      </label>
+
       <div className="flex flex-wrap gap-3">
         <button name="decision" value="approve" className={buttonClass("primary")} disabled={pending || done}>
           אישור החיבור

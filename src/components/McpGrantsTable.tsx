@@ -1,17 +1,28 @@
-import { disconnectGrant, setGrantStaffData } from "@/app/(app)/connectors/actions";
+import { disconnectGrant, setGrantCvText, setGrantStaffData } from "@/app/(app)/connectors/actions";
 import { ROLE_LABELS } from "@/lib/auth/roles";
 import type { GrantRow } from "@/lib/mcp/grants";
 import { Badge, buttonClass, formatDateTime, Table } from "./ui";
 
 /**
  * MCP connections, with a disconnect button on the live ones. `showUser` for the admin's list of everyone's.
- * `staffToggle` (the person's own list, when they are a staff manager) adds the switch for the staff tools.
+ * `staffToggle` (the person's own list, when they are a staff manager) adds the switch for the staff tools;
+ * `cvToggle` (the person's own list) the switch for reading CVs.
  */
-export function McpGrantsTable({ grants, showUser = false, staffToggle = false }: { grants: GrantRow[]; showUser?: boolean; staffToggle?: boolean }) {
+export function McpGrantsTable({
+  grants,
+  showUser = false,
+  staffToggle = false,
+  cvToggle = false,
+}: {
+  grants: GrantRow[];
+  showUser?: boolean;
+  staffToggle?: boolean;
+  cvToggle?: boolean;
+}) {
   const now = Date.now();
   return (
     <Table
-      head={[...(showUser ? ["משתמש"] : []), "אפליקציה", "הרשאה", "חובר", "שימוש אחרון", "קריאות", "נתוני עובדים", "מצב", ""]}
+      head={[...(showUser ? ["משתמש"] : []), "אפליקציה", "הרשאה", "חובר", "שימוש אחרון", "קריאות", "קריאת קו״ח", "נתוני עובדים", "מצב", ""]}
       empty={grants.length === 0 ? "אין חיבורים" : undefined}
       caption="חיבורי MCP"
     >
@@ -45,6 +56,19 @@ export function McpGrantsTable({ grants, showUser = false, staffToggle = false }
               ) : null}
             </td>
             <td className="px-3 py-2">{g.calls.toLocaleString("he-IL")}</td>
+            <td className="px-3 py-2">
+              {g.cvText ? <Badge tone="accent">פעיל</Badge> : <span className="text-xs text-muted">כבוי</span>}
+              {cvToggle && live ? (
+                <form action={setGrantCvText} className="mt-1">
+                  <input type="hidden" name="id" value={g.id} />
+                  <input type="hidden" name="on" value={g.cvText ? "false" : "true"} />
+                  <button className={buttonClass(g.cvText ? "quiet" : "secondary", "sm")}>
+                    {g.cvText ? "כיבוי" : "הפעלה"}
+                    <span className="sr-only"> של קריאת קורות חיים · {g.clientName}</span>
+                  </button>
+                </form>
+              ) : null}
+            </td>
             <td className="px-3 py-2">
               {g.staffData ? <Badge tone="accent">פעיל</Badge> : <span className="text-xs text-muted">כבוי</span>}
               {staffToggle && live ? (

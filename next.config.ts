@@ -32,6 +32,9 @@ const nextConfig: NextConfig = {
   // next/image is not used. Turning the optimizer off makes /_next/image answer 404, so its
   // unauthenticated surface (SVG processing, remote fetches) is not reachable at all.
   images: { unoptimized: true },
+  // pdf.js (reading CV text for the MCP tool cv_text, lib/entities/cv-text.ts) loads its worker and
+  // optional canvas at run time; bundled, those dynamic imports break. Node loads it as is.
+  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas"],
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

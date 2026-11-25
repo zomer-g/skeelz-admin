@@ -31,6 +31,8 @@ const ACTION_LABELS: Record<string, string> = {
   "staff.sheet_source_removed": "הפסקת משיכה מגיליון שעות",
   "mcp.staff_data_on": "הופעלו כלי עובדים בחיבור MCP",
   "mcp.staff_data_off": "כובו כלי עובדים בחיבור MCP",
+  "mcp.cv_text_on": "הופעלה קריאת קורות חיים בחיבור MCP",
+  "mcp.cv_text_off": "כובתה קריאת קורות חיים בחיבור MCP",
   "user.deactivated": "משתמש הושבת",
   "user.reactivated": "משתמש הופעל מחדש",
   "access_request.approved": "בקשת גישה אושרה",

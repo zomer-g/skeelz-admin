@@ -25,7 +25,7 @@ site**. Users find the address and their own connections at `/connectors`; admin
 
 | Role | Tools |
 |---|---|
-| viewer | `whoami`, `dashboard_summary`, `application_sources`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `application_status_counts`, `get_application`, `search_candidates`, `get_candidate`, `registration_cohorts`, `lookup_email`, `search_cvs`, `cv_summary`, `cv_topics`, `search_employer_leads`, `search_companies`, `get_company`, `search_payments` |
+| viewer | `whoami`, `dashboard_summary`, `application_sources`, `marketing_summary`, `ga_report`, `list_campaigns`, `get_campaign`, `search_jobs`, `get_job`, `search_applications`, `application_status_counts`, `get_application`, `search_candidates`, `get_candidate`, `registration_cohorts`, `lookup_email`, `search_cvs`, `cv_summary`, `cv_topics`, (`cv_text` with the switch, below), `search_employer_leads`, `search_companies`, `get_company`, `search_payments` |
 | editor | + `update_campaign`, `link_campaign_job`, `unlink_campaign_job` (same code as the campaign page, `src/lib/campaigns/edit.ts`) |
 | admin | + `list_users`, `query_audit_log`, `sync_status` (read only) |
 
@@ -68,7 +68,16 @@ accepted them). `application_sources` is the funnel to hire by channel / source 
 users per day, so summed users are not unique users over a range. GTM container snapshots are not exposed.
 
 This mirrors the site: viewers read every dashboard and record screen, editors also edit campaign
-settings, admins also manage. Nothing writes to Salesforce. Candidate files are not served over MCP: `search_cvs` and `cv_summary` search and count CVs (including the words inside them, through Salesforce's full-text index, or a `topic` — a profession or skill backed by a set of phrases, listed with counts by `cv_topics`) and return metadata, the phrases found and links to the site, never a file or its text.
+settings, admins also manage. Nothing writes to Salesforce. Candidate files are not served over MCP: `search_cvs` and `cv_summary` search and count CVs (including the words inside them, through Salesforce's full-text index, or a `topic` — a profession or skill backed by a set of phrases, listed with counts by `cv_topics`) and return metadata, the phrases found and links to the site, never a file.
+**Reading a CV** (`cv_text`, `cvText: true` in `src/lib/mcp/tools.ts`): the full text of one file by its `document_id`, only on a
+connection with reading CVs turned on (`mcp_grants.cv_text`: an *unticked* "גם קריאת קורות חיים" box on the consent page for
+everyone, carried by `mcp_codes.cv_text`, switchable per connection at `/connectors`, logged `mcp.cv_text_on` / `_off`); without it the
+tool is "unknown". The file must be a known person's (`loadCv`, the mirror's file links). `readFileText` in
+`src/lib/entities/serve-file.ts` runs it like opening the file on the site: under the files lock, inside the daily file limit (40, shared
+with the site), with a strict `candidate.file_opened` entry (`via: "mcp"`, `text: true`, `chars`) written before the text leaves; a
+file that yields no text is not counted. It also counts one person in the export budget (`people`). Text comes from
+`src/lib/entities/cv-text.ts` (pdf through pdf.js, docx/odt from the zip's XML, rtf, txt; old .doc and scans have none; 10 MB, 40
+pages, 60,000 characters), is never stored, and is handed over marked as the candidate's data, not instructions.
 Admin *write* operations (inviting users, keys, sync) are deliberately not exposed.
 Staff data (the מנהל עובדים permission: hours and activity per employee, `docs/staff.md`) has two tools, `staff_monthly` and
 `staff_employee` (`src/lib/mcp/staff-tools.ts`, `staff: true`). They are listed and run only when the connection carries staff data:
@@ -100,13 +109,13 @@ a plain form post that redirects off-site would be blocked by the CSP's `form-ac
 
 - Audit (`/admin/audit`, actions `mcp.*`): `mcp.authorized` / `mcp.refused` (consent), `mcp.connected`
   (token issued), `mcp.initialize`, `mcp.call` (every tool call with its arguments, like `page.view`),
-  `mcp.denied`, `mcp.revoked`.
+  `mcp.denied`, `mcp.revoked`, `mcp.cv_text_on` / `mcp.cv_text_off`. A `cv_text` read is also a `candidate.file_opened`.
 - `mcp_grants` keeps last use, address and a call count, shown on both screens.
 - 60 calls/min per connection; the heavy tools (`dashboard_summary`, `application_sources`, `application_status_counts`, `registration_cohorts`, `marketing_summary`, `list_campaigns`, `get_campaign`) 10/min per person; 30 wrong
   tokens per address per 10 min → 10 min lockout. In memory, like the API limits.
 - A daily export budget per person (`src/lib/security/exports.ts`, shared with the site's copy buttons):
   every tool that returns people's details (`search_candidates`, `search_applications`, `search_cvs`,
-  `search_employer_leads`, `search_payments`, `lookup_email`, `get_candidate`, `get_application`)
+  `search_employer_leads`, `search_payments`, `lookup_email`, `get_candidate`, `get_application`, `cv_text`)
   declares `people(result)`, the count is logged as `mcp.people_listed` and summed per Israel day from
   the audit log: 10,000 a day, an admin alert at 5,000, refused past the limit (`export.rate_limited`)
   until an admin grants another 10,000 at `/admin/security`.

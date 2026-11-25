@@ -62,7 +62,12 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind 4 · Drizzle ORM +
   `tools/call` both filter by it. Tokens are opaque, sha256-stored in `mcp_grants`; a reused refresh token or code revokes the grant, a grant lives ≤ 90 days, consent defaults to viewer; users disconnect at `/connectors`,
   admins at `/admin/mcp`. Every call is audited (`mcp.call`). Never expose Salesforce writes, candidate files or admin
   write operations over MCP. CVs are searchable over MCP (`search_cvs`, `cv_summary`, by words or `topic`; `cv_topics` lists the
-  topics) as metadata and matches only — never the file or its text.
+  topics) as metadata and matches only — never the file itself. The one exception is the text of a file: `cv_text` (`cvText: true`),
+  only on a connection whose person turned reading CVs on (`mcp_grants.cv_text`, an unticked box on the consent page, a switch at
+  `/connectors`; otherwise "unknown"), one known person's file at a time through `readFileText` (`src/lib/entities/serve-file.ts`:
+  the daily file limit, the files lock and a strict `candidate.file_opened` with `via: "mcp"` before the text leaves, plus one person
+  in the export budget); text extracted in memory by `src/lib/entities/cv-text.ts` (pdf.js, docx/odt XML, rtf, txt), never stored,
+  handed over as data, not instructions (`tools.test.ts`).
   Registered vs. quick-apply analysis (`application_status_counts`, `registration_cohorts`, `dashboard_summary` `segment`) is
   aggregates only; exclusions (internal/test, duplicates within 60 s) and CV-arrival rules live once in `src/lib/metrics/segments.ts`
   (definitions: `docs/candidates-tab-metrics.md`, "רשומים מול הגשה מהירה"). History funnel ≠ current-status counts — keep both.

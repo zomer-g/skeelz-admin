@@ -106,7 +106,7 @@ export function offersStaffData(user: { staffManager: boolean }): boolean {
   return user.staffManager;
 }
 
-export async function issueCode(req: AuthorizeRequest, userId: string, maxRole: Role, staffData = false): Promise<string> {
+export async function issueCode(req: AuthorizeRequest, userId: string, maxRole: Role, staffData = false, cvText = false): Promise<string> {
   const code = token("skm_code_");
   const db = getDb();
   // Expired codes are cleared on the way; there are never many.
@@ -119,6 +119,7 @@ export async function issueCode(req: AuthorizeRequest, userId: string, maxRole: 
     codeChallenge: req.codeChallenge,
     maxRole,
     staffData,
+    cvText,
     expiresAt: new Date(Date.now() + MCP_LIMITS.codeTtlMin * 60_000),
   });
   return code;
@@ -232,7 +233,7 @@ export async function redeemCode(p: { code: string; clientId: string; redirectUr
   const pair = newPair();
   const [grant] = await db
     .insert(mcpGrants)
-    .values({ userId: row.userId, clientId: row.clientId, maxRole: row.maxRole, staffData: row.staffData && person.staffManager, codeHash, ...pair.columns })
+    .values({ userId: row.userId, clientId: row.clientId, maxRole: row.maxRole, staffData: row.staffData && person.staffManager, cvText: row.cvText, codeHash, ...pair.columns })
     .returning({ id: mcpGrants.id });
   return { ok: true, body: response(pair.access, pair.refresh, lowerRole(person.siteRole, row.maxRole)), grantId: grant!.id, person, created: true };
 }
@@ -290,6 +291,8 @@ export interface McpPrincipal {
    * the person turned it on for this connection at /connectors AND is a staff manager right now.
    */
   staffData: boolean;
+  /** Whether this connection may read the text of candidate files (cv_text): turned on by the person for it. */
+  cvText: boolean;
 }
 
 /** The principal for a bearer access token, or null. The role is read from the users table on every call. */
@@ -312,6 +315,7 @@ export async function verifyAccessToken(presented: string): Promise<McpPrincipal
     maxRole,
     role: lowerRole(person.siteRole, maxRole),
     staffData: row.grant.staffData && person.staffManager,
+    cvText: row.grant.cvText,
   };
 }
 

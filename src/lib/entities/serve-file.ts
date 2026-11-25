@@ -4,7 +4,8 @@ import { firstInWindow } from "@/lib/api/rate-limit";
 import { israelMidnight } from "@/lib/dashboard/params";
 import { getDb } from "@/lib/db/client";
 import { auditLog } from "@/lib/db/schema";
-import { afterOpen, atLimit, dailyQuota, FILE_LIMITS, FILE_OPENED, FILE_REFUSED } from "@/lib/security/files";
+import { afterOpen, atLimit, dailyQuota, FILE_LIMITS, FILE_OPENED, FILE_REFUSED, type DailyQuota } from "@/lib/security/files";
+import { CV_TEXT_EXTENSIONS, CV_TEXT_LIMITS, extractCvText, type CvTextResult } from "./cv-text";
 import { lockBusy, LockTimeoutError, withUserLock } from "@/lib/security/lock";
 import { sf } from "@/lib/sf/client";
 
@@ -74,20 +75,7 @@ async function serveLocked(userEmail: string, file: ServableFile, who: FileSubje
   const { subject } = who;
   const quota = await dailyQuota(userEmail);
   if (quota.opened >= quota.allowed) {
-    // One refusal entry per file a day: a script retrying in a loop must not flood the log.
-    const [seen] = await getDb()
-      .select({ n: sql<number>`count(*)::int` })
-      .from(auditLog)
-      .where(
-        and(
-          eq(auditLog.actor, userEmail),
-          eq(auditLog.action, FILE_REFUSED),
-          gte(auditLog.at, israelMidnight(quota.day)),
-          sql`${auditLog.details}->>'documentId' = ${file.documentId}`,
-        ),
-      );
-    if (!seen?.n) await writeAudit(userEmail, FILE_REFUSED, subject, { documentId: file.documentId, opened: quota.opened, allowed: quota.allowed });
-    await atLimit(userEmail, quota);
+    await refuseAtLimit(userEmail, file, subject, quota);
     return new Response(
       `הגעת למגבלה של ${quota.allowed} קבצי מועמדים להיום. מנהל המערכת קיבל הודעה, והוא יכול לאשר לך עוד ${FILE_LIMITS.grant} קבצים להיום.`,
       { status: 429, headers: { "Content-Type": "text/plain; charset=utf-8" } },
@@ -125,6 +113,78 @@ async function serveLocked(userEmail: string, file: ServableFile, who: FileSubje
       "Cross-Origin-Resource-Policy": "same-origin",
       "Cache-Control": "private, no-store",
     },
+  });
+}
+
+/** A file past the day's limit: one refusal entry per file a day (a script retrying in a loop must not flood the log), and the admins are asked. */
+async function refuseAtLimit(userEmail: string, file: { documentId: string }, subject: string, quota: DailyQuota): Promise<void> {
+  const [seen] = await getDb()
+    .select({ n: sql<number>`count(*)::int` })
+    .from(auditLog)
+    .where(
+      and(
+        eq(auditLog.actor, userEmail),
+        eq(auditLog.action, FILE_REFUSED),
+        gte(auditLog.at, israelMidnight(quota.day)),
+        sql`${auditLog.details}->>'documentId' = ${file.documentId}`,
+      ),
+    );
+  if (!seen?.n) await writeAudit(userEmail, FILE_REFUSED, subject, { documentId: file.documentId, opened: quota.opened, allowed: quota.allowed });
+  await atLimit(userEmail, quota);
+}
+
+export type FileTextResult =
+  | { ok: true; text: string; truncated: boolean; pages?: number }
+  | { ok: false; message: string };
+
+const TEXT_FAILURES: Record<Exclude<CvTextResult, { ok: true }>["reason"], string> = {
+  unsupported: `Only ${CV_TEXT_EXTENSIONS.join(", ")} files can be read as text; open this one on the site.`,
+  too_large: "The file is too large to read as text; open it on the site.",
+  unreadable: "The file could not be read (damaged or protected); open it on the site.",
+  no_text: "The file has no text layer (a scanned image, most likely); open it on the site.",
+};
+
+/**
+ * The text of one candidate file, for the MCP tool cv_text: the same daily file limit, lock and
+ * strict audit entry as opening it on the site (`candidate.file_opened`, with `via` and `text`), so
+ * it counts as one opened file. A file that yields no text is not counted: nothing was handed over.
+ * The caller has already checked that the file is this person's.
+ */
+export async function readFileText(userEmail: string, file: ServableFile, who: FileSubject, via: string): Promise<FileTextResult> {
+  if (!(CV_TEXT_EXTENSIONS as readonly string[]).includes((file.extension ?? "").toLowerCase())) return { ok: false, message: TEXT_FAILURES.unsupported };
+  return withUserLock("files", userEmail, async () => {
+    const quota = await dailyQuota(userEmail);
+    if (quota.opened >= quota.allowed) {
+      await refuseAtLimit(userEmail, file, who.subject, quota);
+      return {
+        ok: false,
+        message: `Daily file limit reached: ${quota.allowed} candidate files a day per person, on the site and here together. The admins were notified and can allow another ${FILE_LIMITS.grant} today at /admin/security.`,
+      };
+    }
+    const upstream = await sf.downloadVersion(file.versionId);
+    if (!upstream.ok || !upstream.body) {
+      await upstream.body?.cancel().catch(() => {});
+      await logFileDenied(userEmail, who.subject, file.documentId, "unavailable");
+      return { ok: false, message: "Salesforce did not hand over the file right now; try again later." };
+    }
+    const size = Number(upstream.headers.get("content-length") ?? 0);
+    if (size > CV_TEXT_LIMITS.maxBytes) {
+      await upstream.body.cancel().catch(() => {});
+      return { ok: false, message: TEXT_FAILURES.too_large };
+    }
+    const result = await extractCvText(new Uint8Array(await upstream.arrayBuffer()), file.extension);
+    if (!result.ok) return { ok: false, message: TEXT_FAILURES[result.reason] };
+    await writeAuditStrict(userEmail, FILE_OPENED, who.subject, {
+      documentId: file.documentId,
+      title: file.title.slice(0, 200),
+      contactId: who.contactId ?? null,
+      email: who.email ?? null,
+      via,
+      text: true,
+      chars: result.text.length,
+    });
+    await afterOpen(userEmail, quota);
+    return result;
   });
 }
 

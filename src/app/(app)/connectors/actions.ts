@@ -44,3 +44,22 @@ export async function setGrantStaffData(form: FormData): Promise<void> {
   revalidatePath("/connectors");
   revalidatePath("/admin/mcp");
 }
+
+/**
+ * Turns reading CVs (the cv_text tool) on or off for one of your own connections. Anyone, for their
+ * own connection only: each read still counts in their daily file limit and is logged.
+ */
+export async function setGrantCvText(form: FormData): Promise<void> {
+  const user = await requireUser("viewer");
+  const id = String(form.get("id") ?? "");
+  const on = form.get("on") === "true";
+  if (!UUID_RE.test(id)) return;
+  const [row] = await getDb()
+    .update(mcpGrants)
+    .set({ cvText: on })
+    .where(and(eq(mcpGrants.id, id), eq(mcpGrants.userId, user.id), isNull(mcpGrants.revokedAt)))
+    .returning({ id: mcpGrants.id });
+  if (row) await writeAudit(user.email, on ? "mcp.cv_text_on" : "mcp.cv_text_off", id);
+  revalidatePath("/connectors");
+  revalidatePath("/admin/mcp");
+}

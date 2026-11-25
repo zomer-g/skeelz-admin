@@ -24,6 +24,7 @@
     "google-auth-library": "11.0.2",
     "jose": "6.2.12",
     "next": "16.4.5",
+    "pdfjs-dist": "6.4.299",
     "pg": "8.23.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",

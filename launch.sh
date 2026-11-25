@@ -5,6 +5,8 @@
 set -eu
 cd "$(dirname "$0")"
 export NEXT_TELEMETRY_DISABLED=1
+# pdf.js (CV text for MCP, src/lib/entities/cv-text.ts) needs Node 22.13 or later.
+echo "[launch] node $(node --version)"
 
 # Migrations run here, never in install.sh (the build has no database). A
 # failure is fatal: the app cannot serve a single page without its tables, and
