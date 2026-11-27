@@ -43,7 +43,9 @@ emails or phones — and audited as `mcp.call` like every tool:
   `employerResponseAt`, `interviewAt`, `acceptedAt`), plus the drop-outs `rejected_by_us`, `candidate_dropped`
   (לא שלח קו"ח / נדחה על ידי מועמד) and `job_closed` (משרה נסגרה על ידי מעסיק / ליד סגור), and stage-to-stage `rates`
   (application basis only). With `basis=application` the range may be longer than 366 days. The REST `/api/v1/metrics`
-  calls the same function without these options and is unchanged.
+  calls the same function without these options. Both give `reject_reasons` (נדחה על ידנו) and `candidate_reject_reasons`
+  (נדחה על ידי מועמד, `applications.rejected_by_candidate`): Salesforce's labels of `Field21__c`, one row per reason, an
+  application with several counted in each, "לא צוינה סיבה" for none, גיאוגרפי + גיאוגרפי 2 as one.
 - `application_status_counts` is the **current-status** view: applications by status now (after `normStatus`), under
   `from`/`to`/`paid`/`fast`/`owner`/`company_key`/`job_id`, optionally `group_by` fast / paid / owner / month. Rows of
   `{status, group, count}` and per-group totals; `before_exclusions` equals `search_applications`' total for the same filters

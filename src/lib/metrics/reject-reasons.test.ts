@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { rejectReasonLabel, rejectReasonLabels, rejectReasonValues } from "./reject-reasons";
+import { rejectReasonLabel, rejectReasonLabels, rejectReasonValues, setRejectReasonDescribe } from "./reject-reasons";
 
 test("stored values show as Salesforce's labels, each once, in order", () => {
   assert.deepEqual(rejectReasonLabels("תנאי סף ניסיון;תנאי סף הכשרה/השכלה"), ["ניסיון", "הכשרה/השכלה"]);
@@ -24,7 +24,27 @@ test("a label filters by every stored value behind it", () => {
   assert.deepEqual(rejectReasonValues("ניסיון"), ["תנאי סף ניסיון", "ניסיון"]);
   assert.deepEqual(rejectReasonValues("דתיות"), ["דתיות"]);
   // Every label maps back to its own value.
-  for (const label of ["גיל", "תקלה טכנית", "לא בר/ת השמה", "גיאוגרפי 2"]) {
+  for (const label of ["גיל", "תקלה טכנית", "לא בר/ת השמה", "גיאוגרפי"]) {
     assert.ok(rejectReasonValues(label).some((v) => rejectReasonLabel(v) === label));
+  }
+});
+
+test("the old גיאוגרפי and its replacement גיאוגרפי 2 are one reason", () => {
+  assert.equal(rejectReasonLabel("גיאוגרפי 2"), "גיאוגרפי");
+  assert.equal(rejectReasonLabel("גיאוגרפי"), "גיאוגרפי");
+  assert.deepEqual(rejectReasonLabels("גיאוגרפי;גיאוגרפי 2;שכר"), ["גיאוגרפי", "שכר"]);
+  assert.deepEqual(rejectReasonValues("גיאוגרפי").sort(), ["גיאוגרפי", "גיאוגרפי 2"].sort());
+});
+
+test("labels come from the Case describe once it is loaded, over the built-in ones", () => {
+  try {
+    setRejectReasonDescribe({ "שכר": "שכר נמוך", "ערך חדש": "תווית  חדשה", "גיאוגרפי 2": "גיאוגרפי 2" });
+    assert.equal(rejectReasonLabel("שכר"), "שכר נמוך");
+    assert.equal(rejectReasonLabel("ערך חדש"), "תווית חדשה");
+    assert.equal(rejectReasonLabel("גילאי"), "גיל"); // not in this describe: the built-in label
+    assert.equal(rejectReasonLabel("גיאוגרפי 2"), "גיאוגרפי");
+    assert.deepEqual(rejectReasonValues("שכר נמוך"), ["שכר", "שכר נמוך"]);
+  } finally {
+    setRejectReasonDescribe({});
   }
 });

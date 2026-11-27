@@ -194,12 +194,14 @@ export async function metricsSummary(fromDay: string, toDay: string, scope: Scop
       interviews: m.interviews,
       accepted: m.accepted,
       rejected_by_us: m.rejectedByUs,
+      rejected_by_candidate: m.rejectedByCandidate,
     },
     timing: {
       first_touch_hours_median: round1(m.firstTouchHours.median),
       days_to_transfer_median: round1(m.daysToTransfer.median),
     },
     reject_reasons: m.rejectReasons,
+    candidate_reject_reasons: m.candidateRejectReasons,
     site,
     data_freshness: { salesforce_synced_at: freshness.casesSyncedAt?.toISOString() ?? null },
     ...(opts && excluded

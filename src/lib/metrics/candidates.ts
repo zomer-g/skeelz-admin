@@ -3,7 +3,8 @@ import { cached } from "@/lib/cache";
 import { getDb } from "@/lib/db/client";
 import { sfCase, sfRecordType, syncState } from "@/lib/db/schema";
 import { jobPaidSql } from "./paid";
-import { rejectReasonLabels } from "./reject-reasons";
+import { NO_REASON_LABEL, rejectReasonLabels } from "./reject-reasons";
+import { ensureRejectReasonLabels } from "./reject-reasons-load";
 
 /**
  * Candidates tab. Definitions live in docs/candidates-tab-metrics.md.
@@ -43,7 +44,9 @@ export const STATUS = {
   requestedCv: normStatus('ביקשנו קו"ח')!,
   inHandling: normStatus("בטיפול מועמד/מעסיק")!,
   sent: normStatus('נשלחו קו"ח')!,
+  // Salesforce's value holds two spaces after "על"; normStatus folds them on both sides.
   rejectedByUs: normStatus("נדחה על ידנו")!,
+  rejectedByCandidate: normStatus("נדחה על ידי מועמד")!,
   interview: normStatus("זומן לראיון")!,
   accepted: normStatus("התקבל")!,
 };
@@ -102,6 +105,8 @@ export interface ApplicationFacts {
   lastSentAt: Date | null;
   employerResponseAt: Date | null;
   rejectedByUsAt: Date | null;
+  /** First move into "נדחה על ידי מועמד". */
+  rejectedByCandidateAt: Date | null;
   interviewAt: Date | null;
   acceptedAt: Date | null;
   /** First move into a CANDIDATE_DROPPED_STATUSES / JOB_CLOSED_STATUSES status. */
@@ -138,6 +143,7 @@ interface FactsRow {
   last_sent_at: Date | null;
   employer_response_at: Date | null;
   rejected_by_us_at: Date | null;
+  rejected_by_candidate_at: Date | null;
   interview_at: Date | null;
   accepted_at: Date | null;
   candidate_dropped_at: Date | null;
@@ -154,6 +160,7 @@ export function loadApplicationFacts(): Promise<ApplicationFacts[]> {
 }
 
 async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
+  await ensureRejectReasonLabels();
   const result = await getDb().execute<FactsRow & Record<string, unknown>>(sql`
     WITH apps AS (
       SELECT c.id, c.status, c.created_date, c.closed_date, c.contact_id, c.parent_id, c.owner_id, c.data,
@@ -179,6 +186,7 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
              min(created_date) FILTER (WHERE new_value = ${STATUS.sent}) AS sent_at,
              max(created_date) FILTER (WHERE new_value = ${STATUS.sent}) AS last_sent_at,
              min(created_date) FILTER (WHERE new_value = ${STATUS.rejectedByUs}) AS rejected_by_us_at,
+             min(created_date) FILTER (WHERE new_value = ${STATUS.rejectedByCandidate}) AS rejected_by_candidate_at,
              min(created_date) FILTER (WHERE new_value = ${STATUS.interview}) AS interview_at,
              min(created_date) FILTER (WHERE new_value = ${STATUS.accepted}) AS accepted_status_at,
              min(created_date) FILTER (WHERE new_value IN ${CANDIDATE_DROPPED_STATUSES}) AS candidate_dropped_at,
@@ -242,6 +250,7 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
            st.last_sent_at,
            er.at AS employer_response_at,
            st.rejected_by_us_at,
+           st.rejected_by_candidate_at,
            st.interview_at,
            coalesce(st.accepted_status_at, rth.at,
                     CASE WHEN a.record_type = ${RECORD_TYPES.accepted} THEN a.created_date END) AS accepted_at,
@@ -330,6 +339,7 @@ async function queryApplicationFacts(): Promise<ApplicationFacts[]> {
     lastSentAt: asDate(r.last_sent_at),
     employerResponseAt: asDate(r.employer_response_at),
     rejectedByUsAt: asDate(r.rejected_by_us_at),
+    rejectedByCandidateAt: asDate(r.rejected_by_candidate_at),
     interviewAt: asDate(r.interview_at),
     acceptedAt: asDate(r.accepted_at),
     candidateDroppedAt: asDate(r.candidate_dropped_at),
@@ -407,7 +417,12 @@ export interface CandidateMetrics {
     employer: { emails: number | null; calls: number | null };
   };
   rejectedByUs: number;
+  /** Of `rejectedByUs`, by reason (`Field21__c`); an application with several counts in each, none = NO_REASON_LABEL. */
   rejectReasons: { reason: string; count: number }[];
+  /** "נדחה על ידי מועמד", chosen as `rejectedByUs` is. */
+  rejectedByCandidate: number;
+  /** Of `rejectedByCandidate`, by reason, as `rejectReasons`. */
+  candidateRejectReasons: { reason: string; count: number }[];
   sentToEmployer: number;
   daysToTransfer: Stats;
   employerResponded: number;
@@ -437,6 +452,21 @@ export function stats(values: number[]): Stats {
 
 const inRange = (d: Date | null, from: Date, to: Date): d is Date => d !== null && d >= from && d < to;
 
+/**
+ * Applications by reject reason, most first: one with several reasons counts in each, one with none under
+ * NO_REASON_LABEL (always last, so the reasons given read first).
+ */
+export function reasonCounts(list: readonly ApplicationFacts[]): { reason: string; count: number }[] {
+  const reasons = new Map<string, number>();
+  let none = 0;
+  for (const f of list) {
+    if (!f.rejectReasons.length) none++;
+    for (const r of f.rejectReasons) reasons.set(r, (reasons.get(r) ?? 0) + 1);
+  }
+  const rows = [...reasons.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count);
+  return none ? [...rows, { reason: NO_REASON_LABEL, count: none }] : rows;
+}
+
 const mean = (values: number[]): number | null => (values.length ? values.reduce((s, v) => s + v, 0) / values.length : null);
 
 export function computeCandidateMetrics(
@@ -459,20 +489,18 @@ export function computeCandidateMetrics(
   const responded = sent.filter((f) => f.employerResponseAt);
   const notResponded = sent.filter((f) => !f.employerResponseAt);
 
-  const rejected =
-    basis === "application"
-      ? cohort.filter((f) => f.rejectedByUsAt || f.status === STATUS.rejectedByUs)
-      : facts.filter((f) => inRange(f.rejectedByUsAt, from, to));
+  // Application basis: moved into the status, or in it now (a move older than the status history).
+  // Event basis: moved into it in the range.
+  const inStatus = (at: (f: ApplicationFacts) => Date | null, status: string) =>
+    basis === "application" ? cohort.filter((f) => at(f) || f.status === status) : facts.filter((f) => inRange(at(f), from, to));
+  const rejected = inStatus((f) => f.rejectedByUsAt, STATUS.rejectedByUs);
+  const rejectedByCandidate = inStatus((f) => f.rejectedByCandidateAt, STATUS.rejectedByCandidate);
   // Like "rejected by us": the move into the status, or (application basis) being in it now,
   // which covers applications whose move predates the status history.
   const endedIn = (at: (f: ApplicationFacts) => Date | null, statuses: readonly string[]) =>
     basis === "application"
       ? cohort.filter((f) => at(f) || (f.status !== null && statuses.includes(f.status))).length
       : facts.filter((f) => inRange(at(f), from, to)).length;
-  const reasons = new Map<string, number>();
-  for (const f of rejected) {
-    for (const r of f.rejectReasons.length ? f.rejectReasons : ["לא צוינה סיבה"]) reasons.set(r, (reasons.get(r) ?? 0) + 1);
-  }
 
   const waiting = facts
     .filter((f) => f.status === STATUS.sent && f.lastSentAt && now.getTime() - f.lastSentAt.getTime() > WAITING_DAYS * DAY)
@@ -506,7 +534,9 @@ export function computeCandidateMetrics(
       employer: { emails: mean(sent.map((f) => f.employerEmails)), calls: mean(sent.map((f) => f.employerCalls)) },
     },
     rejectedByUs: rejected.length,
-    rejectReasons: [...reasons.entries()].map(([reason, count]) => ({ reason, count })).sort((a, b) => b.count - a.count),
+    rejectReasons: reasonCounts(rejected),
+    rejectedByCandidate: rejectedByCandidate.length,
+    candidateRejectReasons: reasonCounts(rejectedByCandidate),
     sentToEmployer: sent.length,
     daysToTransfer: stats(sent.map((f) => (f.sentAt!.getTime() - f.createdAt.getTime()) / DAY)),
     employerResponded: responded.length,

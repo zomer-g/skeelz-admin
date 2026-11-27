@@ -403,6 +403,7 @@ export const ENDPOINTS: EndpointSpec[] = [
       applications: { type: "object", additionalProperties: int },
       timing: { type: "object" },
       reject_reasons: { type: "array", items: obj({ reason: str, count: int }) },
+      candidate_reject_reasons: { type: "array", items: obj({ reason: str, count: int }) },
       site: { type: "object" },
       data_freshness: obj({ salesforce_synced_at: { type: ["string", "null"], format: "date-time" } }),
     }),

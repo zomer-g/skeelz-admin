@@ -239,6 +239,13 @@
       "when": 1795555881066,
       "tag": "0033_orange_celestials",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1795805711526,
+      "tag": "0034_picklist_values",
+      "breakpoints": true
     }
   ]
 }
