@@ -75,6 +75,10 @@ export function ApplicationPipeline({ m, basis, callsAvailable }: { m: Candidate
           <BarList download caption="נדחו על ידינו לפי סיבת הדחייה" items={m.rejectReasons.map((r) => ({ label: r.reason, value: r.count }))} />
           <p className="mt-3 text-xs text-muted">הגשה עם כמה סיבות נספרת בכל אחת מהן.</p>
         </Card>
+        <Card level={3} title={`נדחה על ידי מועמד: סיבות · ${fmtInt(m.rejectedByCandidate)}`} className="lg:col-span-2 lg:col-start-2">
+          <BarList download caption="נדחו על ידי המועמד לפי סיבת הדחייה" items={m.candidateRejectReasons.map((r) => ({ label: r.reason, value: r.count }))} />
+          <p className="mt-3 text-xs text-muted">הגשה עם כמה סיבות נספרת בכל אחת מהן.</p>
+        </Card>
       </div>
 
       <SectionTitle hint="מהשליחה ועד התשובה">מול המעסיק</SectionTitle>

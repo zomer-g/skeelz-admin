@@ -1,6 +1,6 @@
 import { eq, getTableColumns, inArray, sql } from "drizzle-orm";
 import { connectDirect, getDb } from "@/lib/db/client";
-import { syncRuns, syncState } from "@/lib/db/schema";
+import { sfPicklistValue, syncRuns, syncState } from "@/lib/db/schema";
 import { sf, SalesforceError } from "./client";
 import { syncFiles } from "./sync-files";
 import { syncTopics } from "./sync-topics";
@@ -80,6 +80,33 @@ async function saveState(object: string, values: Partial<typeof syncState.$infer
     .onConflictDoUpdate({ target: syncState.object, set: values });
 }
 
+/**
+ * Keeps the object's picklist values (API value → label) from the describe the sync already fetched,
+ * so screens show Salesforce's labels (lib/sf/picklists.ts). Replaced whole per object; a failure is
+ * logged and never fails the object's sync.
+ */
+async function savePicklists(object: string, describe: SfDescribe): Promise<void> {
+  const rows = describe.fields
+    .filter((f) => (f.type === "picklist" || f.type === "multipicklist") && f.picklistValues?.length)
+    .flatMap((f) => f.picklistValues.map((v) => ({ object, field: f.name, value: v.value, label: v.label ?? v.value, active: v.active !== false })));
+  // Same value twice in one field would break the primary key; keep the first.
+  const seen = new Set<string>();
+  const unique = rows.filter((r) => {
+    const key = `${r.field}\u0000${r.value}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  try {
+    await getDb().transaction(async (tx) => {
+      await tx.delete(sfPicklistValue).where(eq(sfPicklistValue.object, object));
+      for (let i = 0; i < unique.length; i += UPSERT_CHUNK) await tx.insert(sfPicklistValue).values(unique.slice(i, i + UPSERT_CHUNK));
+    });
+  } catch (err) {
+    logError(`sync ${object} picklists`, err);
+  }
+}
+
 async function reconcile(def: SyncObjectDef): Promise<number> {
   const remote = new Set<string>();
   for await (const page of sf.queryPages<{ Id: string }>(`SELECT Id FROM ${def.name}${def.where ? ` WHERE ${def.where}` : ""}`)) {
@@ -132,6 +159,7 @@ async function syncObject(def: SyncObjectDef, mode: SyncMode, trigger: string): 
       }
       throw err;
     }
+    await savePicklists(def.name, describe);
 
     if (mode === "reconcile") {
       const deleted = def.reconcile ? await reconcile(def) : 0;

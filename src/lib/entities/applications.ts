@@ -4,6 +4,7 @@ import { normStatus, normStatusSql, RECORD_TYPES, STATUS } from "@/lib/metrics/c
 import { companyKeySql, companyNameOf } from "@/lib/metrics/company";
 import { applicationPaidSql } from "@/lib/metrics/paid";
 import { rejectReasonLabels, rejectReasonSql } from "@/lib/metrics/reject-reasons";
+import { ensureRejectReasonLabels } from "@/lib/metrics/reject-reasons-load";
 import { ageInDays, asDate, containsPattern, dayOf, dayBounds, isSfId, isTrue, num, PAGE_SIZE, phoneDigits, run, str } from "./search";
 import { orderBy, type Sort, type SortColumn } from "./sort";
 
@@ -222,6 +223,7 @@ export async function searchApplications(
   f: ApplicationFilters,
   { page = 1, pageSize = PAGE_SIZE, sort }: { page?: number; pageSize?: number; sort?: Sort } = {},
 ): Promise<{ rows: ApplicationRow[]; total: number }> {
+  await ensureRejectReasonLabels();
   const where = whereOf(f);
   const [rows, count] = await Promise.all([
     run(sql`SELECT ${COLUMNS} ${FROM} WHERE ${where}
@@ -248,6 +250,7 @@ export interface ApplicationStatusRow {
 
 /** Every application under the filters, in the same WHERE as searchApplications, so the counts add up to its total. */
 export async function loadApplicationStatusRows(f: ApplicationFilters): Promise<ApplicationStatusRow[]> {
+  await ensureRejectReasonLabels();
   const rows = await run(sql`
     SELECT a.id, a.status, a.created_date, ${applicationPaidSql("a", "j")} AS paid, ${FAST_APPLIED} AS fast, u.name AS owner_name,
            a.contact_id, a.parent_id,
@@ -276,6 +279,7 @@ export async function loadApplicationFilterOptions(): Promise<{
   devices: string[];
   rejectReasons: string[];
 }> {
+  await ensureRejectReasonLabels();
   const [statuses, owners, channels, devices, reasons] = await Promise.all([
     run(sql`SELECT ${NORM_STATUS} AS v, count(*) AS n ${FROM} WHERE ${IS_APPLICATION} AND a.status IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`),
     run(sql`SELECT u.name AS v, count(*) AS n ${FROM} WHERE ${IS_APPLICATION} AND u.name IS NOT NULL GROUP BY 1 ORDER BY 2 DESC`),
@@ -346,6 +350,7 @@ const numOrNull = (v: unknown) => {
 
 export async function loadApplication(id: string): Promise<ApplicationDetail | null> {
   if (!isSfId(id)) return null;
+  await ensureRejectReasonLabels();
   const [r] = await run(sql`
     SELECT ${COLUMNS},
            a.data->>'Subject' AS subject, a.data->>'Description' AS description,

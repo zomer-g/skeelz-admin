@@ -285,6 +285,24 @@ export const sfRecordType = pgTable("sf_record_type", {
   syncedAt: syncedAt(),
 });
 
+/**
+ * Picklist values (API value → label) as each synced object's describe returned them on its last sync.
+ * Read for labels the screens show, e.g. Case.Field21__c (lib/metrics/reject-reasons.ts). Only what the
+ * describe lists: values no longer in the picklist are absent.
+ */
+export const sfPicklistValue = pgTable(
+  "sf_picklist_value",
+  {
+    object: text("object").notNull(),
+    field: text("field").notNull(),
+    value: text("value").notNull(),
+    label: text("label").notNull(),
+    active: boolean("active").notNull(),
+    syncedAt: syncedAt(),
+  },
+  (t) => [primaryKey({ columns: [t.object, t.field, t.value] })],
+);
+
 export const sfUser = pgTable("sf_user", {
   id: sfId("id").primaryKey(),
   name: text("name"),
